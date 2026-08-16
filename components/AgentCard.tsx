@@ -9,11 +9,14 @@ export default function AgentCard({
   c,
   compact = false,
   onOpen,
+  from,
 }: {
   c: RegistryCard;
   compact?: boolean;
   /** Absent on surfaces with no passport modal — the button is then omitted. */
   onOpen?: (m: { kind: "agent"; id: string }) => void;
+  /** Origin surface, threaded onto the passport link so its back button can return here. */
+  from?: string;
 }) {
   return (
     <article className={compact ? "top-agent-card" : "registry-card"}>
@@ -82,7 +85,7 @@ export default function AgentCard({
         )}
         <Link
           className="get-btn"
-          href={`/agent/${encodeURIComponent(c.source_product_id)}`}
+          href={`/agent/${encodeURIComponent(c.source_product_id)}${from ? `?from=${from}` : ""}`}
           style={{ display: "grid", placeItems: "center" }}
         >
           Open passport

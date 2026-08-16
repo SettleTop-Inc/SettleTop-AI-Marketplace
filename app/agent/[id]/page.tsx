@@ -24,18 +24,32 @@ export async function generateMetadata({
   };
 }
 
-export default async function AgentPage({ params }: { params: Params }) {
+type Search = Promise<{ from?: string }>;
+
+export default async function AgentPage({
+  params,
+  searchParams,
+}: {
+  params: Params;
+  searchParams: Search;
+}) {
   const { id } = await params;
+  const { from } = await searchParams;
   const a = await getPassport(decodeURIComponent(id));
   if (!a) notFound();
+
+  const back =
+    from === "marketplace"
+      ? { href: "/marketplace", label: "← Back to the marketplace" }
+      : { href: "/", label: "← Back to the registry" };
 
   return (
     <main id="top">
       <section className="section">
         <div className="container">
           <p style={{ marginBottom: 18 }}>
-            <Link className="link-btn" href="/">
-              ← Back to the registry
+            <Link className="link-btn" href={back.href}>
+              {back.label}
             </Link>
           </p>
           <div className="modal-card" style={{ maxHeight: "none", boxShadow: "none" }}>
