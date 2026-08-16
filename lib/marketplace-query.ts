@@ -191,8 +191,24 @@ export function runQuery(cards: RegistryCard[], criteria: Criteria): QueryResult
 // RegistryCard; the rest (source, function, tier, delivery, price) are open
 // free text pulled from live listing data, so there is no static "wrong
 // value" for them — only these two can be validated without the card set.
-const RISK_VALUES: RiskBand[] = ["Low", "Medium", "High"];
-const PROVENANCE_VALUES: ProvenanceStatus[] = ["Verified", "Disclosed", "Unknown"];
+const RISK_VALUES = ["Low", "Medium", "High"] as const satisfies readonly RiskBand[];
+const PROVENANCE_VALUES = ["Verified", "Disclosed", "Unknown"] as const satisfies readonly ProvenanceStatus[];
+
+// `satisfies` above only checks the arrays don't contain a value OUTSIDE the
+// union (a typo, or a value the union later drops) — it says nothing about
+// the other direction. If RiskBand or ProvenanceStatus ever GAINS a member
+// (e.g. "Critical") and this array is not updated, parseCriteria would
+// silently strip that value out of every inbound URL: the facet rail could
+// offer it, a shared link naming it would come back unfiltered, and the
+// count shown beside it would contradict the page — the exact silent-wrong-
+// number failure this module exists to prevent. AssertNever turns that
+// omission into a `npm run typecheck` failure instead: if Exclude<...>
+// leaves any member over, that member fails to satisfy `never` and the
+// build breaks at this declaration.
+type AssertNever<T extends never> = T;
+type _RiskValuesExhaustive = AssertNever<Exclude<RiskBand, (typeof RISK_VALUES)[number]>>;
+type _ProvenanceValuesExhaustive = AssertNever<Exclude<ProvenanceStatus, (typeof PROVENANCE_VALUES)[number]>>;
+
 const FACET_VALIDATORS: Partial<Record<FacetKey, readonly string[]>> = {
   risk: RISK_VALUES,
   provenance: PROVENANCE_VALUES,

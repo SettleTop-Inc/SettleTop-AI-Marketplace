@@ -126,14 +126,55 @@ test("facet counts are self-excluding: selecting one value keeps siblings non-ze
 test("a selected facet does not shrink its own counts, but does constrain others", () => {
   const cards = [
     card({ asset_id: "a1", risk: "Low", price_band: "Free" }),
-    card({ asset_id: "a2", risk: "High", price_band: "Paid" }),
+    card({ asset_id: "a2", risk: "Low", price_band: "Paid" }),
+    card({ asset_id: "a3", risk: "Low", price_band: "Free" }),
+    card({ asset_id: "a4", risk: "High", price_band: "Trial" }),
   ];
   const base = defaultCriteria();
   const r = runQuery(cards, { ...base, facets: { ...base.facets, risk: ["Low"] } });
   const price = r.facets.find((f) => f.key === "price")!;
   const byValue = Object.fromEntries(price.values.map((v) => [v.value, v.count]));
-  assert.equal(byValue["Free"], 1);
-  assert.equal(byValue["Paid"], 0, "other facets must reflect the risk selection");
+  assert.equal(byValue["Free"], 2);
+  assert.equal(byValue["Paid"], 1);
+  assert.equal(byValue["Trial"], 0, "other facets must reflect the risk selection");
+  // The individual lookups above only prove the three known values are
+  // right; they say nothing about whether an extra, unlooked-up bucket
+  // (e.g. a phantom key from a seeding bug) inflated the group. Summing
+  // catches that: it must equal price's self-excluded base — the rows
+  // that pass every facet except price's own (a1, a2, a3) — not r.total,
+  // which happens to be the same number here only because price itself
+  // is unselected.
+  assert.equal(
+    price.values.reduce((n, v) => n + v.count, 0),
+    3,
+    "facet counts must sum to the self-excluded base, not silently include a phantom bucket"
+  );
+});
+
+test("facet counts sum to their own self-excluded base, not to byQ or total, when q and two other facets narrow differently", () => {
+  const cards = [
+    card({ asset_id: "a1", risk: "Low", provenance: "Verified", tagline: "alpha bot" }),
+    card({ asset_id: "a2", risk: "Medium", provenance: "Verified", tagline: "alpha bot" }),
+    card({ asset_id: "a3", risk: "High", provenance: "Verified", tagline: "alpha bot" }),
+    card({ asset_id: "a4", risk: "Low", provenance: "Disclosed", tagline: "alpha bot" }),
+    card({ asset_id: "a5", risk: "Low", provenance: "Verified", tagline: "beta bot" }),
+  ];
+  const base = defaultCriteria();
+  const r = runQuery(cards, {
+    ...base,
+    q: "alpha",
+    facets: { ...base.facets, risk: ["Low"], provenance: ["Verified"] },
+  });
+  // q drops a5 (byQ has 4 rows); risk+provenance together leave only a1.
+  assert.equal(r.total, 1);
+  const risk = r.facets.find((f) => f.key === "risk")!;
+  const sum = risk.values.reduce((n, v) => n + v.count, 0);
+  // risk's self-excluded base is byQ narrowed by provenance alone
+  // (a1, a2, a3 — a4 fails provenance, a5 already failed q): 3 rows.
+  // That is neither byQ (4) nor r.total (1); if the sum silently
+  // matched either of those, the arithmetic behind the rail would be
+  // reading the wrong set.
+  assert.equal(sum, 3, "risk's own count sum must equal its self-excluded base, not byQ or total");
 });
 
 test("null and the literal 'Unknown' collapse into one bucket", () => {
@@ -167,13 +208,20 @@ test("nulls sort last in BOTH directions", () => {
 });
 
 test("ties break on asset_id so paging is stable", () => {
-  const cards = Array.from({ length: PAGE_SIZE + 5 }, (_, i) =>
-    card({ asset_id: `a${String(i).padStart(3, "0")}`, rating: 5 })
-  );
+  const ids = Array.from({ length: PAGE_SIZE + 5 }, (_, i) => `a${String(i).padStart(3, "0")}`);
+  // Feed the cards in DESCENDING id order with identical ratings. Array.sort
+  // is spec-stable, so if tie() were deleted (or re-keyed to
+  // source_product_id, which the fixture holds constant across all rows),
+  // every comparison would return 0 and stability alone would preserve this
+  // descending insertion order — the opposite of the ascending order
+  // asserted below. Only a real asset_id tie-break produces ascending order
+  // from descending input.
+  const cards = [...ids].reverse().map((id) => card({ asset_id: id, rating: 5 }));
   const p1 = runQuery(cards, { ...defaultCriteria(), sort: "rating", page: 1 });
   const p2 = runQuery(cards, { ...defaultCriteria(), sort: "rating", page: 2 });
-  const seen = new Set([...p1.rows, ...p2.rows].map((r) => r.asset_id));
-  assert.equal(seen.size, cards.length, "an agent appeared twice or vanished across pages");
+  const ascending = [...ids].sort();
+  assert.deepEqual(p1.rows.map((r) => r.asset_id), ascending.slice(0, PAGE_SIZE));
+  assert.deepEqual(p2.rows.map((r) => r.asset_id), ascending.slice(PAGE_SIZE));
 });
 
 test("inbound page beyond the end clamps to the last page", () => {
