@@ -48,6 +48,7 @@ export default function ResultList({
           </div>
           <div className="risk-label">
             <b className={`risk-${c.risk.toLowerCase()}`}>{c.risk}</b>
+            {c.risk_basis && <small className="mkt-risk-basis">{c.risk_basis}</small>}
           </div>
         </article>
       ))}

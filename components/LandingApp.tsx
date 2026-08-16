@@ -21,7 +21,7 @@ import {
   listed,
   permissionValue,
 } from "@/lib/present";
-import { defaultCriteria, searchBlob, serializeCriteria } from "@/lib/marketplace-query";
+import { defaultCriteria, facetValueOf, searchBlob, serializeCriteria } from "@/lib/marketplace-query";
 
 /**
  * The registry site.
@@ -85,7 +85,10 @@ export default function LandingApp({
   const counts = useMemo(() => {
     const m: Record<string, number> = {};
     for (const c of cards) {
-      const k = c.function_category ?? "Unclassified";
+      // UNKNOWN, not a synthetic "Unclassified" label: the marketplace facet
+      // this chip hands off to normalises a null function_category to UNKNOWN,
+      // and a third spelling here would mean the two surfaces can never match.
+      const k = c.function_category ?? UNKNOWN;
       m[k] = (m[k] ?? 0) + 1;
     }
     return m;
@@ -107,16 +110,20 @@ export default function LandingApp({
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
+    // Facet equality goes through facetValueOf rather than a raw field
+    // compare, so a null and the literal "Unknown" collapse into the same
+    // bucket exactly as they do on /marketplace. A hand-rolled compare here
+    // would agree with the marketplace only by coincidence of today's data.
     return cards.filter(
       (c) =>
         (!needle || (blobs.get(c.asset_id) ?? "").includes(needle)) &&
-        (!fn || c.function_category === fn) &&
-        (!mp || c.marketplace_name === mp) &&
-        (!dep || c.delivery === dep) &&
-        (!tier || c.evidence_tier === tier) &&
-        (!prov || c.provenance === prov) &&
-        (!price || c.price_band === price) &&
-        (!risk || c.risk === risk)
+        (!fn || facetValueOf(c, "function") === fn) &&
+        (!mp || facetValueOf(c, "source") === mp) &&
+        (!dep || facetValueOf(c, "delivery") === dep) &&
+        (!tier || facetValueOf(c, "tier") === tier) &&
+        (!prov || facetValueOf(c, "provenance") === prov) &&
+        (!price || facetValueOf(c, "price") === price) &&
+        (!risk || facetValueOf(c, "risk") === risk)
     );
   }, [cards, blobs, q, fn, mp, dep, tier, prov, price, risk]);
 

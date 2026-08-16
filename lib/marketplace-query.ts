@@ -84,7 +84,13 @@ function norm(v: string | null | undefined): string {
   return v && v !== UNKNOWN ? v : UNKNOWN;
 }
 
-function facetValueOf(c: RegistryCard, key: FacetKey): string {
+/**
+ * Exported so every surface that filters on a facet value — not just this
+ * module's own runQuery — normalises null and the literal 'Unknown' the same
+ * way. A second, hand-rolled version of this mapping is how the two spellings
+ * drift apart again.
+ */
+export function facetValueOf(c: RegistryCard, key: FacetKey): string {
   switch (key) {
     case "source": return norm(c.marketplace_name);
     case "function": return norm(c.function_category);
