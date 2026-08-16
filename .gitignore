@@ -1,0 +1,44 @@
+node_modules/
+.next/
+out/
+build/
+.DS_Store
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+# Scratch: agent workspaces and nested worktrees, never part of the record
+.superpowers/
+.claude/worktrees/
+
+# Secrets.
+#
+# Ignore every .env variant and re-admit only the committed template. The
+# previous rules were `.env` plus `.env*.local`, which left `.env.production`
+# and `.env.staging` tracked — a filled-in production file would have been
+# committed silently.
+.env
+.env.*
+!.env.example
+
+# Key material and credentials in any form
+*.pem
+*.key
+*.p12
+*.pfx
+*.cer
+*.crt
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+*service-account*.json
+*credentials*.json
+*.secrets.json
+secrets.*
+.supabase/
+.netrc
+.npmrc
