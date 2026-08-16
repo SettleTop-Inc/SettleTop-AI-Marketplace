@@ -79,3 +79,21 @@
   .mkt-row { grid-template-columns: 34px minmax(0, 1fr) 76px 84px; }
   .mkt-row-sub.mkt-hide-sm, .mkt-row-reach { display: none; }
 }
+
+/* Compare tray + table */
+.mkt-tray { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: #0b2b52;
+  color: #fff; padding: 11px 0; box-shadow: 0 -8px 24px rgba(11,35,66,.18); }
+.mkt-tray-inner { display: flex; align-items: center; gap: 12px; font-size: 12px; font-weight: 700; }
+.mkt-tray-list { display: flex; gap: 7px; flex-wrap: wrap; }
+.mkt-chip { background: rgba(255,255,255,.13); border: 0; color: #fff; border-radius: 999px;
+  padding: 5px 10px; font-size: 10.5px; }
+.mkt-cmp-wrap { overflow-x: auto; border: 1px solid #dce2eb; border-radius: 9px; background: #fff; }
+.mkt-cmp { border-collapse: collapse; width: 100%; min-width: 640px; }
+.mkt-cmp th, .mkt-cmp td { text-align: left; padding: 9px 12px; border-bottom: 1px solid #f0f3f7;
+  font-size: 11px; vertical-align: top; }
+.mkt-cmp thead th { background: #fbfcfe; border-bottom: 1px solid #e1e6ec; font-size: 12px; }
+.mkt-cmp tbody th { background: #fbfcfe; color: #5f6d7e; font-weight: 600; width: 170px; }
+.mkt-cmp tr.mkt-diff th { border-left: 3px solid #f2b84b; }
+.mkt-cmp tr.mkt-diff { background: #fffdf7; }
+.mkt-cmp .mkt-none { color: #8a94a5; font-style: italic; }
+.mkt-cmp-legend { display: flex; gap: 16px; font-size: 10.5px; color: #5f6d7e; margin-top: 10px; }

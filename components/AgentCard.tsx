@@ -11,6 +11,8 @@ export default function AgentCard({
   onOpen,
   from,
   back,
+  selected,
+  onSelect,
 }: {
   c: RegistryCard;
   compact?: boolean;
@@ -27,6 +29,10 @@ export default function AgentCard({
    * to the outer URL.
    */
   back?: string;
+  /** Compare-selection state. Absent on surfaces with no compare tray (e.g. `/`). */
+  selected?: boolean;
+  /** Absent on surfaces with no compare tray — the checkbox is then omitted. */
+  onSelect?: (assetId: string) => void;
 }) {
   return (
     <article className={compact ? "top-agent-card" : "registry-card"}>
@@ -36,9 +42,20 @@ export default function AgentCard({
           <h3>{c.name}</h3>
           <span>{c.publisher ?? UNKNOWN}</span>
         </div>
-        <button className="bookmark" title="Save agent">
-          ☆
-        </button>
+        {onSelect ? (
+          <label title="Select to compare">
+            <span className="mkt-sr">Select {c.name} to compare</span>
+            <input
+              type="checkbox"
+              checked={!!selected}
+              onChange={() => onSelect(c.asset_id)}
+            />
+          </label>
+        ) : (
+          <button className="bookmark" title="Save agent">
+            ☆
+          </button>
+        )}
       </div>
       <p className="agent-description">{c.tagline ?? "Not stated"}</p>
       <div className="agent-tags">

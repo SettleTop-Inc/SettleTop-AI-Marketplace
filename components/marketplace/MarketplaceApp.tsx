@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import AgentCard from "@/components/AgentCard";
+import CompareTray from "@/components/marketplace/CompareTray";
 import FacetRail from "@/components/marketplace/FacetRail";
 import Pagination from "@/components/marketplace/Pagination";
 import ResultList from "@/components/marketplace/ResultList";
@@ -87,6 +88,23 @@ export default function MarketplaceApp({
     criteria.q.trim() !== "" ||
     Object.values(criteria.facets).some((v) => v.length > 0);
 
+  // Selection is a scratch pad, not a view: it lives in component state, not
+  // the URL, so it survives filtering and paging rather than being reset by
+  // every write() call above. Capped at three, the compare table's limit.
+  const [selected, setSelected] = useState<string[]>([]);
+
+  const toggleSelect = (assetId: string) =>
+    setSelected((s) =>
+      s.includes(assetId) ? s.filter((x) => x !== assetId) : s.length >= 3 ? s : [...s, assetId]
+    );
+
+  // Selection survives filtering and paging, so candidates can be gathered from
+  // more than one screen. Resolve against all cards, not the current page.
+  const selectedCards = useMemo(
+    () => selected.map((id) => cards.find((c) => c.asset_id === id)).filter(Boolean) as RegistryCard[],
+    [selected, cards]
+  );
+
   return (
     <div className="mkt-shell">
       <div className="container">
@@ -151,7 +169,14 @@ export default function MarketplaceApp({
             ) : (
               <div className="mkt-grid">
                 {result.rows.map((c) => (
-                  <AgentCard key={c.asset_id} c={c} from="marketplace" back={backQS} />
+                  <AgentCard
+                    key={c.asset_id}
+                    c={c}
+                    from="marketplace"
+                    back={backQS}
+                    selected={selected.includes(c.asset_id)}
+                    onSelect={toggleSelect}
+                  />
                 ))}
               </div>
             )}
@@ -162,6 +187,7 @@ export default function MarketplaceApp({
           </div>
         </div>
       </div>
+      <CompareTray selected={selectedCards} onRemove={toggleSelect} onClear={() => setSelected([])} />
     </div>
   );
 }
