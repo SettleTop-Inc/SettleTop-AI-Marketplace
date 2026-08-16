@@ -1,0 +1,93 @@
+"use client";
+
+import Link from "next/link";
+import AgentLogo from "@/components/AgentLogo";
+import { UNKNOWN, statusClass } from "@/lib/present";
+import type { RegistryCard } from "@/lib/types";
+
+export default function AgentCard({
+  c,
+  compact = false,
+  onOpen,
+}: {
+  c: RegistryCard;
+  compact?: boolean;
+  /** Absent on surfaces with no passport modal — the button is then omitted. */
+  onOpen?: (m: { kind: "agent"; id: string }) => void;
+}) {
+  return (
+    <article className={compact ? "top-agent-card" : "registry-card"}>
+      <div className="agent-card-head">
+        <AgentLogo name={c.name} id={c.source_product_id} logo={c.logo} />
+        <div className="agent-title">
+          <h3>{c.name}</h3>
+          <span>{c.publisher ?? UNKNOWN}</span>
+        </div>
+        <button className="bookmark" title="Save agent">
+          ☆
+        </button>
+      </div>
+      <p className="agent-description">{c.tagline ?? "Not stated"}</p>
+      <div className="agent-tags">
+        <span>{c.function_category}</span>
+        <span>{c.delivery}</span>
+        <span>{c.cert_label}</span>
+      </div>
+      <div className="agent-meta-row">
+        <span>
+          {c.rating ? (
+            <>
+              <b>{c.rating}</b> ★ <small>({c.rating_count})</small>
+            </>
+          ) : (
+            <>
+              <b>Not rated</b> <small>(0 reviews)</small>
+            </>
+          )}
+        </span>
+        <span className={`prov-pill ${statusClass(c.provenance)}`}>{c.provenance}</span>
+      </div>
+      <div className="availability-row">
+        <span className="availability-pill available">Available</span>
+        <span>{c.marketplace_name}</span>
+      </div>
+      <div className="evidence-tier-row">
+        <span>{c.evidence_tier}</span>
+        <small>Marketplace listing</small>
+      </div>
+      <div className="reach-mini">
+        <div>
+          <span>Provenance reach</span>
+          <b>{c.reach}%</b>
+        </div>
+        <div className="reach-track">
+          <i style={{ width: `${c.reach}%` }} />
+        </div>
+      </div>
+      <div className="agent-bottom">
+        <div>
+          <b>{c.price_band}</b>
+          <small>{c.price_note}</small>
+        </div>
+        <div className="risk-label">
+          <span>Evidence risk</span>
+          <b className={`risk-${c.risk.toLowerCase()}`}>{c.risk}</b>
+        </div>
+      </div>
+      <div className="card-buttons">
+        {onOpen && (
+          <button onClick={() => onOpen({ kind: "agent", id: c.source_product_id })}>
+            View details
+          </button>
+        )}
+        <Link
+          className="get-btn"
+          href={`/agent/${encodeURIComponent(c.source_product_id)}`}
+          style={{ display: "grid", placeItems: "center" }}
+        >
+          Open passport
+        </Link>
+      </div>
+    </article>
+  );
+}
