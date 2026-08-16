@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import MarketplaceApp from "@/components/marketplace/MarketplaceApp";
 import { withLogos } from "@/lib/logos";
-import { getCards, getLogos } from "@/lib/registry";
+import { getCardsResult, getLogos } from "@/lib/registry";
 import "@/app/marketplace.css";
 
 export const revalidate = 300;
@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 };
 
 export default async function MarketplacePage() {
-  const [cards, logos] = await Promise.all([getCards(), getLogos()]);
+  const [cards, logos] = await Promise.all([getCardsResult(), getLogos()]);
 
   // This <Suspense> boundary is load-bearing for `npm run build`: without it,
   // useSearchParams() inside MarketplaceApp throws BailoutToCSRError on this
@@ -53,7 +53,10 @@ export default async function MarketplacePage() {
   // start`, or make sure the dev tab is actually foregrounded/visible.
   return (
     <Suspense fallback={<div className="mkt-shell" aria-busy="true" />}>
-      <MarketplaceApp cards={withLogos(cards, logos)} />
+      <MarketplaceApp
+        cards={cards.ok ? withLogos(cards.data, logos) : []}
+        loadFailed={!cards.ok}
+      />
     </Suspense>
   );
 }

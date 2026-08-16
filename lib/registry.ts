@@ -71,6 +71,47 @@ export async function getCards(): Promise<RegistryCard[]> {
   return (data ?? []) as RegistryCard[];
 }
 
+/**
+ * A read that can say it failed.
+ *
+ * The older readers return [] or null on error, which is survivable on a
+ * marketing page and dishonest on a tool: "the registry is down" and "your
+ * filters matched nothing" must never render the same.
+ */
+export type ReadResult<T> = { ok: true; data: T } | { ok: false; error: string };
+
+export async function getCardsResult(): Promise<ReadResult<RegistryCard[]>> {
+  const { data, error } = await supabase
+    .from("v_registry_card")
+    .select("*")
+    .order("name", { ascending: true });
+  if (error) {
+    console.error("getCardsResult", error.message);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, data: (data ?? []) as RegistryCard[] };
+}
+
+/**
+ * Compare needs full passports, keyed by asset_id. getPassport() cannot be
+ * reused: it returns null for both a missing row and a failed read, so compare
+ * would report an agent as "not found" during an outage.
+ */
+export async function getPassports(
+  assetIds: string[]
+): Promise<ReadResult<AssetPassport[]>> {
+  if (assetIds.length === 0) return { ok: true, data: [] };
+  const { data, error } = await supabase
+    .from("v_asset_passport")
+    .select("*")
+    .in("asset_id", assetIds);
+  if (error) {
+    console.error("getPassports", error.message);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, data: (data ?? []) as AssetPassport[] };
+}
+
 export async function getPassport(
   sourceProductId: string
 ): Promise<AssetPassport | null> {

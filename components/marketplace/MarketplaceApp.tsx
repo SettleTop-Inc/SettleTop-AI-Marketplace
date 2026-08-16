@@ -21,7 +21,13 @@ import {
 } from "@/lib/marketplace-query";
 import type { RegistryCard } from "@/lib/types";
 
-export default function MarketplaceApp({ cards }: { cards: RegistryCard[] }) {
+export default function MarketplaceApp({
+  cards,
+  loadFailed,
+}: {
+  cards: RegistryCard[];
+  loadFailed?: boolean;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -96,7 +102,7 @@ export default function MarketplaceApp({ cards }: { cards: RegistryCard[] }) {
             <input
               id="mkt-q"
               type="search"
-              placeholder={`Search ${cards.length} agents`}
+              placeholder={loadFailed ? "Search agents" : `Search ${cards.length} agents`}
               value={text}
               onChange={(e) => setText(e.target.value)}
             />
@@ -104,23 +110,35 @@ export default function MarketplaceApp({ cards }: { cards: RegistryCard[] }) {
         </div>
 
         <div className="mkt-layout">
-          <FacetRail
-            facets={result.facets}
-            onToggle={toggleFacet}
-            onClear={clear}
-            hasFilters={hasFilters}
-          />
+          {!loadFailed && (
+            <FacetRail
+              facets={result.facets}
+              onToggle={toggleFacet}
+              onClear={clear}
+              hasFilters={hasFilters}
+            />
+          )}
 
           <div className="mkt-results">
-            <ResultToolbar
-              total={result.total}
-              sort={criteria.sort}
-              onSort={setSort}
-              view={criteria.view}
-              onView={setView}
-            />
+            {!loadFailed && (
+              <ResultToolbar
+                total={result.total}
+                sort={criteria.sort}
+                onSort={setSort}
+                view={criteria.view}
+                onView={setView}
+              />
+            )}
 
-            {result.total === 0 ? (
+            {loadFailed ? (
+              <div className="mkt-error" role="alert">
+                <b>The registry could not be loaded</b>
+                <p>
+                  This is a fault on our side, not an empty result. No agents are
+                  being hidden by your filters. Try again shortly.
+                </p>
+              </div>
+            ) : result.total === 0 ? (
               <div className="mkt-empty">
                 <b>No agents match these filters</b>
                 <p>The registry holds {cards.length} agents. Try removing a filter.</p>
@@ -138,7 +156,9 @@ export default function MarketplaceApp({ cards }: { cards: RegistryCard[] }) {
               </div>
             )}
 
-            <Pagination page={result.page} pageCount={result.pageCount} onPage={setPage} />
+            {!loadFailed && (
+              <Pagination page={result.page} pageCount={result.pageCount} onPage={setPage} />
+            )}
           </div>
         </div>
       </div>
