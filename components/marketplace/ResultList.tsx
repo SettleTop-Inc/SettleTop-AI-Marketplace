@@ -38,7 +38,7 @@ export default function ResultList({
             </h3>
             <div className="mkt-row-sub">{c.publisher ?? UNKNOWN}</div>
           </div>
-          <div className="mkt-row-sub hide-sm">{c.function_category ?? UNKNOWN}</div>
+          <div className="mkt-row-sub mkt-hide-sm">{c.function_category ?? UNKNOWN}</div>
           <span className={`prov-pill ${statusClass(c.provenance)}`}>{c.provenance}</span>
           <div className="mkt-row-reach">
             <div className="reach-track">
