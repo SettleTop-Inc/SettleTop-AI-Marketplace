@@ -85,6 +85,7 @@ export default function AgentCard({
         <div className="risk-label">
           <span>Evidence risk</span>
           <b className={`risk-${c.risk.toLowerCase()}`}>{c.risk}</b>
+          {c.risk_basis && <small>{c.risk_basis}</small>}
         </div>
       </div>
       <div className="card-buttons">

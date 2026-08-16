@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { USE_CASES } from "@/lib/usecases";
 import PassportView from "@/components/PassportView";
@@ -19,6 +21,7 @@ import {
   listed,
   permissionValue,
 } from "@/lib/present";
+import { defaultCriteria, searchBlob, serializeCriteria } from "@/lib/marketplace-query";
 
 /**
  * The registry site.
@@ -51,6 +54,23 @@ export default function LandingApp({
   const [passport, setPassport] = useState<AssetPassport | null>(null);
   const [loadingPassport, setLoadingPassport] = useState(false);
 
+  const router = useRouter();
+
+  /** Carry whatever the visitor has already narrowed to into the tool. */
+  const marketplaceHref = () => {
+    const c = defaultCriteria();
+    if (q.trim()) c.q = q;
+    if (fn) c.facets.function = [fn];
+    if (mp) c.facets.source = [mp];
+    if (dep) c.facets.delivery = [dep];
+    if (tier) c.facets.tier = [tier];
+    if (prov) c.facets.provenance = [prov];
+    if (price) c.facets.price = [price];
+    if (risk) c.facets.risk = [risk];
+    const qs = serializeCriteria(c);
+    return qs ? `/marketplace?${qs}` : "/marketplace";
+  };
+
   const distinct = (pick: (c: RegistryCard) => string | null | undefined) =>
     Array.from(new Set(cards.map(pick).filter(Boolean) as string[])).sort();
 
@@ -79,27 +99,9 @@ export default function LandingApp({
     [counts]
   );
 
-  const searchBlob = useMemo(() => {
+  const blobs = useMemo(() => {
     const m = new Map<string, string>();
-    for (const c of cards) {
-      m.set(
-        c.asset_id,
-        [
-          c.name,
-          c.publisher,
-          c.function_category,
-          c.tagline,
-          c.marketplace_name,
-          c.evidence_tier,
-          c.delivery,
-          c.cert_label,
-          (c.surfaces ?? []).join(" "),
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase()
-      );
-    }
+    for (const c of cards) m.set(c.asset_id, searchBlob(c));
     return m;
   }, [cards]);
 
@@ -107,7 +109,7 @@ export default function LandingApp({
     const needle = q.trim().toLowerCase();
     return cards.filter(
       (c) =>
-        (!needle || (searchBlob.get(c.asset_id) ?? "").includes(needle)) &&
+        (!needle || (blobs.get(c.asset_id) ?? "").includes(needle)) &&
         (!fn || c.function_category === fn) &&
         (!mp || c.marketplace_name === mp) &&
         (!dep || c.delivery === dep) &&
@@ -116,7 +118,7 @@ export default function LandingApp({
         (!price || c.price_band === price) &&
         (!risk || c.risk === risk)
     );
-  }, [cards, searchBlob, q, fn, mp, dep, tier, prov, price, risk]);
+  }, [cards, blobs, q, fn, mp, dep, tier, prov, price, risk]);
 
   const top = useMemo(() => {
     let list = [...cards];
@@ -156,9 +158,6 @@ export default function LandingApp({
     };
   }, [modal]);
 
-  const scrollTo = (id: string) =>
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
-
   const clearFilters = () => {
     setQ("");
     setFn("");
@@ -171,13 +170,16 @@ export default function LandingApp({
   };
 
   const pickUseCase = (name: string) => {
-    setFn(name);
-    scrollTo("registry");
+    const c = defaultCriteria();
+    c.facets.function = [name];
+    router.push(`/marketplace?${serializeCriteria(c)}`);
   };
 
   const runHeroSearch = () => {
-    setQ(heroQ);
-    scrollTo("registry");
+    const c = defaultCriteria();
+    if (heroQ.trim()) c.q = heroQ;
+    const qs = serializeCriteria(c);
+    router.push(qs ? `/marketplace?${qs}` : "/marketplace");
   };
 
   return (
@@ -199,7 +201,7 @@ export default function LandingApp({
             <button className="text-btn" onClick={() => setModal({ kind: "vendor" })}>
               For vendors
             </button>
-            <button className="primary-btn compact" onClick={() => scrollTo("registry")}>
+            <button className="primary-btn compact" onClick={() => router.push("/marketplace")}>
               Browse agents
             </button>
           </div>
@@ -347,7 +349,7 @@ export default function LandingApp({
                   functions your organization actually performs.
                 </p>
               </div>
-              <button className="link-btn" onClick={() => scrollTo("registry")}>
+              <button className="link-btn" onClick={() => router.push("/marketplace")}>
                 View all use cases →
               </button>
             </div>
@@ -400,7 +402,7 @@ export default function LandingApp({
               ))}
             </div>
             <div className="center-action">
-              <button className="secondary-btn" onClick={() => scrollTo("registry")}>
+              <button className="secondary-btn" onClick={() => router.push("/marketplace")}>
                 Explore the full agent registry
               </button>
             </div>
@@ -471,6 +473,9 @@ export default function LandingApp({
                 <b>{filtered.length}</b>
                 <span>matching agents</span>
               </div>
+              <Link className="link-btn" href={marketplaceHref()}>
+                Open these results in the marketplace →
+              </Link>
             </div>
 
             <div className="registry-disclosure">
