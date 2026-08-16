@@ -31,6 +31,11 @@ export default function MarketplaceApp({ cards }: { cards: RegistryCard[] }) {
 
   const result = useMemo(() => runQuery(cards, criteria), [cards, criteria]);
 
+  // The exact query string for the current view, threaded onto every passport
+  // link below so "Back to the marketplace" restores the search that was
+  // built rather than dropping the visitor on unfiltered page 1.
+  const backQS = serializeCriteria(criteria);
+
   // The text box is local so typing stays instant; the URL catches up on a
   // debounce with `replace`, so a search does not leave 12 history entries.
   const [text, setText] = useState(criteria.q);
@@ -116,7 +121,7 @@ export default function MarketplaceApp({ cards }: { cards: RegistryCard[] }) {
             ) : (
               <div className="mkt-grid">
                 {result.rows.map((c) => (
-                  <AgentCard key={c.asset_id} c={c} from="marketplace" />
+                  <AgentCard key={c.asset_id} c={c} from="marketplace" back={backQS} />
                 ))}
               </div>
             )}

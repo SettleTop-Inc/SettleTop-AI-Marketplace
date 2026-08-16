@@ -24,7 +24,7 @@ export async function generateMetadata({
   };
 }
 
-type Search = Promise<{ from?: string }>;
+type Search = Promise<{ from?: string; back?: string }>;
 
 export default async function AgentPage({
   params,
@@ -34,13 +34,22 @@ export default async function AgentPage({
   searchParams: Search;
 }) {
   const { id } = await params;
-  const { from } = await searchParams;
+  // `back`, like `from`, is a search param: Next decodes it once before it
+  // reaches us, so this is already the marketplace's raw serialized query
+  // string (e.g. "risk=Low&q=agent"). Do NOT decodeURIComponent it again —
+  // a second decode would corrupt any literal `%` inside it and throw.
+  const { from, back: backQS } = await searchParams;
   const a = await getPassport(decodeURIComponent(id));
   if (!a) notFound();
 
+  // The destination path is always one of these two literals — never built
+  // from `from` or `back` — so neither an attacker-supplied `?from=` nor a
+  // malformed `?back=` can steer this link off `/marketplace` or `/`. An
+  // unrecognised `back` value is not a risk either: parseCriteria() ignores
+  // anything it doesn't recognise rather than applying it.
   const back =
     from === "marketplace"
-      ? { href: "/marketplace", label: "← Back to the marketplace" }
+      ? { href: `/marketplace${backQS ? `?${backQS}` : ""}`, label: "← Back to the marketplace" }
       : { href: "/", label: "← Back to the registry" };
 
   return (

@@ -10,6 +10,7 @@ export default function AgentCard({
   compact = false,
   onOpen,
   from,
+  back,
 }: {
   c: RegistryCard;
   compact?: boolean;
@@ -17,6 +18,15 @@ export default function AgentCard({
   onOpen?: (m: { kind: "agent"; id: string }) => void;
   /** Origin surface, threaded onto the passport link so its back button can return here. */
   from?: string;
+  /**
+   * The origin surface's own serialized query string (e.g. "risk=Low&q=agent"),
+   * nested as a single value inside the passport URL's `back` param so the
+   * back link can restore the exact search rather than landing unfiltered.
+   * Encoded here because it is a query string being embedded inside another
+   * query param — its own `&`/`=` characters must not be read as belonging
+   * to the outer URL.
+   */
+  back?: string;
 }) {
   return (
     <article className={compact ? "top-agent-card" : "registry-card"}>
@@ -85,7 +95,9 @@ export default function AgentCard({
         )}
         <Link
           className="get-btn"
-          href={`/agent/${encodeURIComponent(c.source_product_id)}${from ? `?from=${from}` : ""}`}
+          href={`/agent/${encodeURIComponent(c.source_product_id)}${
+            from ? `?from=${from}${back ? `&back=${encodeURIComponent(back)}` : ""}` : ""
+          }`}
           style={{ display: "grid", placeItems: "center" }}
         >
           Open passport
