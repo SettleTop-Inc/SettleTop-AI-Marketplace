@@ -6,12 +6,14 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import AgentCard from "@/components/AgentCard";
 import FacetRail from "@/components/marketplace/FacetRail";
 import Pagination from "@/components/marketplace/Pagination";
+import ResultList from "@/components/marketplace/ResultList";
 import ResultToolbar from "@/components/marketplace/ResultToolbar";
 import {
   type Criteria,
   type FacetKey,
   type SortDir,
   type SortKey,
+  type ViewMode,
   defaultCriteria,
   parseCriteria,
   runQuery,
@@ -69,6 +71,8 @@ export default function MarketplaceApp({ cards }: { cards: RegistryCard[] }) {
   const setSort = (sort: SortKey, dir: SortDir) =>
     write({ ...criteria, sort, dir, page: 1 }, "push");
 
+  const setView = (view: ViewMode) => write({ ...criteria, view, page: 1 }, "push");
+
   const setPage = (page: number) => write({ ...criteria, page }, "push");
 
   const clear = () => write({ ...defaultCriteria(), view: criteria.view }, "push");
@@ -108,7 +112,13 @@ export default function MarketplaceApp({ cards }: { cards: RegistryCard[] }) {
           />
 
           <div className="mkt-results">
-            <ResultToolbar total={result.total} sort={criteria.sort} onSort={setSort} />
+            <ResultToolbar
+              total={result.total}
+              sort={criteria.sort}
+              onSort={setSort}
+              view={criteria.view}
+              onView={setView}
+            />
 
             {result.total === 0 ? (
               <div className="mkt-empty">
@@ -118,6 +128,8 @@ export default function MarketplaceApp({ cards }: { cards: RegistryCard[] }) {
                   Clear filters
                 </button>
               </div>
+            ) : criteria.view === "list" ? (
+              <ResultList rows={result.rows} from="marketplace" back={backQS} />
             ) : (
               <div className="mkt-grid">
                 {result.rows.map((c) => (

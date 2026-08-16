@@ -1,6 +1,6 @@
 "use client";
 
-import type { SortDir, SortKey } from "@/lib/marketplace-query";
+import type { SortDir, SortKey, ViewMode } from "@/lib/marketplace-query";
 
 const OPTIONS: Array<{ key: SortKey; dir: SortDir; label: string }> = [
   { key: "reach", dir: "desc", label: "Provenance reach" },
@@ -13,10 +13,14 @@ export default function ResultToolbar({
   total,
   sort,
   onSort,
+  view,
+  onView,
 }: {
   total: number;
   sort: SortKey;
   onSort: (key: SortKey, dir: SortDir) => void;
+  view: ViewMode;
+  onView: (v: ViewMode) => void;
 }) {
   return (
     <div className="mkt-toolbar">
@@ -43,6 +47,14 @@ export default function ResultToolbar({
           </option>
         ))}
       </select>
+      <div className="mkt-toggle" role="group" aria-label="Result layout">
+        <button aria-pressed={view === "grid"} onClick={() => onView("grid")}>
+          ▦ Grid
+        </button>
+        <button aria-pressed={view === "list"} onClick={() => onView("list")}>
+          ▤ List
+        </button>
+      </div>
     </div>
   );
 }
