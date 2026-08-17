@@ -458,11 +458,17 @@ export default function LandingApp({
           <div className="container">
             <div className="section-heading registry-title">
               <div>
-                <span className="overline">FULL REGISTRY</span>
-                <h2>Browse and compare AI agents</h2>
+                {/* Deliberately not the marketplace's wording. This section
+                    and /marketplace both carried "Browse and compare AI
+                    agents" over near-identical subtext, so the two surfaces
+                    read as duplicates rather than an overview and the tool
+                    it hands off to. */}
+                <span className="overline">EVERY AGENT ON RECORD</span>
+                <h2>The whole registry, in one place</h2>
                 <p>
-                  Filter by function, marketplace/source, deployment, evidence tier,
-                  provenance status, pricing and evidence risk.
+                  A quick filter across all {cards.length} captured agents. For
+                  faceted search, side-by-side comparison and shareable result
+                  links, open the marketplace.
                 </p>
               </div>
               <div className="result-total">
