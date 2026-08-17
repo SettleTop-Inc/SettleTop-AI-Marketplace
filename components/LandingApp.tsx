@@ -193,10 +193,10 @@ export default function LandingApp({
     <>
       <header className="site-header">
         <div className="container nav">
-          <a className="brand" href="#top" aria-label="SettleTop Agent Registry home">
+          <a className="brand" href="#top" aria-label="SettleTop AI Marketplace home">
             <span className="settletop-wordmark">SETTLETOP</span>
             <span className="brand-divider" aria-hidden="true" />
-            <span className="registry-wordmark">AGENT REGISTRY</span>
+            <span className="registry-wordmark">AI MARKETPLACE</span>
           </a>
           <nav className="nav-links" aria-label="Primary">
             <a href="#use-cases">Use cases</a>
@@ -617,7 +617,7 @@ export default function LandingApp({
         <div className="container footer-grid">
           <div className="brand footer-brand">
             <span className="brand-divider" aria-hidden="true" />
-            <span className="brand-registry">Agent Registry</span>
+            <span className="brand-registry">AI Marketplace</span>
           </div>
           <p>Discover. Compare. Trace. Trust.</p>
           <p className="copyright">

@@ -8,7 +8,7 @@ import "@/app/marketplace.css";
 export const revalidate = 300;
 
 export const metadata: Metadata = {
-  title: "Browse AI agents — SettleTop Agent Registry",
+  title: "Browse AI agents — SettleTop AI Marketplace",
   description:
     "Filter AI agents by function, source marketplace, provenance, evidence tier, deployment, pricing and evidence risk.",
 };

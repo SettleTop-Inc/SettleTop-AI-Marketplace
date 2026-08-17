@@ -8,7 +8,7 @@ import "@/app/marketplace.css";
 export const revalidate = 300;
 
 export const metadata: Metadata = {
-  title: "Compare agent provenance — SettleTop Agent Registry",
+  title: "Compare agent provenance — SettleTop AI Marketplace",
 };
 
 type Search = Promise<{ ids?: string }>;

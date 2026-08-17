@@ -15,7 +15,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
   const a = await getPassport(decodeURIComponent(id));
-  if (!a) return { title: "Agent not found — SettleTop Agent Registry" };
+  if (!a) return { title: "Agent not found — SettleTop AI Marketplace" };
   return {
     title: `${a.name} — Agent Passport — SettleTop`,
     description:

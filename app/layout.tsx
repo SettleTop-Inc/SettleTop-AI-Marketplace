@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SettleTop Agent Registry — Discover, Compare, Trust AI Agents",
+  title: "SettleTop AI Marketplace — Discover, Compare, Trust AI Agents",
   description:
     "Discover AI agents by use case, compare vendors and ratings, and inspect provenance across models, frameworks, tools, data, dependencies and deployment.",
 };
