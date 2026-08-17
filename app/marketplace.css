@@ -97,3 +97,17 @@
 .mkt-cmp tr.mkt-diff { background: #fffdf7; }
 .mkt-cmp .mkt-none { color: #8a94a5; font-style: italic; }
 .mkt-cmp-legend { display: flex; gap: 16px; font-size: 10.5px; color: #5f6d7e; margin-top: 10px; }
+/* Non-colour signal for a "differs" row: readable text, not reliant on hue,
+   so it reaches both screen readers and colour-blind sighted visitors —
+   the row tint + left border alone reach neither. */
+.mkt-diff-flag { margin-left: 7px; font-size: 8.5px; font-weight: 800; letter-spacing: .05em;
+  text-transform: uppercase; color: #8a6416; background: #fbe9c6; border-radius: 4px;
+  padding: 1px 5px; vertical-align: middle; }
+
+/* Selectable list rows (compare checkbox): one extra leading grid column,
+   only when ResultList is given onSelect. */
+.mkt-list-select .mkt-row { grid-template-columns: 22px 34px minmax(0, 2fr) minmax(0, 1fr) 96px 90px 108px; }
+.mkt-row-select { display: flex; align-items: center; justify-content: center; }
+@media (max-width: 820px) {
+  .mkt-list-select .mkt-row { grid-template-columns: 22px 34px minmax(0, 1fr) 76px 84px; }
+}

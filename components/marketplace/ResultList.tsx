@@ -9,6 +9,8 @@ export default function ResultList({
   rows,
   from,
   back,
+  selectedIds,
+  onSelect,
 }: {
   rows: RegistryCard[];
   /** Origin surface, threaded onto the passport link so its back button can return here. */
@@ -20,11 +22,25 @@ export default function ResultList({
    * param, so its own `&`/`=` characters must not be read as the outer URL's.
    */
   back?: string;
+  /** Compare-selection state, mirroring AgentCard's `selected`/`onSelect`. */
+  selectedIds?: string[];
+  /** Absent on surfaces with no compare tray — the checkbox column is then omitted. */
+  onSelect?: (assetId: string) => void;
 }) {
   return (
-    <div className="mkt-list">
+    <div className={onSelect ? "mkt-list mkt-list-select" : "mkt-list"}>
       {rows.map((c) => (
         <article className="mkt-row" key={c.asset_id}>
+          {onSelect && (
+            <label className="mkt-row-select" title="Select to compare">
+              <span className="mkt-sr">Select {c.name} to compare</span>
+              <input
+                type="checkbox"
+                checked={!!selectedIds?.includes(c.asset_id)}
+                onChange={() => onSelect(c.asset_id)}
+              />
+            </label>
+          )}
           <AgentLogo name={c.name} id={c.source_product_id} logo={c.logo} />
           <div>
             <h3 className="mkt-row-name">

@@ -165,7 +165,13 @@ export default function MarketplaceApp({
                 </button>
               </div>
             ) : criteria.view === "list" ? (
-              <ResultList rows={result.rows} from="marketplace" back={backQS} />
+              <ResultList
+                rows={result.rows}
+                from="marketplace"
+                back={backQS}
+                selectedIds={selected}
+                onSelect={toggleSelect}
+              />
             ) : (
               <div className="mkt-grid">
                 {result.rows.map((c) => (

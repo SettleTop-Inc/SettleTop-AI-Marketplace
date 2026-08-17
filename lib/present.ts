@@ -84,15 +84,26 @@ export function evidence(map: EvidenceMap, key: keyof EvidenceMap): string {
   return listed(map?.[key]);
 }
 
+/**
+ * True when an attestation exists at all, so an empty Graph-permissions list
+ * means "attested to request nothing" rather than "the source never said."
+ * Extracted so permissionValue's (truncated, display) string and compare's
+ * (untruncated, comparison-only) value apply the exact same rule and cannot
+ * drift apart.
+ */
+export function attestsNoPermissions(a: Pick<AssetPassport, "certification">): boolean {
+  return (
+    a.certification === "microsoft_365_certified" ||
+    a.certification === "publisher_attestation"
+  );
+}
+
 export function permissionValue(a: AssetPassport): string {
   const p = a.graph_permissions ?? [];
   if (p.length > 0) {
     return p.length <= 5 ? p.join(", ") : `${p.slice(0, 5).join(", ")} +${p.length - 5} more`;
   }
-  if (
-    a.certification === "microsoft_365_certified" ||
-    a.certification === "publisher_attestation"
-  ) {
+  if (attestsNoPermissions(a)) {
     // the attestation exists and requests nothing — different from unknown
     return "None requested";
   }
