@@ -1079,6 +1079,8 @@ details[open] > .st-disclosure::before { content: "− "; }
   --c-link: var(--c-gold);
   --c-line: rgba(255, 255, 255, .16);
   --c-line-soft: rgba(255, 255, 255, .10);
+  --c-surface-2: rgba(255, 255, 255, .10);
+  --c-paper: rgba(255, 255, 255, .06);
   color: var(--c-ink);
 }
 .hm-section--band {
@@ -1323,6 +1325,122 @@ details[open] > .st-disclosure::before { content: "− "; }
   .pg-news__item { grid-template-columns: 1fr; gap: var(--s2); }
   .pg-hero { padding: var(--s9) 0 var(--s8); }
   .pg-hero__title { font-size: var(--t-xl); }
+}
+
+/* ---- Product logo -------------------------------------------------------
+   Both colourways ship; the theme picks one. A filter on a brand mark is how
+   logos end up subtly wrong, and these SVGs are single-fill artwork drawn for
+   their ground — the navy one is filled #061C3B. */
+.pd-logo { display: block; margin-bottom: var(--s5); }
+.pd-logo img { height: 44px; width: auto; display: block; }
+.pd-logo__dark { display: none; }
+:root[data-theme="dark"] .pd-logo__light { display: none; }
+:root[data-theme="dark"] .pd-logo__dark { display: block; }
+/* Inside an inverted region the ground is dark in either theme, so the
+   light-ground mark is always the wrong one there. */
+.st-invert .pd-logo__light { display: none; }
+.st-invert .pd-logo__dark { display: block; }
+.pd-logo--hero img { height: 64px; }
+
+/* ---- Product detail ----------------------------------------------------- */
+.pd-tags { margin-top: var(--s5); }
+.pd-cta { margin: var(--s6) 0 0; }
+
+/* Two up on desktop. The captures are 3200x2000, so half-width on a 1560
+   shell still lands well under their native size — they stay sharp. */
+.pd-shots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(560px, 1fr));
+  gap: var(--s7);
+}
+.pd-shot { margin: 0; }
+.pd-shot img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-lg);
+  background: var(--c-paper);
+}
+.pd-shot figcaption {
+  margin-top: var(--s3);
+  font-size: var(--t-xs);
+  line-height: var(--lh-snug);
+  color: var(--c-ink-3);
+  max-width: 60ch;
+}
+
+.pd-section + .pd-section { margin-top: var(--s9); }
+.pd-section__title { font-size: var(--t-xl); margin: 0 0 var(--s4); }
+.pd-list {
+  list-style: none;
+  margin: var(--s5) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s3);
+  max-width: 82ch;
+}
+.pd-list li {
+  position: relative;
+  padding-left: var(--s6);
+  font-size: var(--t-base);
+  line-height: var(--lh-snug);
+  color: var(--c-ink-2);
+}
+.pd-list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: .55em;
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  background: var(--c-accent);
+}
+
+.pd-audience {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--s4);
+}
+.pd-audience li {
+  border-left: 2px solid var(--c-accent);
+  padding: var(--s1) 0 var(--s1) var(--s4);
+  font-size: var(--t-sm);
+  line-height: var(--lh-snug);
+  color: var(--c-ink-2);
+}
+
+.pd-deploy {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1px;
+  margin: 0;
+  background: var(--c-line);
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.pd-deploy > div { background: var(--c-paper); padding: var(--s5) var(--s6); }
+.pd-deploy dt {
+  font-family: var(--font-data);
+  font-size: var(--t-2xs);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--c-ink-3);
+}
+.pd-deploy dd {
+  margin: var(--s2) 0 0;
+  font-size: var(--t-base);
+  color: var(--c-ink);
+  line-height: var(--lh-snug);
+}
+
+@media (max-width: 720px) {
+  .pd-shots { grid-template-columns: 1fr; gap: var(--s6); }
 }
 
 /* ---- Marketplace hand-off ---------------------------------------------- */

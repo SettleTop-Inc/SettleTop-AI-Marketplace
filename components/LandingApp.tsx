@@ -184,10 +184,6 @@ export default function LandingApp({
       <SiteHeader
         current="overview"
         wide
-        sections={[
-          { href: "#products", label: "Products" },
-          { href: "#services", label: "Services" },
-        ]}
         onVendor={() => setModal({ kind: "vendor" })}
       />
 

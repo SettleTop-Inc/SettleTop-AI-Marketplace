@@ -54,19 +54,26 @@ const SERVICES = [
   },
 ];
 
-export default function ServicesGrid() {
+/**
+ * `headless` drops the section heading for /services, which supplies its own
+ * in the page hero. The list itself has one definition either way, so the two
+ * surfaces cannot drift apart.
+ */
+export default function ServicesGrid({ headless }: { headless?: boolean }) {
   return (
     <section className="hm-section" id="services">
       <div className="st-shell st-shell--wide">
-        <header className="hm-section__head">
-          <p className="st-eyebrow">Services</p>
-          <h2 className="st-display">Work we do alongside the products</h2>
-          <p className="st-lede">
-            Engagements that stand up the pipelines, produce the assessments and
-            run the registries — using the same evidence standard the products
-            hold themselves to.
-          </p>
-        </header>
+        {!headless && (
+          <header className="hm-section__head">
+            <p className="st-eyebrow">Services</p>
+            <h2 className="st-display">Work we do alongside the products</h2>
+            <p className="st-lede">
+              Engagements that stand up the pipelines, produce the assessments and
+              run the registries — using the same evidence standard the products
+              hold themselves to.
+            </p>
+          </header>
+        )}
 
         <div className="hm-services">
           {SERVICES.map((s) => (
