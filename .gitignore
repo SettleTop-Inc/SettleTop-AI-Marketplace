@@ -10,16 +10,18 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# Harvest output
+data/
+
 # Scratch: agent workspaces and nested worktrees, never part of the record
 .superpowers/
-.claude/worktrees/
+.claude/
 
 # Secrets.
 #
-# Ignore every .env variant and re-admit only the committed template. The
-# previous rules were `.env` plus `.env*.local`, which left `.env.production`
-# and `.env.staging` tracked — a filled-in production file would have been
-# committed silently.
+# Ignore every .env variant and re-admit only the committed template. Rules of
+# just `.env` plus `.env*.local` leave `.env.production` and `.env.staging`
+# tracked — a filled-in production file would be committed silently.
 .env
 .env.*
 !.env.example
@@ -42,6 +44,3 @@ secrets.*
 .supabase/
 .netrc
 .npmrc
-
-# Local Claude Code tooling (launch configs, worktrees)
-.claude/
