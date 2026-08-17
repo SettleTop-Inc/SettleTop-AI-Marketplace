@@ -18,41 +18,90 @@
    .mkt-shell — an element that exists on no other route. "/" cannot be reached
    by it, and globals.css itself stays byte-unchanged. */
 .mkt-shell .container { width: min(1560px, calc(100% - 48px)); }
-.mkt-bar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 12px;
-  padding: 12px 0; background: rgba(255,255,255,.97); border-bottom: 1px solid #e1e6ec;
+
+/* One spacing scale, used everywhere below. The first pass at this surface set
+   gaps of 13, 14 and 22px — near-identical values, so nothing grouped and the
+   page read as uniformly tight rather than deliberately spaced. Steps far
+   enough apart to signal hierarchy: related things sit at --s2, sections
+   separate at --s4, the page breathes at --s6. */
+.mkt-shell {
+  --s1: 6px; --s2: 12px; --s3: 16px; --s4: 24px; --s5: 32px; --s6: 48px;
+  --line: #e6eaf0;
+}
+
+.mkt-bar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s2) 0; background: rgba(255,255,255,.97); border-bottom: 1px solid var(--line);
   backdrop-filter: blur(16px); }
 .mkt-back { font-size: 12px; font-weight: 700; color: #0b2b52; text-decoration: none; white-space: nowrap; }
-.mkt-search { flex: 1; display: grid; grid-template-columns: 30px 1fr; align-items: center;
+.mkt-back:focus-visible { outline: 2px solid #0b2b52; outline-offset: 3px; border-radius: 3px; }
+
+/* Capped, not fluid. At full width this input stretched to 1367px — far past
+   the point where the eye can track a field, and loud enough to be the first
+   thing on the page instead of the agents. */
+.mkt-search { flex: 0 1 460px; display: grid; grid-template-columns: 30px 1fr; align-items: center;
   height: 38px; background: #fff; border: 1px solid #d7dde8; border-radius: 8px; min-width: 0; }
+
+/* The page says what it is. Every section on "/" carries an overline, a
+   heading and a line of context; this surface had a back link and a search
+   box. The body line states the Unknown rule because that is the one thing a
+   visitor needs to know before reading any number here. */
+.mkt-head { padding: var(--s4) 0 var(--s3); }
+.mkt-head h1 { font-size: 28px; line-height: 1.15; letter-spacing: -.035em; margin: var(--s1) 0 8px; }
+.mkt-head p { font-size: 13px; line-height: 1.6; color: #5f6d7e; margin: 0; max-width: 68ch; }
 .mkt-search span { text-align: center; color: #8a94a5; }
 .mkt-search input { border: 0; background: transparent; font-size: 12px; padding-right: 10px; min-width: 0; }
 .mkt-search input:focus-visible { outline: 2px solid #0b2b52; outline-offset: 2px; border-radius: 6px; }
-.mkt-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 22px; padding: 22px 0 60px; }
-.mkt-rail { background: #fff; border: 1px solid #e1e6ec; border-radius: 10px; padding: 14px;
-  height: max-content; position: sticky; top: 74px; }
-.mkt-rail-head { display: flex; justify-content: space-between; align-items: center;
-  padding-bottom: 10px; border-bottom: 1px solid #e1e6ec; }
-.mkt-rail-head b { font-size: 12px; }
-.mkt-clear { border: 0; background: transparent; color: #c58d1d; font-size: 10px; font-weight: 700; }
-.mkt-group { border: 0; padding: 12px 0 0; margin: 0; }
-.mkt-group legend { font-size: 9px; font-weight: 800; letter-spacing: .08em;
-  text-transform: uppercase; color: #8a94a5; padding: 0; }
-.mkt-note { font-size: 9px; line-height: 1.5; color: #6d788c; margin: 5px 0 7px; }
-.mkt-facet { display: flex; align-items: center; gap: 7px; font-size: 10.5px; color: #44516a;
-  padding: 3px 0; cursor: pointer; }
+.mkt-layout { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: var(--s5);
+  padding: 0 0 var(--s6); align-items: start; }
+
+/* Seven groups run to ~1060px — taller than most viewports, and a sticky
+   element taller than the screen hides its own last groups with no way to
+   reach them. Cap it to the visible area and let the rail scroll itself. */
+.mkt-rail { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: var(--s3);
+  position: sticky; top: 78px; max-height: calc(100vh - 98px); overflow-y: auto;
+  overscroll-behavior: contain; }
+@media (max-width: 820px) { .mkt-rail { max-height: none; overflow-y: visible; } }
+.mkt-rail-head { display: flex; justify-content: space-between; align-items: baseline;
+  padding-bottom: var(--s2); }
+.mkt-rail-head b { font-size: 13px; letter-spacing: -.01em; }
+.mkt-clear { border: 0; background: transparent; color: #c58d1d; font-size: 11px; font-weight: 700; }
+.mkt-clear:focus-visible { outline: 2px solid #0b2b52; outline-offset: 2px; border-radius: 3px; }
+
+/* Rules between groups, not just gaps. Seven fieldsets ran together as one
+   803px column; a hairline is what makes them read as separate questions. */
+.mkt-group { border: 0; border-top: 1px solid var(--line); padding: var(--s3) 0 var(--s1); margin: 0; }
+.mkt-group:first-of-type { border-top: 0; padding-top: 0; }
+.mkt-group legend { font-size: 9.5px; font-weight: 800; letter-spacing: .1em;
+  text-transform: uppercase; color: #7b8698; padding: 0 0 var(--s1); }
+.mkt-note { font-size: 10px; line-height: 1.55; color: #6d788c; margin: 0 0 var(--s2); }
+.mkt-facet { display: flex; align-items: center; gap: 9px; font-size: 11.5px; color: #44516a;
+  padding: 5px 0; cursor: pointer; }
 .mkt-facet input { margin: 0; }
 .mkt-facet input:focus-visible { outline: 2px solid #0b2b52; outline-offset: 2px; }
 .mkt-facet[aria-disabled="true"] { color: #a9b2c0; cursor: not-allowed; }
-.mkt-count { margin-left: auto; font-size: 9.5px; color: #8a94a5; font-variant-numeric: tabular-nums; }
+.mkt-count { margin-left: auto; font-size: 10.5px; color: #8a94a5; font-variant-numeric: tabular-nums; }
+
 .mkt-results { min-width: 0; }
-.mkt-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
-.mkt-total b { font-size: 20px; }
-.mkt-total span { font-size: 10px; color: #8a94a5; margin-left: 5px; }
+
+/* The count is the answer to whatever the visitor just did, so it gets the
+   weight. The rule beneath separates controls from results — without it the
+   toolbar floated against the first row of cards. */
+.mkt-toolbar { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap;
+  padding-bottom: var(--s2); margin-bottom: var(--s4); border-bottom: 1px solid var(--line); }
+.mkt-total b { font-size: 24px; letter-spacing: -.02em; }
+.mkt-total span { font-size: 11px; color: #8a94a5; margin-left: 6px; }
 .mkt-spacer { margin-left: auto; }
-.mkt-control { border: 1px solid #d4dae5; background: #fff; color: #44516a; border-radius: 6px;
-  padding: 8px 10px; font-size: 11px; font-weight: 700; }
+.mkt-control { border: 1px solid #d4dae5; background: #fff; color: #44516a; border-radius: 7px;
+  padding: 8px 11px; font-size: 11px; font-weight: 700; }
+.mkt-control:hover { background: #f7f9fc; }
 .mkt-control:focus-visible { outline: 2px solid #0b2b52; outline-offset: 2px; }
-.mkt-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
+
+.mkt-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+
+/* The card reserves three lines for a tagline that is usually one, leaving a
+   visible hole above the tags. Two lines still keeps rows aligned. Scoped to
+   this shell: globals.css is frozen and "/" keeps the original reservation. */
+.mkt-shell .agent-description { min-height: 36px; margin: 13px 0 11px; }
 .mkt-empty { background: #fff; border: 1px dashed #cbd3df; border-radius: 10px; text-align: center; padding: 46px; }
 .mkt-empty b { font-size: 14px; display: block; }
 .mkt-empty p { color: #5f6d7e; font-size: 11px; }

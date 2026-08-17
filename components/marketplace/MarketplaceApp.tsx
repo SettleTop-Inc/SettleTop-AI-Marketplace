@@ -140,6 +140,16 @@ export default function MarketplaceApp({
           </div>
         </div>
 
+        <header className="mkt-head">
+          <span className="overline">FULL MARKETPLACE</span>
+          <h1>Browse and compare AI agents</h1>
+          <p>
+            Filter by function, source, deployment, evidence tier, provenance,
+            pricing and evidence risk. Where a source is silent, the value reads
+            Unknown.
+          </p>
+        </header>
+
         <div className="mkt-layout">
           {!loadFailed && (
             <FacetRail
