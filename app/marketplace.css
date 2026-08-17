@@ -2,6 +2,22 @@
    mkt- prefixed because App Router never unloads route CSS, so a bare class
    name shared with globals.css would repaint "/" after a back-navigation. */
 .mkt-shell { background: #f8fafc; min-height: 100vh; }
+
+/* `.container` caps at 1220px. Minus a 230px facet rail and its gap, each card
+   renders at 314px — while a 1512px screen leaves ~292px unused, and a 2000px
+   one far more. The card carries a logo, publisher, tagline, three tags, a
+   rating, two status pills, a reach meter, price and risk; at 314px that wraps
+   badly. Widening only this shell gives ~390px at 1512px and ~427px at 2000px.
+
+   Note the landing grid is also ~321px, for the same reason — it has its own
+   210px rail. So this is not restoring a lost width, it is spending screen the
+   marketplace has and the landing page does not need to: browsing and
+   comparing is the whole job of this route.
+
+   `.container` is a globals.css class, so the override is scoped under
+   .mkt-shell — an element that exists on no other route. "/" cannot be reached
+   by it, and globals.css itself stays byte-unchanged. */
+.mkt-shell .container { width: min(1560px, calc(100% - 48px)); }
 .mkt-bar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 12px;
   padding: 12px 0; background: rgba(255,255,255,.97); border-bottom: 1px solid #e1e6ec;
   backdrop-filter: blur(16px); }

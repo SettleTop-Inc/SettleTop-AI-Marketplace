@@ -43,6 +43,29 @@ export default function AgentCard({
    */
   atCap?: boolean;
 }) {
+  /**
+   * The passport control is an anchor, not a button, so middle-click and
+   * open-in-new-tab keep working. But `globals.css` styles this row with
+   * `.card-buttons button`, and `.get-btn` only carries the colours — so an
+   * anchor lands here with no padding, no radius, browser-default 16px/400
+   * type, and the UA underline. These properties restate that button rule.
+   *
+   * They live here rather than in the stylesheet because CLAUDE.md freezes
+   * `globals.css`: restyle the components, not the sheet.
+   */
+  const passportLink: React.CSSProperties = {
+    display: "grid",
+    placeItems: "center",
+    padding: 9,
+    borderRadius: 6,
+    fontSize: 10,
+    fontWeight: 700,
+    textDecoration: "none",
+    border: "1px solid #334056",
+    // Alone in a two-column grid it would sit half-width against the left
+    // edge. `View details` is absent wherever there is no passport modal.
+    gridColumn: onOpen ? undefined : "1 / -1",
+  };
   return (
     <article className={compact ? "top-agent-card" : "registry-card"}>
       <div className="agent-card-head">
@@ -133,7 +156,7 @@ export default function AgentCard({
           href={`/agent/${encodeURIComponent(c.source_product_id)}${
             from ? `?from=${from}${back ? `&back=${encodeURIComponent(back)}` : ""}` : ""
           }`}
-          style={{ display: "grid", placeItems: "center" }}
+          style={passportLink}
         >
           Open passport
         </Link>
