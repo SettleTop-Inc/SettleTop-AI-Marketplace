@@ -1,0 +1,822 @@
+/* =========================================================================
+   SettleTop AI Marketplace — design system
+   =========================================================================
+
+   Loaded AFTER globals.css so these rules win at equal specificity.
+
+   The product is not a storefront. It is a record of what can be proven
+   about how an agent was built — closer to a certificate of analysis than
+   to an app listing. The type, colour and spacing here are chosen to read
+   as a document: quiet structure, one accent, and evidence status as the
+   only place colour is spent.
+
+   Three scales, and nothing outside them:
+     - type   8 steps, floor 12px
+     - space  10 steps on a 4px grid
+     - colour semantic roles, not raw hex, at every call site
+   ========================================================================= */
+
+:root {
+  /* ---- Typeface roles -------------------------------------------------
+     Display: Source Serif 4  — agent names, page and section titles. A
+       text-first serif reads as institutional record rather than SaaS
+       marketing, which is what this product actually is.
+     UI:      Inter           — every control, label and paragraph.
+     Data:    IBM Plex Mono   — evidence stamps, counts, versions, IDs.
+       Monospace is the tell that a value was copied from a source rather
+       than written by a marketer.
+     -------------------------------------------------------------------- */
+  --font-display: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --font-ui: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  /* ---- Type scale -----------------------------------------------------
+     Floor is 12px. The old sheet ran to 7.5px and used 28 distinct sizes
+     including fractional ones; on the passport, 127 of 185 text elements
+     sat under 12px. Eight steps, all whole numbers.
+     -------------------------------------------------------------------- */
+  --t-2xs: 12px;   /* micro labels, table column heads */
+  --t-xs:  13px;   /* captions, secondary meta */
+  --t-sm:  14px;   /* dense UI, facet labels */
+  --t-base:15px;   /* body copy, table values */
+  --t-md:  17px;   /* card titles, lead paragraphs */
+  --t-lg:  20px;   /* section headings */
+  --t-xl:  26px;   /* page headings */
+  --t-2xl: 34px;   /* agent name on the passport */
+  --t-3xl: 46px;   /* hero only */
+
+  --lh-tight: 1.15;
+  --lh-snug: 1.35;
+  --lh-body: 1.6;
+
+  /* ---- Space scale — 4px grid ----------------------------------------
+     The old sheet used essentially every integer from 3 to 80, so gaps of
+     13px sat beside gaps of 14px and read as misalignment rather than
+     rhythm.
+     -------------------------------------------------------------------- */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s7: 32px;
+  --s8: 40px;
+  --s9: 56px;
+  --s10: 80px;
+
+  /* ---- Colour ---------------------------------------------------------
+     Brand navy and gold are fixed. Everything else is a neutral ramp.
+     -------------------------------------------------------------------- */
+  --c-ink: #10233d;         /* primary text */
+  --c-ink-2: #46566f;       /* secondary text */
+  --c-ink-3: #6b7a90;       /* tertiary / captions */
+  --c-navy: #0b2b52;        /* brand, headings, primary action */
+  --c-navy-deep: #071c38;
+  --c-gold: #b1801a;        /* accent — text-safe on white (5.1:1) */
+  --c-gold-bright: #f2b84b; /* accent — graphic use only, never text */
+
+  --c-paper: #ffffff;
+  --c-surface: #f7f9fc;     /* page ground behind cards */
+  --c-surface-2: #eef2f8;   /* inset wells */
+  --c-line: #dfe5ee;        /* borders */
+  --c-line-soft: #ebeff5;   /* internal dividers */
+
+  /* Evidence semantics. These four are the only saturated colours in the
+     product. "Unknown" is deliberately the loudest: the first rule of this
+     registry is that Unknown means Unknown, so it must not read as a
+     neutral absence. */
+  --c-verified: #0b2b52;
+  --c-verified-bg: #e8eefa;
+  --c-disclosed: #1a6b48;
+  --c-disclosed-bg: #e4f3ec;
+  --c-partial: #8a5a0b;
+  --c-partial-bg: #fbf0dc;
+  --c-unknown: #a81f38;
+  --c-unknown-bg: #fceaed;
+
+  --radius-sm: 4px;
+  --radius: 8px;
+  --radius-lg: 12px;
+
+  --shadow-sm: 0 1px 2px rgba(16, 35, 61, .06);
+  --shadow: 0 4px 16px rgba(16, 35, 61, .07);
+  --shadow-lg: 0 16px 48px rgba(16, 35, 61, .12);
+
+  /* ---- Layout shell ---------------------------------------------------
+     Two widths, one definition each. Document pages get a narrower measure
+     so prose and tables stay readable; the browsing app gets the wide one.
+     Both are always centred — the passport previously used .modal-card,
+     an 820px MODAL style, as a page layout, which left it flush-left
+     inside a centred 1220px container with 554px of dead space on one side
+     and 138px on the other.
+     -------------------------------------------------------------------- */
+  /* Document pages use the narrower shell. Prose inside it is capped
+     separately at ~74ch by .st-prose, so widening the shell gives tables
+     and field grids room without stretching paragraphs past a readable
+     measure. The header shell matches the page's shell on every route so
+     the wordmark aligns with the content beneath it. */
+  --shell-doc: 1240px;
+  --shell-wide: 1560px;
+  --gutter: 24px;
+  --header-h: 76px;
+}
+
+@media (min-width: 900px) {
+  :root { --gutter: 40px; }
+}
+
+/* =========================================================================
+   Base
+   ========================================================================= */
+
+body {
+  font-family: var(--font-ui);
+  font-size: var(--t-base);
+  line-height: var(--lh-body);
+  color: var(--c-ink);
+  background: var(--c-paper);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The old sheet set `a{color:inherit}` with no underline reset, so links
+   inside prose were indistinguishable from bold text. */
+.st-shell a:not([class]) {
+  color: var(--c-navy);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  text-decoration-color: rgba(11, 43, 82, .35);
+}
+.st-shell a:not([class]):hover { text-decoration-color: var(--c-navy); }
+
+:where(a, button, input, select, summary):focus-visible {
+  outline: 2px solid var(--c-gold);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* =========================================================================
+   Shell
+   ========================================================================= */
+
+.st-shell {
+  width: 100%;
+  max-width: var(--shell-doc);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+.st-shell--wide { max-width: var(--shell-wide); }
+
+/* =========================================================================
+   Site header — shared by every route.
+
+   Previously .site-header lived inside LandingApp, so /marketplace and
+   /agent/[id] rendered with no header at all: the passport opened on a
+   bare "← Back" link floating in white space with no wordmark and no nav.
+   ========================================================================= */
+
+.st-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  height: var(--header-h);
+  display: flex;
+  align-items: center;
+  /* Near-opaque: at .88 the content scrolling underneath showed through
+     and muddied the wordmark. */
+  background: rgba(255, 255, 255, .97);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--c-line);
+}
+.st-header__inner {
+  display: flex;
+  align-items: center;
+  gap: var(--s6);
+  width: 100%;
+}
+/* The lockup itself comes from globals.css (.settletop-wordmark /
+   .brand-divider / .registry-wordmark) — only the layout lives here. */
+.st-header__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s4);
+  text-decoration: none;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.st-header__nav {
+  display: flex;
+  align-items: center;
+  gap: var(--s6);
+  margin-left: auto;
+}
+.st-header__nav a {
+  font-size: var(--t-sm);
+  font-weight: 600;
+  color: var(--c-ink-2);
+  text-decoration: none;
+  padding: var(--s2) 0;
+}
+.st-header__nav a:hover { color: var(--c-navy); }
+.st-header__nav a[aria-current="page"] {
+  color: var(--c-navy);
+  box-shadow: inset 0 -2px 0 var(--c-gold-bright);
+}
+.st-header__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  margin-left: var(--s6);
+  flex: 0 0 auto;
+}
+/* The current surface is stated, not offered as a link to itself. */
+.st-header__here {
+  font-family: var(--font-data);
+  font-size: var(--t-2xs);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--c-ink-3);
+  padding: var(--s2) var(--s3);
+  border: 1px dashed var(--c-line);
+  border-radius: var(--radius);
+}
+
+@media (max-width: 1100px) {
+  .st-header__nav { display: none; }
+}
+@media (max-width: 620px) {
+  .st-header__here { display: none; }
+}
+
+/* =========================================================================
+   Type primitives
+   ========================================================================= */
+
+.st-eyebrow {
+  display: block;
+  font-family: var(--font-data);
+  font-size: var(--t-2xs);
+  font-weight: 500;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--c-gold);
+}
+
+.st-display {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -.015em;
+  line-height: var(--lh-tight);
+  color: var(--c-navy);
+  margin: 0;
+}
+h1.st-display { font-size: var(--t-2xl); }
+h2.st-display { font-size: var(--t-xl); }
+h3.st-display { font-size: var(--t-lg); }
+
+.st-lede {
+  font-size: var(--t-md);
+  line-height: var(--lh-body);
+  color: var(--c-ink-2);
+  margin: 0;
+  max-width: 68ch;
+}
+.st-prose {
+  font-size: var(--t-base);
+  line-height: var(--lh-body);
+  color: var(--c-ink-2);
+  max-width: 74ch;
+}
+.st-prose p { margin: 0 0 var(--s4); }
+.st-prose p:last-child { margin-bottom: 0; }
+
+.st-note {
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  color: var(--c-ink-3);
+  max-width: 84ch;
+}
+
+/* Section heading with a rule that runs to the edge of the measure. The
+   rule is structural: it separates one part of the record from the next. */
+.st-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s4);
+  margin: var(--s9) 0 var(--s5);
+}
+.st-section-head::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--c-line);
+}
+.st-section-head__count {
+  font-family: var(--font-data);
+  font-size: var(--t-2xs);
+  color: var(--c-ink-3);
+  letter-spacing: .06em;
+}
+
+/* =========================================================================
+   Evidence stamp — who said it
+   ========================================================================= */
+
+.st-stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  font-family: var(--font-data);
+  font-size: var(--t-2xs);
+  font-style: normal;
+  font-weight: 500;
+  letter-spacing: .04em;
+  padding: 3px var(--s2);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+.st-stamp--verified  { color: var(--c-verified);  background: var(--c-verified-bg); }
+.st-stamp--disclosed { color: var(--c-disclosed); background: var(--c-disclosed-bg); }
+.st-stamp--partial   { color: var(--c-partial);   background: var(--c-partial-bg); }
+.st-stamp--unknown   {
+  color: var(--c-unknown);
+  background: var(--c-unknown-bg);
+  box-shadow: inset 0 0 0 1px rgba(168, 31, 56, .22);
+}
+
+/* =========================================================================
+   Layer ledger — the signature element
+
+   Replaces a navy→gold gradient bar that ran to 100% and read as a loading
+   indicator. Twelve discrete cells make "10 of 12" countable at a glance,
+   and discrete cells cannot imply partial credit for a layer the source
+   never stated.
+
+   Filled/empty is driven only by layers_known and layers_tracked, which
+   come from the database. The component does not decide WHICH layers are
+   known — that would be a second definition of a derived value.
+   ========================================================================= */
+
+.st-ledger { display: grid; gap: var(--s2); }
+.st-ledger__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s4);
+}
+.st-ledger__label {
+  font-family: var(--font-data);
+  font-size: var(--t-2xs);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--c-ink-3);
+}
+.st-ledger__count {
+  font-family: var(--font-data);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  color: var(--c-navy);
+}
+.st-ledger__cells {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 3px;
+}
+.st-ledger__cell {
+  height: 10px;
+  border-radius: 2px;
+  background: var(--c-surface-2);
+  box-shadow: inset 0 0 0 1px rgba(16, 35, 61, .06);
+}
+.st-ledger__cell--on {
+  background: var(--c-navy);
+  box-shadow: none;
+}
+
+/* =========================================================================
+   Field grid — the four headline facts
+   ========================================================================= */
+
+.st-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--c-line);
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.st-field {
+  background: var(--c-paper);
+  padding: var(--s4) var(--s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  min-width: 0;
+}
+.st-field__label {
+  font-family: var(--font-data);
+  font-size: var(--t-2xs);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--c-ink-3);
+}
+/* Values sit on a shared baseline even when one field wraps to two lines —
+   the old summary cards let a wrapping value shove its neighbours' text
+   out of alignment. */
+.st-field__value {
+  font-size: var(--t-md);
+  font-weight: 600;
+  color: var(--c-ink);
+  line-height: var(--lh-snug);
+  margin-top: auto;
+}
+.st-field__note {
+  font-size: var(--t-xs);
+  color: var(--c-ink-3);
+  line-height: var(--lh-snug);
+}
+.st-field__value--low     { color: var(--c-disclosed); }
+.st-field__value--medium  { color: var(--c-partial); }
+.st-field__value--high,
+.st-field__value--unknown { color: var(--c-unknown); }
+
+@media (max-width: 900px) {
+  .st-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .st-fields { grid-template-columns: 1fr; }
+}
+
+/* =========================================================================
+   Record table
+   ========================================================================= */
+
+.st-record {
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+/* Each row is its own grid, so the stamp track is a fixed width rather
+   than `auto` — with `auto` the track resizes to its own text and the
+   pills drift out of column from row to row. */
+.st-record__row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr) 92px;
+  align-items: baseline;
+  gap: var(--s5);
+  padding: var(--s4) var(--s5);
+  border-bottom: 1px solid var(--c-line-soft);
+}
+.st-record__row > .st-stamp { justify-self: start; }
+.st-record__row:last-child { border-bottom: 0; }
+.st-record__row:nth-child(even) { background: #fbfcfe; }
+.st-record__label {
+  font-size: var(--t-xs);
+  color: var(--c-ink-3);
+  line-height: var(--lh-snug);
+}
+.st-record__value {
+  font-size: var(--t-base);
+  font-weight: 500;
+  color: var(--c-ink);
+  line-height: var(--lh-snug);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.st-record__value--unknown {
+  color: var(--c-unknown);
+  font-weight: 500;
+}
+.st-record__row .st-stamp { align-self: center; }
+
+@media (max-width: 720px) {
+  .st-record__row {
+    grid-template-columns: 1fr auto;
+    gap: var(--s2) var(--s4);
+    padding: var(--s4);
+  }
+  .st-record__label { grid-column: 1; }
+  .st-record__value { grid-column: 1 / -1; order: 3; }
+}
+
+/* =========================================================================
+   Callout
+   ========================================================================= */
+
+.st-callout {
+  border: 1px solid var(--c-line);
+  border-left: 3px solid var(--c-gold-bright);
+  border-radius: var(--radius);
+  background: var(--c-surface);
+  padding: var(--s5);
+}
+.st-callout__title {
+  font-size: var(--t-sm);
+  font-weight: 700;
+  color: var(--c-ink);
+  margin: 0 0 var(--s2);
+}
+.st-callout p {
+  margin: 0;
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  color: var(--c-ink-2);
+}
+
+/* =========================================================================
+   Tag row
+   ========================================================================= */
+
+.st-tags { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.st-tag {
+  font-size: var(--t-2xs);
+  font-weight: 500;
+  color: var(--c-ink-2);
+  background: var(--c-surface-2);
+  border-radius: var(--radius-sm);
+  padding: var(--s1) var(--s2);
+  white-space: nowrap;
+}
+
+/* =========================================================================
+   Agent card
+
+   Four zones — identity, description, evidence, commercial — with the
+   evidence well as the only tinted band, because what is proven about the
+   build is the thing this product exists to show.
+   ========================================================================= */
+
+.st-sr {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.st-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--c-paper);
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-lg);
+  padding: var(--s5);
+  transition: border-color .15s, box-shadow .15s;
+}
+.st-card:hover {
+  border-color: #c9d4e4;
+  box-shadow: var(--shadow);
+}
+
+.st-card__head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--s3);
+  align-items: center;
+}
+.st-card__id { min-width: 0; }
+.st-card__name {
+  font-family: var(--font-display);
+  font-size: var(--t-md);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+  letter-spacing: -.01em;
+  color: var(--c-navy);
+  margin: 0;
+}
+.st-card__pub {
+  font-size: var(--t-xs);
+  color: var(--c-ink-2);
+  margin: 2px 0 0;
+}
+.st-card__save {
+  border: 0;
+  background: transparent;
+  color: #a7b2c3;
+  font-size: 18px;
+  line-height: 1;
+  padding: var(--s1);
+}
+.st-card__save:hover { color: var(--c-gold); }
+.st-card__select { display: grid; place-items: center; }
+
+.st-card__meta {
+  font-size: var(--t-2xs);
+  color: var(--c-ink-3);
+  margin: var(--s3) 0 0;
+}
+
+/* Two lines reserved so every card in a row starts its evidence well at the
+   same y — a ragged well is what made the old grid look unaligned. */
+.st-card__tagline {
+  font-size: var(--t-sm);
+  line-height: var(--lh-snug);
+  color: var(--c-ink-2);
+  margin: var(--s2) 0 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: calc(var(--t-sm) * var(--lh-snug) * 2);
+}
+
+.st-card__tags { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s3); }
+
+.st-card__evidence {
+  margin-top: var(--s4);
+  padding: var(--s3) var(--s4) var(--s4);
+  background: var(--c-surface);
+  border: 1px solid var(--c-line-soft);
+  border-radius: var(--radius);
+  display: grid;
+  gap: var(--s3);
+}
+.st-card__stamps {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+}
+.st-card__tier {
+  font-size: var(--t-2xs);
+  color: var(--c-ink-3);
+  text-align: right;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Both tracks are minmax(0,1fr). With `auto` on the second, a long
+   risk-basis string took its full max-content width, crushed the pricing
+   column to nothing and the two overlapped. */
+.st-card__foot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--s4);
+  align-items: start;
+  margin-top: var(--s4);
+}
+.st-card__cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.st-card__cell--end { text-align: right; }
+.st-card__cell .st-field__note {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.st-card__figure {
+  font-size: var(--t-sm);
+  font-weight: 700;
+  color: var(--c-ink);
+  line-height: var(--lh-snug);
+}
+
+/* Pushed to the bottom so cards of differing text length still line their
+   actions up across a row. */
+.st-card__foot + .st-card__actions { margin-top: auto; }
+.st-card__actions {
+  display: flex;
+  gap: var(--s2);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--c-line-soft);
+}
+.st-card__foot { margin-bottom: var(--s5); }
+.st-card__actions > * { flex: 1; }
+
+/* =========================================================================
+   Buttons
+   ========================================================================= */
+
+.st-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  line-height: 1;
+  padding: 11px var(--s5);
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.st-btn--primary {
+  background: var(--c-navy);
+  color: #fff;
+  border-color: var(--c-navy);
+}
+.st-btn--primary:hover { background: var(--c-navy-deep); border-color: var(--c-navy-deep); }
+.st-btn--secondary {
+  background: var(--c-paper);
+  color: var(--c-ink);
+  border-color: var(--c-line);
+}
+.st-btn--secondary:hover { background: var(--c-surface); border-color: #c8d2e2; }
+.st-btn--quiet {
+  background: transparent;
+  color: var(--c-navy);
+  border-color: transparent;
+  padding-inline: 0;
+}
+.st-btn--quiet:hover { color: var(--c-gold); }
+
+/* =========================================================================
+   Passport page
+   ========================================================================= */
+
+.st-passport-band {
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-line);
+  padding: var(--s6) 0 var(--s8);
+}
+.st-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  color: var(--c-ink-2);
+  text-decoration: none;
+  margin-bottom: var(--s6);
+}
+.st-back:hover { color: var(--c-navy); }
+
+.st-passport-id {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s5);
+  align-items: start;
+}
+.st-passport-id__text { min-width: 0; }
+.st-passport-id h1 { margin: var(--s2) 0 var(--s2); }
+.st-passport-id__by {
+  font-size: var(--t-md);
+  color: var(--c-ink-2);
+  margin: 0 0 var(--s4);
+}
+.st-passport-id__by b { color: var(--c-ink); font-weight: 600; }
+
+.st-passport-band .st-ledger {
+  margin-top: var(--s7);
+  padding-top: var(--s6);
+  border-top: 1px solid var(--c-line);
+}
+
+.st-passport-body { padding: var(--s8) 0 var(--s10); }
+.st-passport-body > * + * { margin-top: var(--s6); }
+.st-passport-body > .st-section-head + * { margin-top: 0; }
+
+.st-disclosure {
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  color: var(--c-navy);
+  cursor: pointer;
+  list-style: none;
+  padding: var(--s2) 0;
+}
+.st-disclosure::-webkit-details-marker { display: none; }
+.st-disclosure::before { content: "+ "; font-family: var(--font-data); }
+details[open] > .st-disclosure::before { content: "− "; }
+
+.st-access {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  align-items: center;
+  gap: var(--s6);
+  background: var(--c-surface);
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius);
+  padding: var(--s5);
+}
+@media (max-width: 720px) {
+  .st-access { grid-template-columns: 1fr; align-items: start; }
+}
+
+/* Embedded in the landing page's modal, which supplies its own width and
+   padding: drop the shell measure and let the band sit flush. */
+.st-passport--embedded .st-shell { max-width: none; padding-inline: 0; }
+.st-passport--embedded .st-passport-band {
+  background: transparent;
+  border-bottom: 1px solid var(--c-line);
+  padding-top: 0;
+}
+.st-passport--embedded .st-passport-body { padding-bottom: 0; }
+
+@media (max-width: 720px) {
+  .st-passport-id { grid-template-columns: 1fr; gap: var(--s4); }
+  h1.st-display { font-size: var(--t-xl); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}

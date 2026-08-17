@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import AgentCard from "@/components/AgentCard";
+import SiteHeader from "@/components/SiteHeader";
 import CompareTray from "@/components/marketplace/CompareTray";
 import FacetRail from "@/components/marketplace/FacetRail";
 import Pagination from "@/components/marketplace/Pagination";
@@ -120,11 +120,18 @@ export default function MarketplaceApp({
 
   return (
     <div className="mkt-shell">
-      <div className="container">
-        <div className="mkt-bar">
-          <Link className="mkt-back" href="/">
-            ← Overview
-          </Link>
+      <SiteHeader current="marketplace" wide />
+      <div className="st-shell st-shell--wide">
+        <header className="mkt-head">
+          <div className="mkt-head__text">
+            <span className="st-eyebrow">Full marketplace</span>
+            <h1 className="st-display">Browse and compare AI agents</h1>
+            <p className="st-lede">
+              Filter by function, source, deployment, evidence tier, provenance,
+              pricing and evidence risk. Where a source is silent, the value reads
+              Unknown.
+            </p>
+          </div>
           <div className="mkt-search">
             <span aria-hidden="true">⌕</span>
             <label className="mkt-sr" htmlFor="mkt-q">
@@ -138,16 +145,6 @@ export default function MarketplaceApp({
               onChange={(e) => setText(e.target.value)}
             />
           </div>
-        </div>
-
-        <header className="mkt-head">
-          <span className="overline">FULL MARKETPLACE</span>
-          <h1>Browse and compare AI agents</h1>
-          <p>
-            Filter by function, source, deployment, evidence tier, provenance,
-            pricing and evidence risk. Where a source is silent, the value reads
-            Unknown.
-          </p>
         </header>
 
         <div className="mkt-layout">

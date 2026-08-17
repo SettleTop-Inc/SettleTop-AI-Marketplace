@@ -8,6 +8,7 @@ import { USE_CASES } from "@/lib/usecases";
 import PassportView from "@/components/PassportView";
 import AgentLogo from "@/components/AgentLogo";
 import AgentCard from "@/components/AgentCard";
+import SiteHeader from "@/components/SiteHeader";
 import type {
   AssetPassport,
   RegistryCard,
@@ -191,29 +192,17 @@ export default function LandingApp({
 
   return (
     <>
-      <header className="site-header">
-        <div className="container nav">
-          <a className="brand" href="#top" aria-label="SettleTop AI Marketplace home">
-            <span className="settletop-wordmark">SETTLETOP</span>
-            <span className="brand-divider" aria-hidden="true" />
-            <span className="registry-wordmark">AI MARKETPLACE</span>
-          </a>
-          <nav className="nav-links" aria-label="Primary">
-            <a href="#use-cases">Use cases</a>
-            <a href="#top-agents">Top agents</a>
-            <a href="#provenance">Provenance</a>
-            <a href="#registry">Registry</a>
-          </nav>
-          <div className="nav-actions">
-            <button className="text-btn" onClick={() => setModal({ kind: "vendor" })}>
-              For vendors
-            </button>
-            <button className="primary-btn compact" onClick={() => router.push("/marketplace")}>
-              Browse agents
-            </button>
-          </div>
-        </div>
-      </header>
+      <SiteHeader
+        current="overview"
+        wide
+        sections={[
+          { href: "#use-cases", label: "Use cases" },
+          { href: "#top-agents", label: "Top agents" },
+          { href: "#provenance", label: "Provenance" },
+          { href: "#registry", label: "Registry" },
+        ]}
+        onVendor={() => setModal({ kind: "vendor" })}
+      />
 
       <main id="top">
         <section className="hero">
