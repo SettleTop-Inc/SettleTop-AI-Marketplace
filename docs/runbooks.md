@@ -23,8 +23,15 @@ policies and no write policies at all.
 
 Vercel is already connected to the GitHub repo. Push to `main` and it builds.
 
-Set these in Vercel → Project → Settings → Environment Variables, for all
-environments:
+`vercel.json` pins the framework to `nextjs` deliberately. The Vercel project was
+created while this repo still contained only a README, so Vercel auto-detected no
+framework and the first real application build failed. Repo-level settings win
+over the project's auto-detection — do not delete that file expecting the
+dashboard to know better.
+
+Set these in Vercel → Project → Settings → Environment Variables, for **all**
+environments. Production-only is not enough: PR previews build too, and a preview
+without these fails exactly the way a missing key fails locally.
 
 | Name | Value |
 |---|---|
