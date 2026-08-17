@@ -80,6 +80,14 @@
   .mkt-row-sub.mkt-hide-sm, .mkt-row-reach { display: none; }
 }
 
+/* Compare-select checkboxes on AgentCard and ResultList, at the MAX_COMPARE
+   cap: same aria-disabled treatment as .mkt-facet above, applied to the
+   checkbox itself since these labels carry no visible value text. Scoped to
+   .mkt-shell so it never reaches AgentCard's other caller, the landing page,
+   which has no compare tray and never sets aria-disabled here. */
+.mkt-shell label[aria-disabled="true"] { cursor: not-allowed; }
+.mkt-shell label[aria-disabled="true"] input[type="checkbox"] { cursor: not-allowed; opacity: .45; }
+
 /* Compare tray + table */
 .mkt-tray { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: #0b2b52;
   color: #fff; padding: 11px 0; box-shadow: 0 -8px 24px rgba(11,35,66,.18); }

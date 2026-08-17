@@ -4,6 +4,14 @@ import type { ProvenanceStatus, RegistryCard, RiskBand } from "./types.ts";
 /** Rows per page. Not a URL parameter — changing it must not break saved links. */
 export const PAGE_SIZE = 24;
 
+/**
+ * Shared by the marketplace's selection UI and the compare page's own cap, so
+ * the two cannot drift apart. Selecting a fourth agent must refuse visibly
+ * (disabled checkbox, capped notice) rather than silently do nothing, and a
+ * hand-edited `?ids=` URL that exceeds it must be told the same number.
+ */
+export const MAX_COMPARE = 3;
+
 export type SortKey = "reach" | "rating" | "name" | "captured";
 export type SortDir = "asc" | "desc";
 export type ViewMode = "grid" | "list";

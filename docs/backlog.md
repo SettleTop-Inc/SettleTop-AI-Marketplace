@@ -22,7 +22,7 @@ What *has* been verified, so you know where to look and where not to:
 - **Every field in `lib/types.ts` confirmed to exist** in its view, by diffing
   against `information_schema`. No silent `undefined` at runtime.
 
-Not verified: `RegistryApp` has never executed (client component, needs a real
+Not verified: `LandingApp` has never executed (client component, needs a real
 React runtime), Next's routing and metadata have never run, and no page has been
 built or server-rendered as a Next route. Expect small things — a React 19
 `params` signature, an eslint unescaped-entity rule — not structural problems.

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import CompareTable from "@/components/marketplace/CompareTable";
 import { getPassports } from "@/lib/registry";
+import { MAX_COMPARE } from "@/lib/marketplace-query";
 import "@/app/marketplace.css";
 
 export const revalidate = 300;
@@ -11,8 +12,6 @@ export const metadata: Metadata = {
 };
 
 type Search = Promise<{ ids?: string }>;
-
-const MAX_COMPARE = 3;
 
 /**
  * asset_id is a Postgres `uuid` column. Sending a non-uuid string straight
@@ -39,7 +38,20 @@ export default async function ComparePage({ searchParams }: { searchParams: Sear
   // repeated id and silently push out a distinct one that was never even
   // considered — indistinguishable, from the visitor's side, from that id
   // simply not existing. Cap AFTER dedupe, and name whatever the cap removes.
-  const requested = (ids ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  //
+  // Lower-case here too, before anything downstream: `asset_id` is a Postgres
+  // `uuid` column, which parses case-insensitively but always *serialises*
+  // back in canonical lowercase. An uppercase id in the URL (ordinary output
+  // of Microsoft/SQL Server tooling) is a real, resolvable uuid — rejecting
+  // it would be its own dishonesty — but comparing it against a lowercase row
+  // with `===` would falsely call it "not found" while its full column rendered
+  // on screen. Normalising this early, ahead of the Set dedupe and the cap,
+  // also stops case-variant duplicates (`<A>,<a>`) from burning two of three
+  // cap slots on what is really one agent.
+  const requested = (ids ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
   const deduped = Array.from(new Set(requested));
   const wanted = deduped.slice(0, MAX_COMPARE);
   const overCap = deduped.slice(MAX_COMPARE);
@@ -52,8 +64,13 @@ export default async function ComparePage({ searchParams }: { searchParams: Sear
   // Ids absent from a *successful* result are named as not found — this
   // covers both a malformed id (which was never even sent to the database,
   // and by construction cannot be a row's asset_id) and a well-formed id the
-  // registry simply doesn't have. Neither is dropped silently. Left empty on
-  // a failed read: a failed read must never make a claim about any agent.
+  // registry simply doesn't have. Because `requested` above was already
+  // lower-cased, and Postgres always serialises `uuid` columns back in
+  // canonical lowercase, this `===` reliably matches a validId against its
+  // row regardless of the case the visitor's URL used — a well-formed id
+  // that IS present never lands here by construction. Neither category is
+  // dropped silently. Left empty on a failed read: a failed read must never
+  // make a claim about any agent.
   const missingIds = result.ok
     ? [...malformedIds, ...validIds.filter((id) => !result.data.some((a) => a.asset_id === id))]
     : [];

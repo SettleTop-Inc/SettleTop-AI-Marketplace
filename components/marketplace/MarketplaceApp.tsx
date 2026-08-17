@@ -15,6 +15,7 @@ import {
   type SortDir,
   type SortKey,
   type ViewMode,
+  MAX_COMPARE,
   defaultCriteria,
   parseCriteria,
   runQuery,
@@ -90,13 +91,25 @@ export default function MarketplaceApp({
 
   // Selection is a scratch pad, not a view: it lives in component state, not
   // the URL, so it survives filtering and paging rather than being reset by
-  // every write() call above. Capped at three, the compare table's limit.
+  // every write() call above. Capped at MAX_COMPARE, the compare table's own
+  // limit — shared from lib/marketplace-query so the two cannot drift.
   const [selected, setSelected] = useState<string[]>([]);
 
   const toggleSelect = (assetId: string) =>
     setSelected((s) =>
-      s.includes(assetId) ? s.filter((x) => x !== assetId) : s.length >= 3 ? s : [...s, assetId]
+      s.includes(assetId)
+        ? s.filter((x) => x !== assetId)
+        : s.length >= MAX_COMPARE
+          ? s
+          : [...s, assetId]
     );
+
+  // An unselected checkbox at the cap must visibly refuse (disabled +
+  // aria-disabled) rather than silently no-op on click — toggleSelect above
+  // already returns the identical array in that case, so without this the
+  // control looks live and never explains why nothing happened. An
+  // already-selected checkbox stays enabled so it can still be un-ticked.
+  const atCap = selected.length >= MAX_COMPARE;
 
   // Selection survives filtering and paging, so candidates can be gathered from
   // more than one screen. Resolve against all cards, not the current page.
@@ -171,6 +184,7 @@ export default function MarketplaceApp({
                 back={backQS}
                 selectedIds={selected}
                 onSelect={toggleSelect}
+                atCap={atCap}
               />
             ) : (
               <div className="mkt-grid">
@@ -182,6 +196,7 @@ export default function MarketplaceApp({
                     back={backQS}
                     selected={selected.includes(c.asset_id)}
                     onSelect={toggleSelect}
+                    atCap={atCap}
                   />
                 ))}
               </div>

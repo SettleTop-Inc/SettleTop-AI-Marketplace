@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { MAX_COMPARE } from "@/lib/marketplace-query";
 import type { RegistryCard } from "@/lib/types";
 
 export default function CompareTray({
@@ -19,6 +20,11 @@ export default function CompareTray({
     <div className="mkt-tray" role="region" aria-label="Compare selection">
       <div className="container mkt-tray-inner">
         <span>{selected.length} selected</span>
+        {selected.length >= MAX_COMPARE && (
+          <span style={{ opacity: 0.7, fontWeight: 400 }}>
+            Capped at {MAX_COMPARE} — remove one to swap
+          </span>
+        )}
         <div className="mkt-tray-list">
           {selected.map((s) => (
             <button className="mkt-chip" key={s.asset_id} onClick={() => onRemove(s.asset_id)}>

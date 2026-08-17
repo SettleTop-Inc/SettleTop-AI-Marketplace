@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import AgentLogo from "@/components/AgentLogo";
+import { MAX_COMPARE } from "@/lib/marketplace-query";
 import { UNKNOWN, statusClass } from "@/lib/present";
 import type { RegistryCard } from "@/lib/types";
 
@@ -13,6 +14,7 @@ export default function AgentCard({
   back,
   selected,
   onSelect,
+  atCap,
 }: {
   c: RegistryCard;
   compact?: boolean;
@@ -33,6 +35,13 @@ export default function AgentCard({
   selected?: boolean;
   /** Absent on surfaces with no compare tray — the checkbox is then omitted. */
   onSelect?: (assetId: string) => void;
+  /**
+   * True once MAX_COMPARE is reached. An unselected checkbox must disable
+   * rather than silently refuse the click — mirrors FacetRail's zero-count
+   * treatment. An already-selected checkbox ignores this so it can still be
+   * un-ticked to free a slot.
+   */
+  atCap?: boolean;
 }) {
   return (
     <article className={compact ? "top-agent-card" : "registry-card"}>
@@ -43,11 +52,19 @@ export default function AgentCard({
           <span>{c.publisher ?? UNKNOWN}</span>
         </div>
         {onSelect ? (
-          <label title="Select to compare">
+          <label
+            title={
+              atCap && !selected
+                ? `Comparison is capped at ${MAX_COMPARE} agents`
+                : "Select to compare"
+            }
+            aria-disabled={(atCap && !selected) || undefined}
+          >
             <span className="mkt-sr">Select {c.name} to compare</span>
             <input
               type="checkbox"
               checked={!!selected}
+              disabled={atCap && !selected}
               onChange={() => onSelect(c.asset_id)}
             />
           </label>
