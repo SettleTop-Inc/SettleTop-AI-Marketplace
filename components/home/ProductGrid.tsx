@@ -1,7 +1,9 @@
 import Link from "next/link";
 
 /**
- * The three products.
+ * The three products, marketplace first — it is the one a visitor can
+ * use immediately, so it leads rather than trailing the two self-hosted
+ * platforms.
  *
  * CodeRoot itself is deliberately absent — it stays a SettleTop product but
  * is not featured on this site.
@@ -23,6 +25,20 @@ type Product = {
 };
 
 const PRODUCTS: Product[] = [
+  {
+    name: "AI Marketplace",
+    line: "Provenance for the agents you are about to adopt",
+    body:
+      "Every agent carries a passport recording what its build actually discloses — model, framework, tools, data sources, hosting, residency and permission scope — and who said so.",
+    points: [
+      "Verified, Disclosed and Unknown are recorded separately",
+      "Where a source is silent, the value reads Unknown",
+      "Filter, compare and share a result set by link",
+    ],
+    tags: ["Live registry"],
+    href: "/marketplace",
+    hrefLabel: "Browse the marketplace",
+  },
   {
     name: "CodeRoot Open Source",
     line: "Component intelligence, from an SBOM",
@@ -46,20 +62,6 @@ const PRODUCTS: Product[] = [
       "Answers carry citations; no free-form SQL, no model credentials",
     ],
     tags: ["Bring your own model", "Air-gap capable"],
-  },
-  {
-    name: "AI Marketplace",
-    line: "Provenance for the agents you are about to adopt",
-    body:
-      "Every agent carries a passport recording what its build actually discloses — model, framework, tools, data sources, hosting, residency and permission scope — and who said so.",
-    points: [
-      "Verified, Disclosed and Unknown are recorded separately",
-      "Where a source is silent, the value reads Unknown",
-      "Filter, compare and share a result set by link",
-    ],
-    tags: ["Live registry"],
-    href: "/marketplace",
-    hrefLabel: "Browse the marketplace",
   },
 ];
 

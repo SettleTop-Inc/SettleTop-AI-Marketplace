@@ -19,7 +19,7 @@ export default function SiteFooter({
   meta?: React.ReactNode;
 }) {
   return (
-    <footer className="st-footer">
+    <footer className="st-footer st-invert">
       <div className={`st-shell${wide ? " st-shell--wide" : ""} st-footer__inner`}>
         <div className="st-footer__brand">
           <Image
@@ -36,7 +36,7 @@ export default function SiteFooter({
 
         <nav className="st-footer__nav" aria-label="Footer">
           <Link href="/">Overview</Link>
-          <Link href="/marketplace">Browse agents</Link>
+          <Link href="/marketplace">Browse AI &amp; Agents</Link>
         </nav>
 
         <div className="st-footer__legal">

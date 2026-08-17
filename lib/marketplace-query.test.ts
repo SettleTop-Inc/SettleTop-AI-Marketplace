@@ -253,3 +253,44 @@ test("unrecognised values are dropped rather than applied", () => {
   assert.equal(parsed.sort, defaultCriteria().sort);
   assert.equal(parsed.page, 1);
 });
+
+test("page size is selectable and round-trips through the URL", () => {
+  const c = parseCriteria(new URLSearchParams("per=48"));
+  assert.equal(c.perPage, 48);
+  assert.equal(serializeCriteria(c), "per=48");
+});
+
+test("the default page size is never serialised, so old links are unchanged", () => {
+  const c = parseCriteria(new URLSearchParams("q=agent"));
+  assert.equal(c.perPage, PAGE_SIZE);
+  assert.equal(serializeCriteria(c), "q=agent");
+});
+
+test("a page size outside the offered set is ignored, not clamped", () => {
+  for (const bad of ["5000", "0", "-24", "25", "abc", ""]) {
+    const c = parseCriteria(new URLSearchParams(`per=${bad}`));
+    assert.equal(c.perPage, PAGE_SIZE, `per=${bad} should fall back to the default`);
+  }
+});
+
+test("runQuery honours the page size and repaginates around it", () => {
+  const cards = Array.from({ length: 30 }, (_, i) => card({ asset_id: `a${i}`, name: `Agent ${i}` }));
+
+  const small = runQuery(cards, { ...defaultCriteria(), perPage: 12 });
+  assert.equal(small.rows.length, 12);
+  assert.equal(small.pageCount, 3);
+
+  const large = runQuery(cards, { ...defaultCriteria(), perPage: 48 });
+  assert.equal(large.rows.length, 30);
+  assert.equal(large.pageCount, 1);
+
+  // A page beyond the end still clamps once the size changes under it.
+  const clamped = runQuery(cards, { ...defaultCriteria(), perPage: 48, page: 3 });
+  assert.equal(clamped.page, 1);
+});
+
+test("runQuery rejects a hand-built page size outside the offered set", () => {
+  const cards = Array.from({ length: 30 }, (_, i) => card({ asset_id: `a${i}`, name: `Agent ${i}` }));
+  const r = runQuery(cards, { ...defaultCriteria(), perPage: 5000 });
+  assert.equal(r.rows.length, PAGE_SIZE);
+});

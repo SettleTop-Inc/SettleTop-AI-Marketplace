@@ -25,8 +25,11 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // suppressHydrationWarning: the inline script in <head> stamps data-theme
+  // on <html> before React hydrates, so the server HTML and the client DOM
+  // legitimately differ by that one attribute.
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
@@ -37,6 +40,16 @@ export default function RootLayout({
         <link
           href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
           rel="stylesheet"
+        />
+        {/* Resolve and stamp the theme before first paint. Stored choice
+            wins, then the OS preference; the result is always an explicit
+            data-theme, which is the only thing the stylesheet keys off.
+            Running this in the body — or in an effect — would paint the
+            light theme first and correct it, which is a visible flash. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var s=localStorage.getItem('settletop-theme');var t=(s==='dark'||s==='light')?s:(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','light');}})();`,
+          }}
         />
       </head>
       <body>{children}</body>

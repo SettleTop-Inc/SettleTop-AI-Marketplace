@@ -80,42 +80,51 @@
   --c-navy: #0f2453;
   --c-navy-deep: #061c3b;
   --c-gold: #f8b858;        /* the mark's gold — the readable one on dark */
-  --c-gold-deep: #b9921d;   /* for the rare light-ground context */
+  /* The brand gold #B9921D is a dark-ground colour: 2.9:1 on white, which
+     fails as small text. This is the light-theme text gold — 5.2:1 on white,
+     4.5:1 on the palest surface — and #F8B858 stays for graphics. */
+  --c-gold-deep: #8a6714;
   --c-gold-bright: #f8b858; /* retained: still referenced as a graphic accent */
 
-  /* Grounds, darkest first. The brand's own #061C3B is the page; cards lift
-     off it rather than the page lifting off white. */
-  --c-paper: #0b2242;       /* raised card */
-  --c-surface: #061c3b;     /* page ground */
-  --c-surface-2: #12305a;   /* inset wells, chips */
-  --c-line: #1d3a68;        /* borders */
-  --c-line-soft: #162e56;   /* internal dividers */
+  /* ---- LIGHT is the default theme -------------------------------------
+     settletop.com is a light site with dark navy bands, and so is this.
+     Dark is a full theme the visitor can choose; see the [data-theme]
+     blocks below. Every value below is a semantic role, which is what
+     makes a second theme a palette swap rather than a rewrite. */
+  --c-paper: #ffffff;       /* raised card */
+  --c-surface: #f6f8fc;     /* page ground */
+  --c-surface-2: #eaf0f8;   /* inset wells, chips */
+  --c-line: #dbe3ee;        /* borders */
+  --c-line-soft: #e9eef6;   /* internal dividers */
 
-  --c-ink: #eef3fa;         /* primary text */
-  --c-ink-2: #b6c6dd;       /* secondary text */
-  --c-ink-3: #8ba0bf;       /* tertiary / captions */
+  --c-ink: #10233d;         /* primary text */
+  --c-ink-2: #46566f;       /* secondary text */
+  --c-ink-3: #5f6e88;       /* tertiary / captions — 5.2:1 on white */
 
-  /* Roles, split out of --c-navy. On white it could be heading colour,
-     button ground and link colour at once; on a navy page those are three
-     different jobs and collapsing them paints navy on navy. */
-  --c-heading: #ffffff;
-  --c-link: var(--c-gold);
-  --c-action-bg: var(--c-gold);
-  --c-action-fg: #0a1c33;
-  --c-action-bg-hover: #ffc978;
+  /* Roles, split out of --c-navy. It cannot be heading colour, button
+     ground and link colour at once — on a navy ground that collapses to
+     navy on navy, which is how the footer links went invisible. */
+  --c-heading: var(--c-navy);
+  --c-link: var(--c-navy);
+  --c-action-bg: var(--c-navy);
+  --c-action-fg: #ffffff;
+  --c-action-bg-hover: #071a37;
+
+  --c-header-bg: rgba(255, 255, 255, .96);
+  --c-accent: var(--c-gold-deep);   /* text-safe accent for this theme */
 
   /* Evidence semantics. These four are the only saturated colours in the
      product. "Unknown" is deliberately the loudest: the first rule of this
      registry is that Unknown means Unknown, so it must not read as a
      neutral absence. */
-  --c-verified: #a8c6ff;
-  --c-verified-bg: rgba(96, 146, 232, .18);
-  --c-disclosed: #74dcac;
-  --c-disclosed-bg: rgba(58, 190, 132, .16);
-  --c-partial: #f4c874;
-  --c-partial-bg: rgba(230, 170, 60, .16);
-  --c-unknown: #ff9aac;
-  --c-unknown-bg: rgba(226, 68, 100, .22);
+  --c-verified: #0f2453;
+  --c-verified-bg: #e8eefa;
+  --c-disclosed: #1a6b48;
+  --c-disclosed-bg: #e4f3ec;
+  --c-partial: #8a5a0b;
+  --c-partial-bg: #fbf0dc;
+  --c-unknown: #a81f38;
+  --c-unknown-bg: #fceaed;
 
   --radius-sm: 4px;
   --radius: 8px;
@@ -147,6 +156,70 @@
 @media (min-width: 900px) {
   :root { --gutter: 40px; }
 }
+
+/* =========================================================================
+   Dark theme
+
+   Selected solely by data-theme on <html>. The inline script in the root
+   layout resolves stored choice, then OS preference, and always stamps an
+   explicit value — so there is no prefers-color-scheme rule here.
+
+   That is deliberate. A media-query fallback would flip these tokens for a
+   visitor whose OS is dark but whose JavaScript is off, while the legacy
+   globals.css surface below stayed light: a half-converted page. Without
+   JS the site is light and wholly coherent.
+
+   Only the palette changes. Nothing below this block restates a size, a
+   space or a typeface, because every component reads roles rather than
+   literal colours.
+   ========================================================================= */
+
+:root[data-theme="dark"] {
+  --c-paper: #0b2242;
+  --c-surface: #061c3b;
+  --c-surface-2: #12305a;
+  --c-line: #1d3a68;
+  --c-line-soft: #162e56;
+
+  --c-ink: #eef3fa;
+  --c-ink-2: #b6c6dd;
+  --c-ink-3: #8ba0bf;
+
+  --c-heading: #ffffff;
+  --c-link: var(--c-gold);
+  --c-action-bg: var(--c-gold);
+  --c-action-fg: #0a1c33;
+  --c-action-bg-hover: #ffc978;
+
+  --c-header-bg: rgba(6, 28, 59, .92);
+  --c-accent: var(--c-gold);
+
+  --c-verified: #a8c6ff;
+  --c-verified-bg: rgba(96, 146, 232, .18);
+  --c-disclosed: #74dcac;
+  --c-disclosed-bg: rgba(58, 190, 132, .16);
+  --c-partial: #f4c874;
+  --c-partial-bg: rgba(230, 170, 60, .16);
+  --c-unknown: #ff9aac;
+  --c-unknown-bg: rgba(226, 68, 100, .22);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
+  --shadow: 0 4px 16px rgba(0, 0, 0, .4);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, .5);
+
+  /* globals.css declares these; redefining them flips most of the legacy
+     surface in one move. */
+  --ink: var(--c-ink);
+  --muted: var(--c-ink-3);
+  --line: var(--c-line);
+  --soft: var(--c-paper);
+  --softblue: var(--c-surface-2);
+  --blue: var(--c-gold);
+  --blue2: var(--c-gold);
+  --shadow: 0 4px 16px rgba(0, 0, 0, .35);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, .45);
+}
+
 
 /* =========================================================================
    Base
@@ -216,7 +289,7 @@ body {
   align-items: center;
   /* Near-opaque: at .88 the content scrolling underneath showed through
      and muddied the wordmark. */
-  background: rgba(6, 28, 59, .92);
+  background: var(--c-header-bg);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--c-line);
 }
@@ -268,6 +341,21 @@ body {
   margin-left: var(--s6);
   flex: 0 0 auto;
 }
+.st-theme-toggle {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--c-ink-2);
+  font-size: 15px;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+.st-theme-toggle:hover { color: var(--c-accent); border-color: var(--c-accent); }
+
 /* The current surface is stated, not offered as a link to itself. */
 .st-header__here {
   font-family: var(--font-data);
@@ -341,7 +429,7 @@ body {
   font-weight: 500;
   letter-spacing: .14em;
   text-transform: uppercase;
-  color: var(--c-gold);
+  color: var(--c-accent);
 }
 
 /* Weight 500 and normal tracking, matching settletop.com. Poppins is
@@ -684,7 +772,7 @@ h3.st-display { font-size: var(--t-lg); }
   line-height: 1;
   padding: var(--s1);
 }
-.st-card__save:hover { color: var(--c-gold); }
+.st-card__save:hover { color: var(--c-accent); }
 .st-card__select { display: grid; place-items: center; }
 
 .st-card__meta {
@@ -821,7 +909,7 @@ h3.st-display { font-size: var(--t-lg); }
   border-color: transparent;
   padding-inline: 0;
 }
-.st-btn--quiet:hover { color: var(--c-gold); }
+.st-btn--quiet:hover { color: var(--c-accent); }
 
 /* =========================================================================
    Passport page
@@ -940,7 +1028,7 @@ details[open] > .st-disclosure::before { content: "− "; }
   max-width: 34ch;
   text-wrap: balance;
 }
-.hm-hero__title span { color: var(--c-gold); }
+.hm-hero__title span { color: var(--c-accent); }
 .hm-hero__lede {
   font-size: var(--t-md);
   font-weight: 300;
@@ -965,7 +1053,7 @@ details[open] > .st-disclosure::before { content: "− "; }
   font-size: var(--t-2xl);
   font-weight: 500;
   line-height: 1;
-  color: var(--c-gold);
+  color: var(--c-accent);
 }
 .hm-proof dd {
   margin: var(--s3) 0 0;
@@ -977,6 +1065,22 @@ details[open] > .st-disclosure::before { content: "− "; }
 
 /* ---- Shared section chrome ------------------------------------------- */
 .hm-section { padding: var(--s10) 0; }
+
+/* An inverted region: dark ground in BOTH themes, so it redefines the text
+   roles locally rather than inheriting them. Without this the light theme
+   painted navy headings on the navy band — a contrast ratio of exactly 1.
+   Custom properties inherit, so everything nested inside adapts for free. */
+.st-invert {
+  --c-heading: #ffffff;
+  --c-ink: #eef3fa;
+  --c-ink-2: #b6c6dd;
+  --c-ink-3: #8ba0bf;
+  --c-accent: var(--c-gold);
+  --c-link: var(--c-gold);
+  --c-line: rgba(255, 255, 255, .16);
+  --c-line-soft: rgba(255, 255, 255, .10);
+  color: var(--c-ink);
+}
 .hm-section--band {
   background: var(--c-navy);
   border-top: 1px solid var(--c-line);
@@ -1013,7 +1117,7 @@ details[open] > .st-disclosure::before { content: "− "; }
 }
 .hm-product__line {
   font-size: var(--t-sm);
-  color: var(--c-gold);
+  color: var(--c-accent);
   margin: var(--s2) 0 var(--s4);
 }
 .hm-product__body {
@@ -1076,6 +1180,21 @@ details[open] > .st-disclosure::before { content: "− "; }
   line-height: var(--lh-body);
   color: var(--c-ink-2);
 }
+
+/* ---- Marketplace hand-off ---------------------------------------------- */
+.hm-handoff {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s8);
+  flex-wrap: wrap;
+  background: var(--c-paper);
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-lg);
+  padding: var(--s8);
+}
+.hm-handoff h2 { margin: var(--s3) 0 var(--s4); }
+.hm-handoff > div { min-width: 0; }
 
 /* ---- Services ---------------------------------------------------------- */
 /* Bordered cells rather than the 1px-gap hairline trick. With seven items
@@ -1146,160 +1265,236 @@ details[open] > .st-disclosure::before { content: "− "; }
    exists rather than waiting.
    ========================================================================= */
 
-:root {
-  --ink: var(--c-ink);
-  --muted: var(--c-ink-3);
-  --line: var(--c-line);
-  --soft: var(--c-paper);
-  --softblue: var(--c-surface-2);
-  --blue: var(--c-gold);
-  --blue2: var(--c-gold);
-  --shadow: 0 4px 16px rgba(0, 0, 0, .35);
-  --shadow-lg: 0 16px 48px rgba(0, 0, 0, .45);
-}
 
 /* Page grounds */
-.hero {
+:root[data-theme="dark"] .hero {
   background:
     radial-gradient(circle at 80% 18%, rgba(248, 184, 88, .10), transparent 30%),
     radial-gradient(circle at 16% 28%, rgba(96, 146, 232, .10), transparent 30%),
     var(--c-surface);
   border-bottom: 1px solid var(--c-line);
 }
-.agents-section,
-.registry-section { background: var(--c-surface); border-color: var(--c-line); }
-.provenance-section { background: var(--c-surface); }
-footer { background: var(--c-surface); }
+:root[data-theme="dark"] .agents-section,
+:root[data-theme="dark"] .registry-section { background: var(--c-surface); border-color: var(--c-line); }
+:root[data-theme="dark"] .provenance-section { background: var(--c-surface); }
+:root[data-theme="dark"] footer { background: var(--c-surface); }
 
 /* Raised panels */
-.proof-card,
-.usecase-card,
-.registry-metrics,
-.filters,
-.registry-search,
-.prov-map,
-.node,
-.floating-proof,
-.empty-state,
-.provenance-value-grid div,
-.modal-card,
-.segmented button,
-.top-agent-card,
-.registry-card {
+:root[data-theme="dark"] .proof-card,
+:root[data-theme="dark"] .usecase-card,
+:root[data-theme="dark"] .registry-metrics,
+:root[data-theme="dark"] .filters,
+:root[data-theme="dark"] .registry-search,
+:root[data-theme="dark"] .prov-map,
+:root[data-theme="dark"] .node,
+:root[data-theme="dark"] .floating-proof,
+:root[data-theme="dark"] .empty-state,
+:root[data-theme="dark"] .provenance-value-grid div,
+:root[data-theme="dark"] .modal-card,
+:root[data-theme="dark"] .segmented button,
+:root[data-theme="dark"] .top-agent-card,
+:root[data-theme="dark"] .registry-card {
   background: var(--c-paper);
   border-color: var(--c-line);
   color: var(--c-ink);
 }
-.provenance-workbench { border-color: var(--c-line); }
-.prov-sidebar { background: var(--c-surface-2); border-right-color: var(--c-line); }
-.graph-shell { background-image: radial-gradient(rgba(255, 255, 255, .07) .7px, transparent .7px); }
-.connectors path { stroke: var(--c-line); }
-.unknown-node { background: rgba(226, 68, 100, .10); }
+:root[data-theme="dark"] .provenance-workbench { border-color: var(--c-line); }
+:root[data-theme="dark"] .prov-sidebar { background: var(--c-surface-2); border-right-color: var(--c-line); }
+:root[data-theme="dark"] .graph-shell { background-image: radial-gradient(rgba(255, 255, 255, .07) .7px, transparent .7px); }
+:root[data-theme="dark"] .connectors path { stroke: var(--c-line); }
+:root[data-theme="dark"] .unknown-node { background: rgba(226, 68, 100, .10); }
 
 /* Inset wells */
-.passport-summary div,
-.access-box,
-.modal-note,
-.agent-tags span,
-.usecase-icon,
-.value-icon,
-.kicker {
+:root[data-theme="dark"] .passport-summary div,
+:root[data-theme="dark"] .access-box,
+:root[data-theme="dark"] .modal-note,
+:root[data-theme="dark"] .agent-tags span,
+:root[data-theme="dark"] .usecase-icon,
+:root[data-theme="dark"] .value-icon,
+:root[data-theme="dark"] .kicker {
   background: var(--c-surface-2);
   border-color: var(--c-line);
   color: var(--c-ink-2);
 }
-.usecase-icon, .value-icon { color: var(--c-gold); }
-.reach-bar, .reach-track { background: var(--c-surface-2); }
-.ring:before { background: var(--c-surface-2); }
+:root[data-theme="dark"] .usecase-icon,
+:root[data-theme="dark"] .value-icon { color: var(--c-accent); }
+:root[data-theme="dark"] .reach-bar,
+:root[data-theme="dark"] .reach-track { background: var(--c-surface-2); }
+:root[data-theme="dark"] .ring:before { background: var(--c-surface-2); }
 
 /* Controls */
-.filters select,
-.registry-search input,
-.hero-search {
+:root[data-theme="dark"] .filters select,
+:root[data-theme="dark"] .registry-search input,
+:root[data-theme="dark"] .hero-search {
   background: var(--c-paper);
   border-color: var(--c-line);
   color: var(--c-ink);
 }
-.filters select option { background: var(--c-paper); color: var(--c-ink); }
-.secondary-btn {
+:root[data-theme="dark"] .filters select option { background: var(--c-paper); color: var(--c-ink); }
+:root[data-theme="dark"] .secondary-btn {
   background: var(--c-surface-2);
   border-color: var(--c-line);
   color: var(--c-ink);
 }
-.secondary-btn:hover { background: #17396b; }
-.primary-btn, .hero-search button {
+:root[data-theme="dark"] .secondary-btn:hover { background: #17396b; }
+:root[data-theme="dark"] .primary-btn,
+:root[data-theme="dark"] .hero-search button {
   background: var(--c-action-bg);
   color: var(--c-action-fg);
 }
-.primary-btn:hover, .hero-search button:hover { background: var(--c-action-bg-hover); }
-.light-btn { background: var(--c-action-bg); color: var(--c-action-fg); }
-.text-btn, .link-btn { color: var(--c-link); }
-.segmented button { color: var(--c-ink-2); border-right-color: var(--c-line); }
-.segmented button.active { background: var(--c-surface-2); color: var(--c-gold); }
-.bookmark, .arrow { color: var(--c-ink-3); }
+:root[data-theme="dark"] .primary-btn:hover,
+:root[data-theme="dark"] .hero-search button:hover { background: var(--c-action-bg-hover); }
+:root[data-theme="dark"] .light-btn { background: var(--c-action-bg); color: var(--c-action-fg); }
+:root[data-theme="dark"] .text-btn,
+:root[data-theme="dark"] .link-btn { color: var(--c-link); }
+:root[data-theme="dark"] .segmented button { color: var(--c-ink-2); border-right-color: var(--c-line); }
+:root[data-theme="dark"] .segmented button.active { background: var(--c-surface-2); color: var(--c-gold); }
+:root[data-theme="dark"] .bookmark,
+:root[data-theme="dark"] .arrow { color: var(--c-ink-3); }
 
 /* Status chips: reuse the evidence roles rather than a second palette */
-.status.success, .prov-pill.disclosed, .evidence.disclosed, .disclosed-mini,
-.availability-pill.available {
+:root[data-theme="dark"] .status.success,
+:root[data-theme="dark"] .prov-pill.disclosed,
+:root[data-theme="dark"] .evidence.disclosed,
+:root[data-theme="dark"] .disclosed-mini,
+:root[data-theme="dark"] .availability-pill.available {
   background: var(--c-disclosed-bg); color: var(--c-disclosed) !important; border-color: transparent;
 }
-.status.verified, .prov-pill.verified, .evidence.verified, .verified-mini {
+:root[data-theme="dark"] .status.verified,
+:root[data-theme="dark"] .prov-pill.verified,
+:root[data-theme="dark"] .evidence.verified,
+:root[data-theme="dark"] .verified-mini {
   background: var(--c-verified-bg); color: var(--c-verified) !important; border-color: transparent;
 }
-.status.caution, .prov-pill.partial, .evidence.partial,
-.availability-pill.coming-soon {
+:root[data-theme="dark"] .status.caution,
+:root[data-theme="dark"] .prov-pill.partial,
+:root[data-theme="dark"] .evidence.partial,
+:root[data-theme="dark"] .availability-pill.coming-soon {
   background: var(--c-partial-bg); color: var(--c-partial) !important; border-color: transparent;
 }
-.prov-pill.unknown, .evidence.unknown, .unknown-mini {
+:root[data-theme="dark"] .prov-pill.unknown,
+:root[data-theme="dark"] .evidence.unknown,
+:root[data-theme="dark"] .unknown-mini {
   background: var(--c-unknown-bg); color: var(--c-unknown) !important; border-color: transparent;
 }
-.risk-low { color: var(--c-disclosed) !important; }
-.risk-medium { color: var(--c-partial) !important; }
-.risk-high, .risk-unknown { color: var(--c-unknown) !important; }
-.registry-disclosure {
+:root[data-theme="dark"] .risk-low { color: var(--c-disclosed) !important; }
+:root[data-theme="dark"] .risk-medium { color: var(--c-partial) !important; }
+:root[data-theme="dark"] .risk-high,
+:root[data-theme="dark"] .risk-unknown { color: var(--c-unknown) !important; }
+:root[data-theme="dark"] .registry-disclosure {
   background: rgba(248, 184, 88, .07);
   border-color: rgba(248, 184, 88, .22);
   color: var(--c-ink-2);
 }
-.registry-disclosure b { color: var(--c-ink); }
-.evidence-tier-row { border-top-color: var(--c-line-soft); }
-.evidence-tier-row span { color: var(--c-gold); }
-.evidence-tier-row small, .availability-row, .marketplace-source { color: var(--c-ink-3); }
-.reach-mini { border-top-color: var(--c-line-soft); }
+:root[data-theme="dark"] .registry-disclosure b { color: var(--c-ink); }
+:root[data-theme="dark"] .evidence-tier-row { border-top-color: var(--c-line-soft); }
+:root[data-theme="dark"] .evidence-tier-row span { color: var(--c-accent); }
+:root[data-theme="dark"] .evidence-tier-row small,
+:root[data-theme="dark"] .availability-row,
+:root[data-theme="dark"] .marketplace-source { color: var(--c-ink-3); }
+:root[data-theme="dark"] .reach-mini { border-top-color: var(--c-line-soft); }
 
 /* Text colours globals.css hardcodes rather than taking from --ink/--muted.
    Each of these was measured failing on the dark ground: .node b at 1.3:1
    across all nine graph nodes, .registry-metric b at 1.12:1, .rating at
    1.68:1. */
-.node b, .map-title b, .registry-metric b, .prov-agent-title b,
-.reach-score > div:last-child b, .ring b, .proof-agent b,
-.agent-title h3, .filter-title b, .result-total b, .empty-state b {
+:root[data-theme="dark"] .node b,
+:root[data-theme="dark"] .map-title b,
+:root[data-theme="dark"] .registry-metric b,
+:root[data-theme="dark"] .prov-agent-title b,
+:root[data-theme="dark"] .reach-score > div:last-child b,
+:root[data-theme="dark"] .ring b,
+:root[data-theme="dark"] .proof-agent b,
+:root[data-theme="dark"] .agent-title h3,
+:root[data-theme="dark"] .filter-title b,
+:root[data-theme="dark"] .result-total b,
+:root[data-theme="dark"] .empty-state b {
   color: var(--c-ink);
 }
-.registry-metric span, .rating, .proof-row b, .risk-summary span,
-.agent-bottom > div:first-child b {
+:root[data-theme="dark"] .registry-metric span,
+:root[data-theme="dark"] .rating,
+:root[data-theme="dark"] .proof-row b,
+:root[data-theme="dark"] .risk-summary span,
+:root[data-theme="dark"] .agent-bottom > div:first-child b {
   color: var(--c-ink-2);
 }
-.search-icon, .proof-label, .center-node small, .node span,
-.registry-metric small, .proof-foot, .legend span, .reach-score p,
-.result-total span, .agent-title span, .filters label, .agent-bottom small,
-.risk-label span, .usecase-card small, .map-title span {
+:root[data-theme="dark"] .search-icon,
+:root[data-theme="dark"] .proof-label,
+:root[data-theme="dark"] .center-node small,
+:root[data-theme="dark"] .node span,
+:root[data-theme="dark"] .registry-metric small,
+:root[data-theme="dark"] .proof-foot,
+:root[data-theme="dark"] .legend span,
+:root[data-theme="dark"] .reach-score p,
+:root[data-theme="dark"] .result-total span,
+:root[data-theme="dark"] .agent-title span,
+:root[data-theme="dark"] .filters label,
+:root[data-theme="dark"] .agent-bottom small,
+:root[data-theme="dark"] .risk-label span,
+:root[data-theme="dark"] .usecase-card small,
+:root[data-theme="dark"] .map-title span {
   color: var(--c-ink-3);
 }
 
 /* Remaining light grounds: the segmented control's own box and any input
    still defaulting to the UA white. */
-.segmented { background: var(--c-paper); border-color: var(--c-line); }
-.hero-search input, .registry-search input, .filters select {
+:root[data-theme="dark"] .segmented { background: var(--c-paper); border-color: var(--c-line); }
+:root[data-theme="dark"] .hero-search input,
+:root[data-theme="dark"] .registry-search input,
+:root[data-theme="dark"] .filters select {
   background: transparent;
   color: var(--c-ink);
 }
-.hero-search { background: var(--c-paper); }
-.hero-search input::placeholder,
-.registry-search input::placeholder { color: var(--c-ink-3); }
+:root[data-theme="dark"] .hero-search { background: var(--c-paper); }
+:root[data-theme="dark"] .hero-search input::placeholder,
+:root[data-theme="dark"] .registry-search input::placeholder { color: var(--c-ink-3); }
 
 /* The dark CTA band already was dark; it only needs the accent aligning. */
-.vendor-cta { background: linear-gradient(110deg, #04162f, var(--c-navy) 65%, #17396b); }
+:root[data-theme="dark"] .vendor-cta { background: linear-gradient(110deg, #04162f, var(--c-navy) 65%, #17396b); }
+
+
+/* globals.css hardcodes its accent as #c58d1d / #a87518 and its arrows as
+   #9aa4b4, all of which fail on a light ground (2.5-2.9:1). Routed through
+   the tokens instead, so one rule serves both themes — the dark-scoped
+   rules above still win in dark on specificity. */
+.overline,
+.light-overline,
+.link-btn,
+.text-btn,
+.filter-title button,
+.popular button,
+.mkt-clear,
+.hero h1 span,
+.usecase-icon,
+.value-icon,
+.evidence-tier-row span {
+  color: var(--c-accent);
+}
+.arrow,
+.bookmark,
+.search-icon,
+.proof-label,
+.access-box span,
+.access-box small,
+.agent-bottom small,
+.footer-grid > p,
+.node span,
+.passport-summary span,
+.passport-summary small,
+.registry-search span,
+.risk-label span,
+.usecase-card small,
+.center-node small {
+  color: var(--c-ink-3);
+}
+
+/* globals.css sets its status chips from --green / --amber, which are tuned
+   for chip text on a tinted ground but measure 3.8-4.0:1 at 12px. The
+   evidence roles are the same semantics and already carry accessible
+   values in both themes. */
+.status.success { color: var(--c-disclosed); }
+.status.caution { color: var(--c-partial); }
+.status.verified { color: var(--c-verified); }
 
 /* =========================================================================
    Landing surface

@@ -29,7 +29,7 @@ const POINTS = [
 
 export default function Sovereignty() {
   return (
-    <section className="hm-section hm-section--band" id="sovereignty">
+    <section className="hm-section hm-section--band st-invert" id="sovereignty">
       <div className="st-shell st-shell--wide">
         <header className="hm-section__head">
           <p className="st-eyebrow">Sovereignty</p>

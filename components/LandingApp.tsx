@@ -322,142 +322,31 @@ export default function LandingApp({
           </div>
         </section>
 
-        <section className="section registry-section" id="registry">
+        {/* The full registry, its filter panel and all of its cards used to
+            render here — roughly 26,000px of page. Browsing belongs on
+            /marketplace, which is built for it; this is now a hand-off.
+            "Top agents" above is the sample. */}
+        <section className="section" id="registry">
           <div className="container">
-            <div className="section-heading registry-title">
+            <div className="hm-handoff">
               <div>
-                {/* Deliberately not the marketplace's wording. This section
-                    and /marketplace both carried "Browse and compare AI
-                    agents" over near-identical subtext, so the two surfaces
-                    read as duplicates rather than an overview and the tool
-                    it hands off to. */}
-                <span className="overline">EVERY AGENT ON RECORD</span>
-                <h2>The whole registry, in one place</h2>
-                <p>
-                  A quick filter across all {cards.length} captured agents. For
-                  faceted search, side-by-side comparison and shareable result
-                  links, open the marketplace.
+                <span className="st-eyebrow">Every agent on record</span>
+                <h2 className="st-display">{cards.length} agents, one record each</h2>
+                <p className="st-lede">
+                  Filter by function, source, deployment, evidence tier,
+                  provenance, pricing and evidence risk. Compare them
+                  side by side, and share a result set by link. Where a
+                  source is silent, the value reads Unknown.
                 </p>
               </div>
-              <div className="result-total">
-                <b>{filtered.length}</b>
-                <span>matching agents</span>
-              </div>
-              <Link className="link-btn" href={marketplaceHref()}>
-                Open these results in the marketplace →
+              <Link className="st-btn st-btn--primary" href={marketplaceHref()}>
+                Open the marketplace →
               </Link>
-            </div>
-
-            <div className="registry-disclosure">
-              <b>Evidence-first registry:</b> a listing proves a public source exists; it
-              does not imply SettleTop has verified the agent&apos;s build. Undisclosed
-              LLMs, frameworks, MCP servers, data sources, pricing and risk remain{" "}
-              <b>Unknown</b>.
-            </div>
-
-            <div className="registry-layout">
-              <aside className="filters">
-                <div className="filter-title">
-                  <b>Filters</b>
-                  <button onClick={clearFilters}>Clear</button>
-                </div>
-                <label>
-                  Function
-                  <select value={fn} onChange={(e) => setFn(e.target.value)}>
-                    <option value="">All functions</option>
-                    {functions.map((v) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Marketplace / source
-                  <select value={mp} onChange={(e) => setMp(e.target.value)}>
-                    <option value="">All sources</option>
-                    {markets.map((v) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Deployment
-                  <select value={dep} onChange={(e) => setDep(e.target.value)}>
-                    <option value="">All deployment types</option>
-                    {deployments.map((v) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Evidence tier
-                  <select value={tier} onChange={(e) => setTier(e.target.value)}>
-                    <option value="">All evidence tiers</option>
-                    {tiers.map((v) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Provenance
-                  <select value={prov} onChange={(e) => setProv(e.target.value)}>
-                    <option value="">All statuses</option>
-                    <option>Verified</option>
-                    <option>Disclosed</option>
-                    <option>Unknown</option>
-                  </select>
-                </label>
-                <label>
-                  Pricing
-                  <select value={price} onChange={(e) => setPrice(e.target.value)}>
-                    <option value="">All pricing</option>
-                    <option>Free</option>
-                    <option>Freemium</option>
-                    <option>Paid</option>
-                    <option>Unknown</option>
-                  </select>
-                </label>
-                <label>
-                  Evidence risk
-                  <select value={risk} onChange={(e) => setRisk(e.target.value)}>
-                    <option value="">All evidence risk levels</option>
-                    <option>Low</option>
-                    <option>Medium</option>
-                    <option>High</option>
-                  </select>
-                </label>
-              </aside>
-
-              <div className="registry-results">
-                <div className="registry-search">
-                  <span>⌕</span>
-                  <input
-                    type="search"
-                    placeholder="Search agents, vendors, marketplaces or use cases"
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                  />
-                </div>
-                <div className="registry-grid">
-                  {filtered.length > 0 ? (
-                    filtered.map((c) => (
-                      <AgentCard key={c.asset_id} c={c} onOpen={setModal} />
-                    ))
-                  ) : (
-                    <div className="empty-state">
-                      <b>No matching agents</b>
-                      <p>Try clearing one or more filters.</p>
-                      <button className="secondary-btn" onClick={clearFilters}>
-                        Clear filters
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
           </div>
         </section>
 
-        <section className="vendor-cta">
+        <section className="vendor-cta st-invert">
           <div className="container vendor-cta-inner">
             <div>
               <span className="overline light-overline">

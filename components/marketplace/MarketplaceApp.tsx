@@ -84,6 +84,12 @@ export default function MarketplaceApp({
 
   const setPage = (page: number) => write({ ...criteria, page }, "push");
 
+  // Back to page 1: the visitor's current page number means something
+  // different at a different page size, and silently landing them somewhere
+  // unrelated in the result set is worse than resetting.
+  const setPerPage = (perPage: number) =>
+    write({ ...criteria, perPage, page: 1 }, "push");
+
   const clear = () => write({ ...defaultCriteria(), view: criteria.view }, "push");
 
   const hasFilters =
@@ -166,6 +172,8 @@ export default function MarketplaceApp({
                 onSort={setSort}
                 view={criteria.view}
                 onView={setView}
+                perPage={criteria.perPage}
+                onPerPage={setPerPage}
               />
             )}
 

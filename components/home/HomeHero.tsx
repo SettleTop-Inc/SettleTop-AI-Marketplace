@@ -37,11 +37,13 @@ export default function HomeHero({
         </p>
 
         <div className="hm-hero__actions">
-          <Link className="st-btn st-btn--primary" href="#products">
-            See the products
+          {/* The marketplace leads: it is the one product a visitor can use
+              without installing anything. */}
+          <Link className="st-btn st-btn--primary" href="/marketplace">
+            Browse AI &amp; Agents
           </Link>
-          <Link className="st-btn st-btn--secondary" href="/marketplace">
-            Browse the AI marketplace
+          <Link className="st-btn st-btn--secondary" href="#products">
+            See the products
           </Link>
         </div>
 

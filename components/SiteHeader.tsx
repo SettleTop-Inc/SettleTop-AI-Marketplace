@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import ThemeToggle from "@/components/ThemeToggle";
 
 /**
  * The header every route shares.
@@ -67,6 +68,7 @@ export default function SiteHeader({
         </nav>
 
         <div className="st-header__actions">
+          <ThemeToggle />
           {onVendor && (
             <button className="st-btn st-btn--quiet" onClick={onVendor}>
               For vendors
@@ -74,11 +76,11 @@ export default function SiteHeader({
           )}
           {current === "marketplace" ? (
             <span className="st-header__here" aria-current="page">
-              Browsing agents
+              Browsing AI &amp; Agents
             </span>
           ) : (
             <Link className="st-btn st-btn--primary" href="/marketplace">
-              Browse agents
+              Browse AI &amp; Agents
             </Link>
           )}
         </div>
