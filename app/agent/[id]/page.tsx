@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import PassportView from "@/components/PassportView";
 import SiteHeader from "@/components/SiteHeader";
+import SiteFooter from "@/components/SiteFooter";
 import { getPassport } from "@/lib/registry";
 
 export const revalidate = 300;
@@ -58,6 +59,7 @@ export default async function AgentPage({
       <main id="top">
         <PassportView a={a} back={back} />
       </main>
+      <SiteFooter />
     </>
   );
 }

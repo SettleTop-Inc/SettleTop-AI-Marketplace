@@ -170,7 +170,10 @@ export default function AgentCard({
             Quick look
           </button>
         )}
-        <Link className="st-btn st-btn--primary" href={href}>
+        {/* Secondary, not primary. Solid gold is the page's single loudest
+            action; a grid of 189 cards each carrying one turns the accent
+            into wallpaper and buries the evidence the card exists to show. */}
+        <Link className="st-btn st-btn--secondary" href={href}>
           Open passport
         </Link>
       </div>

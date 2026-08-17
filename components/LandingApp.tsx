@@ -9,6 +9,11 @@ import PassportView from "@/components/PassportView";
 import AgentLogo from "@/components/AgentLogo";
 import AgentCard from "@/components/AgentCard";
 import SiteHeader from "@/components/SiteHeader";
+import SiteFooter from "@/components/SiteFooter";
+import HomeHero from "@/components/home/HomeHero";
+import ProductGrid from "@/components/home/ProductGrid";
+import Sovereignty from "@/components/home/Sovereignty";
+import ServicesGrid from "@/components/home/ServicesGrid";
 import type {
   AssetPassport,
   RegistryCard,
@@ -42,7 +47,6 @@ export default function LandingApp({
   featured: AssetPassport | null;
 }) {
   const [q, setQ] = useState("");
-  const [heroQ, setHeroQ] = useState("");
   const [fn, setFn] = useState("");
   const [mp, setMp] = useState("");
   const [dep, setDep] = useState("");
@@ -94,14 +98,6 @@ export default function LandingApp({
     }
     return m;
   }, [cards]);
-
-  const popular = useMemo(
-    () =>
-      Object.entries(counts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 4),
-    [counts]
-  );
 
   const blobs = useMemo(() => {
     const m = new Map<string, string>();
@@ -183,21 +179,14 @@ export default function LandingApp({
     router.push(`/marketplace?${serializeCriteria(c)}`);
   };
 
-  const runHeroSearch = () => {
-    const c = defaultCriteria();
-    if (heroQ.trim()) c.q = heroQ;
-    const qs = serializeCriteria(c);
-    router.push(qs ? `/marketplace?${qs}` : "/marketplace");
-  };
-
   return (
     <>
       <SiteHeader
         current="overview"
         wide
         sections={[
-          { href: "#use-cases", label: "Use cases" },
-          { href: "#top-agents", label: "Top agents" },
+          { href: "#products", label: "Products" },
+          { href: "#services", label: "Services" },
           { href: "#provenance", label: "Provenance" },
           { href: "#registry", label: "Registry" },
         ]}
@@ -205,134 +194,13 @@ export default function LandingApp({
       />
 
       <main id="top">
-        <section className="hero">
-          <div className="container">
-            <div className="hero-inner">
-              <div className="hero-copy">
-                <div className="kicker">
-                  <span className="pulse-dot" /> The intelligence layer for AI agents
-                </div>
-                <h1>
-                  Find the right AI agent.
-                  <br />
-                  <span>Know what’s behind it.</span>
-                </h1>
-                <p>
-                  Discover agents by business or mission use case, compare vendors and
-                  user feedback, then inspect the provenance of the build before you
-                  adopt.
-                </p>
-                <div className="hero-search">
-                  <span className="search-icon">⌕</span>
-                  <input
-                    type="search"
-                    placeholder="What do you want an agent to do?"
-                    aria-label="Search AI agents"
-                    value={heroQ}
-                    onChange={(e) => setHeroQ(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") runHeroSearch();
-                    }}
-                  />
-                  <button onClick={runHeroSearch}>Search registry</button>
-                </div>
-                <div className="popular">
-                  <b>Popular:</b>
-                  {popular.map(([name, n]) => (
-                    <button key={name} onClick={() => pickUseCase(name)}>
-                      {name} ({n})
-                    </button>
-                  ))}
-                </div>
-              </div>
+        <HomeHero agentCount={stats?.agents ?? cards.length} />
 
-              <div className="hero-proof" aria-label="Registry highlights">
-                <div className="proof-card main-proof">
-                  <div className="proof-label">Agent trust snapshot</div>
-                  {featured && (
-                    <>
-                      <div className="proof-agent">
-                        <AgentLogo name={featured.name} id={featured.source_product_id} logo={featured.logo} />
-                        <div>
-                          <b>{featured.name}</b>
-                          <small>{featured.publisher}</small>
-                        </div>
-                        <span className="rating">
-                          {featured.rating ? `${featured.rating} ★` : "Not rated"}
-                        </span>
-                      </div>
-                      <div className="proof-row">
-                        <span>Evidence tier</span>
-                        <b
-                          className={`status ${
-                            featured.provenance === "Verified" ? "verified" : "success"
-                          }`}
-                        >
-                          {featured.evidence_tier}
-                        </b>
-                      </div>
-                      <div className="proof-row">
-                        <span>Provenance</span>
-                        <b
-                          className={`status ${
-                            featured.provenance === "Verified" ? "verified" : "caution"
-                          }`}
-                        >
-                          {featured.provenance}
-                        </b>
-                      </div>
-                      <div className="proof-row">
-                        <span>Provenance reach</span>
-                        <b>{featured.reach}%</b>
-                      </div>
-                      <div className="reach-bar">
-                        <i style={{ width: `${featured.reach}%` }} />
-                      </div>
-                      <div className="proof-row">
-                        <span>Evidence risk</span>
-                        <b className="status caution">{featured.risk}</b>
-                      </div>
-                      <div className="proof-foot">
-                        <span>
-                          {featured.price_band} · {featured.price_note}
-                        </span>
-                        <span>{featured.delivery}</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-                <div className="floating-proof fp-one">
-                  {featured?.provenance === "Verified"
-                    ? "✓ Microsoft 365 Certified"
-                    : "✓ Publisher attested"}
-                </div>
-                <div className="floating-proof fp-two">
-                  {featured
-                    ? `${featured.layers_known} of ${featured.layers_tracked} build layers traced`
-                    : ""}
-                </div>
-              </div>
-            </div>
+        <ProductGrid />
 
-            <div className="registry-metrics" aria-label="Registry scale">
-              <div className="registry-metric">
-                <b>{stats?.marketplaces ?? 0}</b>
-                <span>Marketplaces accessed</span>
-                <small>Live capture sources</small>
-              </div>
-              <div className="registry-metric">
-                <b>{(stats?.agents ?? cards.length).toLocaleString()}</b>
-                <span>AI agents indexed</span>
-                <small>Captured from marketplace listings</small>
-              </div>
-              <div className="registry-metric">
-                <b>{stats?.certified ?? 0}</b>
-                <span>Independently certified</span>
-                <small>Microsoft 365 Certified attestation</small>
-              </div>
-            </div>
-          </div>
-        </section>
+        <Sovereignty />
+
+        <ServicesGrid />
 
         <section className="section use-cases" id="use-cases">
           <div className="container">
@@ -454,142 +322,31 @@ export default function LandingApp({
           </div>
         </section>
 
-        <section className="section registry-section" id="registry">
+        {/* The full registry, its filter panel and all of its cards used to
+            render here — roughly 26,000px of page. Browsing belongs on
+            /marketplace, which is built for it; this is now a hand-off.
+            "Top agents" above is the sample. */}
+        <section className="section" id="registry">
           <div className="container">
-            <div className="section-heading registry-title">
+            <div className="hm-handoff">
               <div>
-                {/* Deliberately not the marketplace's wording. This section
-                    and /marketplace both carried "Browse and compare AI
-                    agents" over near-identical subtext, so the two surfaces
-                    read as duplicates rather than an overview and the tool
-                    it hands off to. */}
-                <span className="overline">EVERY AGENT ON RECORD</span>
-                <h2>The whole registry, in one place</h2>
-                <p>
-                  A quick filter across all {cards.length} captured agents. For
-                  faceted search, side-by-side comparison and shareable result
-                  links, open the marketplace.
+                <span className="st-eyebrow">Every agent on record</span>
+                <h2 className="st-display">{cards.length} agents, one record each</h2>
+                <p className="st-lede">
+                  Filter by function, source, deployment, evidence tier,
+                  provenance, pricing and evidence risk. Compare them
+                  side by side, and share a result set by link. Where a
+                  source is silent, the value reads Unknown.
                 </p>
               </div>
-              <div className="result-total">
-                <b>{filtered.length}</b>
-                <span>matching agents</span>
-              </div>
-              <Link className="link-btn" href={marketplaceHref()}>
-                Open these results in the marketplace →
+              <Link className="st-btn st-btn--primary" href={marketplaceHref()}>
+                Open the marketplace →
               </Link>
-            </div>
-
-            <div className="registry-disclosure">
-              <b>Evidence-first registry:</b> a listing proves a public source exists; it
-              does not imply SettleTop has verified the agent&apos;s build. Undisclosed
-              LLMs, frameworks, MCP servers, data sources, pricing and risk remain{" "}
-              <b>Unknown</b>.
-            </div>
-
-            <div className="registry-layout">
-              <aside className="filters">
-                <div className="filter-title">
-                  <b>Filters</b>
-                  <button onClick={clearFilters}>Clear</button>
-                </div>
-                <label>
-                  Function
-                  <select value={fn} onChange={(e) => setFn(e.target.value)}>
-                    <option value="">All functions</option>
-                    {functions.map((v) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Marketplace / source
-                  <select value={mp} onChange={(e) => setMp(e.target.value)}>
-                    <option value="">All sources</option>
-                    {markets.map((v) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Deployment
-                  <select value={dep} onChange={(e) => setDep(e.target.value)}>
-                    <option value="">All deployment types</option>
-                    {deployments.map((v) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Evidence tier
-                  <select value={tier} onChange={(e) => setTier(e.target.value)}>
-                    <option value="">All evidence tiers</option>
-                    {tiers.map((v) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Provenance
-                  <select value={prov} onChange={(e) => setProv(e.target.value)}>
-                    <option value="">All statuses</option>
-                    <option>Verified</option>
-                    <option>Disclosed</option>
-                    <option>Unknown</option>
-                  </select>
-                </label>
-                <label>
-                  Pricing
-                  <select value={price} onChange={(e) => setPrice(e.target.value)}>
-                    <option value="">All pricing</option>
-                    <option>Free</option>
-                    <option>Freemium</option>
-                    <option>Paid</option>
-                    <option>Unknown</option>
-                  </select>
-                </label>
-                <label>
-                  Evidence risk
-                  <select value={risk} onChange={(e) => setRisk(e.target.value)}>
-                    <option value="">All evidence risk levels</option>
-                    <option>Low</option>
-                    <option>Medium</option>
-                    <option>High</option>
-                  </select>
-                </label>
-              </aside>
-
-              <div className="registry-results">
-                <div className="registry-search">
-                  <span>⌕</span>
-                  <input
-                    type="search"
-                    placeholder="Search agents, vendors, marketplaces or use cases"
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                  />
-                </div>
-                <div className="registry-grid">
-                  {filtered.length > 0 ? (
-                    filtered.map((c) => (
-                      <AgentCard key={c.asset_id} c={c} onOpen={setModal} />
-                    ))
-                  ) : (
-                    <div className="empty-state">
-                      <b>No matching agents</b>
-                      <p>Try clearing one or more filters.</p>
-                      <button className="secondary-btn" onClick={clearFilters}>
-                        Clear filters
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
           </div>
         </section>
 
-        <section className="vendor-cta">
+        <section className="vendor-cta st-invert">
           <div className="container vendor-cta-inner">
             <div>
               <span className="overline light-overline">
@@ -608,21 +365,17 @@ export default function LandingApp({
         </section>
       </main>
 
-      <footer>
-        <div className="container footer-grid">
-          <div className="brand footer-brand">
-            <span className="brand-divider" aria-hidden="true" />
-            <span className="brand-registry">AI Marketplace</span>
-          </div>
-          <p>Discover. Compare. Trace. Trust.</p>
-          <p className="copyright">
+      <SiteFooter
+        wide
+        meta={
+          <>
             {stats?.captures ?? 0} captures · {stats?.changes ?? 0} recorded changes
             {stats?.last_captured_at
               ? ` · last capture ${stats.last_captured_at.slice(0, 10)}`
               : ""}
-          </p>
-        </div>
-      </footer>
+          </>
+        }
+      />
 
       {modal && (
         <div

@@ -17,7 +17,7 @@ export default function CompareTray({
   const href = `/marketplace/compare?ids=${selected.map((s) => s.asset_id).join(",")}`;
 
   return (
-    <div className="mkt-tray" role="region" aria-label="Compare selection">
+    <div className="mkt-tray st-invert" role="region" aria-label="Compare selection">
       <div className="container mkt-tray-inner">
         <span>{selected.length} selected</span>
         {selected.length >= MAX_COMPARE && (

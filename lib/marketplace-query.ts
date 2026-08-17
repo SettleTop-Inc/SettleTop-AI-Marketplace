@@ -1,8 +1,16 @@
 import { UNKNOWN } from "./present.ts";
 import type { ProvenanceStatus, RegistryCard, RiskBand } from "./types.ts";
 
-/** Rows per page. Not a URL parameter — changing it must not break saved links. */
+/**
+ * Rows per page. The default stays 24, and only a non-default choice is
+ * serialised, so every link saved before this became selectable still
+ * resolves to exactly the same page of results.
+ */
 export const PAGE_SIZE = 24;
+
+/** The offered page sizes. A `per` outside this set is ignored, not clamped —
+ *  a hand-edited `?per=5000` must not become a licence to render everything. */
+export const PAGE_SIZES = [12, 24, 48, 96] as const;
 
 /**
  * Shared by the marketplace's selection UI and the compare page's own cap, so
@@ -44,6 +52,7 @@ export interface Criteria {
   sort: SortKey;
   dir: SortDir;
   page: number;
+  perPage: number;
   view: ViewMode;
 }
 
@@ -65,6 +74,7 @@ export function defaultCriteria(): Criteria {
     sort: "reach",
     dir: DEFAULT_DIR.reach,
     page: 1,
+    perPage: PAGE_SIZE,
     view: "grid",
   };
 }
@@ -194,11 +204,17 @@ export function runQuery(cards: RegistryCard[], criteria: Criteria): QueryResult
   });
 
   const total = rows.length;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // Guard the size here too: runQuery is called with criteria from
+  // parseCriteria in the app, but is a public export and can be handed an
+  // object built by hand.
+  const per = (PAGE_SIZES as readonly number[]).includes(criteria.perPage)
+    ? criteria.perPage
+    : PAGE_SIZE;
+  const pageCount = Math.max(1, Math.ceil(total / per));
   const page = Math.min(Math.max(1, criteria.page), pageCount);
-  const start = (page - 1) * PAGE_SIZE;
+  const start = (page - 1) * per;
 
-  return { rows: rows.slice(start, start + PAGE_SIZE), facets, total, page, pageCount };
+  return { rows: rows.slice(start, start + per), facets, total, page, pageCount };
 }
 
 // risk and provenance are the only facets backed by a closed TS union on
@@ -234,6 +250,7 @@ export function parseCriteria(sp: URLSearchParams): Criteria {
   const dirRaw = sp.get("dir");
   const view = sp.get("view") === "list" ? "list" : "grid";
   const pageRaw = Number(sp.get("page"));
+  const perRaw = Number(sp.get("per"));
 
   const facets = { ...d.facets };
   for (const k of FACET_KEYS) {
@@ -248,6 +265,7 @@ export function parseCriteria(sp: URLSearchParams): Criteria {
     sort,
     dir: dirRaw === "asc" || dirRaw === "desc" ? dirRaw : DEFAULT_DIR[sort],
     page: Number.isInteger(pageRaw) && pageRaw >= 1 ? pageRaw : 1,
+    perPage: (PAGE_SIZES as readonly number[]).includes(perRaw) ? perRaw : d.perPage,
     view,
   };
 }
@@ -260,6 +278,7 @@ export function serializeCriteria(c: Criteria): string {
   if (c.sort !== "reach") sp.set("sort", c.sort);
   if (c.dir !== DEFAULT_DIR[c.sort]) sp.set("dir", c.dir);
   if (c.page > 1) sp.set("page", String(c.page));
+  if (c.perPage !== PAGE_SIZE) sp.set("per", String(c.perPage));
   if (c.view !== "grid") sp.set("view", c.view);
   return sp.toString();
 }

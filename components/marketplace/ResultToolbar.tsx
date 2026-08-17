@@ -1,5 +1,6 @@
 "use client";
 
+import { PAGE_SIZES } from "@/lib/marketplace-query";
 import type { SortDir, SortKey, ViewMode } from "@/lib/marketplace-query";
 
 const OPTIONS: Array<{ key: SortKey; dir: SortDir; label: string }> = [
@@ -15,12 +16,16 @@ export default function ResultToolbar({
   onSort,
   view,
   onView,
+  perPage,
+  onPerPage,
 }: {
   total: number;
   sort: SortKey;
   onSort: (key: SortKey, dir: SortDir) => void;
   view: ViewMode;
   onView: (v: ViewMode) => void;
+  perPage: number;
+  onPerPage: (n: number) => void;
 }) {
   return (
     <div className="mkt-toolbar">
@@ -44,6 +49,21 @@ export default function ResultToolbar({
         {OPTIONS.map((o) => (
           <option key={o.key} value={o.key}>
             {o.label}
+          </option>
+        ))}
+      </select>
+      <label className="mkt-sr" htmlFor="mkt-per">
+        Results per page
+      </label>
+      <select
+        id="mkt-per"
+        className="mkt-control"
+        value={perPage}
+        onChange={(e) => onPerPage(Number(e.target.value))}
+      >
+        {PAGE_SIZES.map((n) => (
+          <option key={n} value={n}>
+            {n} per page
           </option>
         ))}
       </select>

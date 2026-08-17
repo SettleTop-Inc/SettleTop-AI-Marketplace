@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import AgentCard from "@/components/AgentCard";
 import SiteHeader from "@/components/SiteHeader";
+import SiteFooter from "@/components/SiteFooter";
 import CompareTray from "@/components/marketplace/CompareTray";
 import FacetRail from "@/components/marketplace/FacetRail";
 import Pagination from "@/components/marketplace/Pagination";
@@ -82,6 +83,12 @@ export default function MarketplaceApp({
   const setView = (view: ViewMode) => write({ ...criteria, view, page: 1 }, "push");
 
   const setPage = (page: number) => write({ ...criteria, page }, "push");
+
+  // Back to page 1: the visitor's current page number means something
+  // different at a different page size, and silently landing them somewhere
+  // unrelated in the result set is worse than resetting.
+  const setPerPage = (perPage: number) =>
+    write({ ...criteria, perPage, page: 1 }, "push");
 
   const clear = () => write({ ...defaultCriteria(), view: criteria.view }, "push");
 
@@ -165,6 +172,8 @@ export default function MarketplaceApp({
                 onSort={setSort}
                 view={criteria.view}
                 onView={setView}
+                perPage={criteria.perPage}
+                onPerPage={setPerPage}
               />
             )}
 
@@ -215,6 +224,7 @@ export default function MarketplaceApp({
           </div>
         </div>
       </div>
+      <SiteFooter wide />
       <CompareTray selected={selectedCards} onRemove={toggleSelect} onClear={() => setSelected([])} />
     </div>
   );

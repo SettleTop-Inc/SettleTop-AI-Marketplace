@@ -1,17 +1,14 @@
+import Image from "next/image";
 import Link from "next/link";
+import ThemeToggle from "@/components/ThemeToggle";
 
 /**
  * The header every route shares.
  *
- * This previously existed only inside LandingApp, so /marketplace and
- * /agent/[id] rendered with no header at all — the passport opened on a
- * bare back-link floating in white space, with no wordmark and no way to
- * reach any other part of the product. Lifting it here also settles a
- * second problem: the product was shipping two different headers.
- *
- * The brand lockup reuses .settletop-wordmark / .brand-divider /
- * .registry-wordmark from globals.css rather than restating it — that
- * treatment is the approved one and should have exactly one definition.
+ * Carries the real SettleTop lockup from public/brand rather than the text
+ * wordmark this app used to approximate. The lockup is mark-over-wordmark,
+ * so it is taller than a typical bar logo — the header height accommodates
+ * it rather than squashing it.
  *
  * No hooks, so this stays usable from both server routes (the passport)
  * and client ones (the marketplace, the landing page).
@@ -23,7 +20,7 @@ export default function SiteHeader({
   onVendor,
 }: {
   current?: "overview" | "marketplace";
-  /** Match the page's own shell so the wordmark aligns with the content
+  /** Match the page's own shell so the lockup aligns with the content
       beneath it: the browsing surfaces are wide, document pages are not. */
   wide?: boolean;
   /** In-page anchors. Supplied by the landing page, which is the only
@@ -38,10 +35,19 @@ export default function SiteHeader({
       <div
         className={`st-shell${wide ? " st-shell--wide" : ""} st-header__inner`}
       >
-        <Link className="st-header__brand" href={home} aria-label="SettleTop AI Marketplace home">
-          <span className="settletop-wordmark">SETTLETOP</span>
-          <span className="brand-divider" aria-hidden="true" />
-          <span className="registry-wordmark">AI MARKETPLACE</span>
+        <Link
+          className="st-header__brand"
+          href={home}
+          aria-label="SettleTop home"
+        >
+          <Image
+            src="/brand/settletop-logo.png"
+            alt="SettleTop"
+            width={1280}
+            height={1016}
+            priority
+            className="st-header__logo"
+          />
         </Link>
 
         <nav className="st-header__nav" aria-label="Primary">
@@ -62,6 +68,7 @@ export default function SiteHeader({
         </nav>
 
         <div className="st-header__actions">
+          <ThemeToggle />
           {onVendor && (
             <button className="st-btn st-btn--quiet" onClick={onVendor}>
               For vendors
@@ -69,11 +76,11 @@ export default function SiteHeader({
           )}
           {current === "marketplace" ? (
             <span className="st-header__here" aria-current="page">
-              Browsing agents
+              Browsing AI &amp; Agents
             </span>
           ) : (
             <Link className="st-btn st-btn--primary" href="/marketplace">
-              Browse agents
+              Browse AI &amp; Agents
             </Link>
           )}
         </div>
