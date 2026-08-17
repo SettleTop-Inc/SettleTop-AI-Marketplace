@@ -9,6 +9,7 @@ import PassportView from "@/components/PassportView";
 import AgentLogo from "@/components/AgentLogo";
 import AgentCard from "@/components/AgentCard";
 import SiteHeader from "@/components/SiteHeader";
+import SiteFooter from "@/components/SiteFooter";
 import type {
   AssetPassport,
   RegistryCard,
@@ -608,21 +609,17 @@ export default function LandingApp({
         </section>
       </main>
 
-      <footer>
-        <div className="container footer-grid">
-          <div className="brand footer-brand">
-            <span className="brand-divider" aria-hidden="true" />
-            <span className="brand-registry">AI Marketplace</span>
-          </div>
-          <p>Discover. Compare. Trace. Trust.</p>
-          <p className="copyright">
+      <SiteFooter
+        wide
+        meta={
+          <>
             {stats?.captures ?? 0} captures · {stats?.changes ?? 0} recorded changes
             {stats?.last_captured_at
               ? ` · last capture ${stats.last_captured_at.slice(0, 10)}`
               : ""}
-          </p>
-        </div>
-      </footer>
+          </>
+        }
+      />
 
       {modal && (
         <div

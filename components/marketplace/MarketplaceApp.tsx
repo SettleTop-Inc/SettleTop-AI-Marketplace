@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import AgentCard from "@/components/AgentCard";
 import SiteHeader from "@/components/SiteHeader";
+import SiteFooter from "@/components/SiteFooter";
 import CompareTray from "@/components/marketplace/CompareTray";
 import FacetRail from "@/components/marketplace/FacetRail";
 import Pagination from "@/components/marketplace/Pagination";
@@ -215,6 +216,7 @@ export default function MarketplaceApp({
           </div>
         </div>
       </div>
+      <SiteFooter wide />
       <CompareTray selected={selectedCards} onRemove={toggleSelect} onClear={() => setSelected([])} />
     </div>
   );
