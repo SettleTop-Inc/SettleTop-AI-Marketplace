@@ -912,6 +912,224 @@ details[open] > .st-disclosure::before { content: "− "; }
 }
 
 /* =========================================================================
+   Homepage — company-level sections
+
+   These sit above the marketplace content that the landing page already
+   carried. They use the shared shell and tokens, so nothing here restates a
+   colour or a size.
+   ========================================================================= */
+
+.hm-hero {
+  background:
+    radial-gradient(circle at 82% 12%, rgba(248, 184, 88, .10), transparent 42%),
+    radial-gradient(circle at 8% 30%, rgba(96, 146, 232, .10), transparent 40%),
+    var(--c-surface);
+  border-bottom: 1px solid var(--c-line);
+  padding: var(--s10) 0 var(--s9);
+}
+.hm-hero__title {
+  font-family: var(--font-display);
+  font-size: var(--t-3xl);
+  font-weight: 500;
+  line-height: 1.08;
+  color: var(--c-heading);
+  margin: var(--s4) 0 var(--s5);
+  /* Wide enough that "Intelligence your AI can cite." holds one line — at
+     20ch it broke before "cite.", orphaning the word the sentence turns on.
+     The <br/> then does the only intentional break. */
+  max-width: 34ch;
+  text-wrap: balance;
+}
+.hm-hero__title span { color: var(--c-gold); }
+.hm-hero__lede {
+  font-size: var(--t-md);
+  font-weight: 300;
+  line-height: var(--lh-body);
+  color: var(--c-ink-2);
+  max-width: 62ch;
+  margin: 0 0 var(--s7);
+}
+.hm-hero__actions { display: flex; flex-wrap: wrap; gap: var(--s3); }
+
+.hm-proof {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s7);
+  margin: var(--s10) 0 0;
+  padding-top: var(--s7);
+  border-top: 1px solid var(--c-line);
+}
+.hm-proof div { min-width: 0; }
+.hm-proof dt {
+  font-family: var(--font-display);
+  font-size: var(--t-2xl);
+  font-weight: 500;
+  line-height: 1;
+  color: var(--c-gold);
+}
+.hm-proof dd {
+  margin: var(--s3) 0 0;
+  font-size: var(--t-sm);
+  color: var(--c-ink-3);
+  line-height: var(--lh-snug);
+  max-width: 34ch;
+}
+
+/* ---- Shared section chrome ------------------------------------------- */
+.hm-section { padding: var(--s10) 0; }
+.hm-section--band {
+  background: var(--c-navy);
+  border-top: 1px solid var(--c-line);
+  border-bottom: 1px solid var(--c-line);
+}
+.hm-section__head { max-width: 74ch; margin-bottom: var(--s9); }
+.hm-section__head h2 { margin: var(--s3) 0 var(--s4); }
+.hm-section__head .st-lede { font-weight: 300; }
+
+/* ---- Products --------------------------------------------------------- */
+.hm-products {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: var(--s5);
+  align-items: start;
+}
+.hm-product {
+  display: flex;
+  flex-direction: column;
+  background: var(--c-paper);
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-lg);
+  padding: var(--s7);
+  height: 100%;
+}
+.hm-product__tags { display: flex; flex-wrap: wrap; gap: var(--s2); margin-bottom: var(--s5); }
+.hm-product__name {
+  font-family: var(--font-display);
+  font-size: var(--t-lg);
+  font-weight: 500;
+  line-height: var(--lh-tight);
+  color: var(--c-heading);
+  margin: 0;
+}
+.hm-product__line {
+  font-size: var(--t-sm);
+  color: var(--c-gold);
+  margin: var(--s2) 0 var(--s4);
+}
+.hm-product__body {
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  color: var(--c-ink-2);
+  margin: 0 0 var(--s5);
+}
+.hm-product__points {
+  list-style: none;
+  margin: 0 0 var(--s5);
+  padding: var(--s5) 0 0;
+  border-top: 1px solid var(--c-line-soft);
+  display: grid;
+  gap: var(--s3);
+}
+.hm-product__points li {
+  position: relative;
+  padding-left: var(--s5);
+  font-size: var(--t-xs);
+  line-height: var(--lh-snug);
+  color: var(--c-ink-3);
+}
+.hm-product__points li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: .5em;
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--c-gold);
+}
+.hm-product__link {
+  margin-top: auto;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  color: var(--c-link);
+  text-decoration: none;
+}
+.hm-product__link:hover { text-decoration: underline; }
+
+/* ---- Sovereignty points ------------------------------------------------ */
+.hm-points {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--s7) var(--s8);
+  margin: 0;
+}
+.hm-point dt {
+  font-size: var(--t-md);
+  font-weight: 500;
+  color: var(--c-heading);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid rgba(248, 184, 88, .35);
+}
+.hm-point dd {
+  margin: var(--s4) 0 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  color: var(--c-ink-2);
+}
+
+/* ---- Services ---------------------------------------------------------- */
+/* Bordered cells rather than the 1px-gap hairline trick. With seven items
+   in a four-column grid that technique leaves a phantom eighth cell where
+   the container's line colour shows through — it cannot survive an item
+   count that is not a multiple of the column count.
+
+   Flatter than the product cards on purpose: services are a list to read,
+   products are the things being sold. */
+.hm-services {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--s4);
+}
+.hm-service {
+  background: transparent;
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius);
+  padding: var(--s6);
+  display: flex;
+  flex-direction: column;
+}
+.hm-service:hover { border-color: #2c5290; }
+.hm-service__shape {
+  font-family: var(--font-data);
+  font-size: var(--t-2xs);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--c-ink-3);
+  margin: 0 0 var(--s4);
+}
+.hm-service__name {
+  font-size: var(--t-md);
+  font-weight: 500;
+  line-height: var(--lh-snug);
+  color: var(--c-heading);
+  margin: 0 0 var(--s3);
+}
+.hm-service__body {
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  color: var(--c-ink-2);
+  margin: 0;
+}
+
+@media (max-width: 860px) {
+  .hm-hero { padding: var(--s9) 0 var(--s8); }
+  .hm-hero__title { font-size: var(--t-2xl); }
+  .hm-proof { grid-template-columns: 1fr; gap: var(--s6); }
+  .hm-section { padding: var(--s9) 0; }
+  .hm-section__head { margin-bottom: var(--s7); }
+}
+
+/* =========================================================================
    Legacy surface — globals.css on a dark ground
 
    globals.css was written for a white page and hardcodes light grounds in

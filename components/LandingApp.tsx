@@ -10,6 +10,10 @@ import AgentLogo from "@/components/AgentLogo";
 import AgentCard from "@/components/AgentCard";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
+import HomeHero from "@/components/home/HomeHero";
+import ProductGrid from "@/components/home/ProductGrid";
+import Sovereignty from "@/components/home/Sovereignty";
+import ServicesGrid from "@/components/home/ServicesGrid";
 import type {
   AssetPassport,
   RegistryCard,
@@ -43,7 +47,6 @@ export default function LandingApp({
   featured: AssetPassport | null;
 }) {
   const [q, setQ] = useState("");
-  const [heroQ, setHeroQ] = useState("");
   const [fn, setFn] = useState("");
   const [mp, setMp] = useState("");
   const [dep, setDep] = useState("");
@@ -95,14 +98,6 @@ export default function LandingApp({
     }
     return m;
   }, [cards]);
-
-  const popular = useMemo(
-    () =>
-      Object.entries(counts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 4),
-    [counts]
-  );
 
   const blobs = useMemo(() => {
     const m = new Map<string, string>();
@@ -184,21 +179,14 @@ export default function LandingApp({
     router.push(`/marketplace?${serializeCriteria(c)}`);
   };
 
-  const runHeroSearch = () => {
-    const c = defaultCriteria();
-    if (heroQ.trim()) c.q = heroQ;
-    const qs = serializeCriteria(c);
-    router.push(qs ? `/marketplace?${qs}` : "/marketplace");
-  };
-
   return (
     <>
       <SiteHeader
         current="overview"
         wide
         sections={[
-          { href: "#use-cases", label: "Use cases" },
-          { href: "#top-agents", label: "Top agents" },
+          { href: "#products", label: "Products" },
+          { href: "#services", label: "Services" },
           { href: "#provenance", label: "Provenance" },
           { href: "#registry", label: "Registry" },
         ]}
@@ -206,134 +194,13 @@ export default function LandingApp({
       />
 
       <main id="top">
-        <section className="hero">
-          <div className="container">
-            <div className="hero-inner">
-              <div className="hero-copy">
-                <div className="kicker">
-                  <span className="pulse-dot" /> The intelligence layer for AI agents
-                </div>
-                <h1>
-                  Find the right AI agent.
-                  <br />
-                  <span>Know what’s behind it.</span>
-                </h1>
-                <p>
-                  Discover agents by business or mission use case, compare vendors and
-                  user feedback, then inspect the provenance of the build before you
-                  adopt.
-                </p>
-                <div className="hero-search">
-                  <span className="search-icon">⌕</span>
-                  <input
-                    type="search"
-                    placeholder="What do you want an agent to do?"
-                    aria-label="Search AI agents"
-                    value={heroQ}
-                    onChange={(e) => setHeroQ(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") runHeroSearch();
-                    }}
-                  />
-                  <button onClick={runHeroSearch}>Search registry</button>
-                </div>
-                <div className="popular">
-                  <b>Popular:</b>
-                  {popular.map(([name, n]) => (
-                    <button key={name} onClick={() => pickUseCase(name)}>
-                      {name} ({n})
-                    </button>
-                  ))}
-                </div>
-              </div>
+        <HomeHero agentCount={stats?.agents ?? cards.length} />
 
-              <div className="hero-proof" aria-label="Registry highlights">
-                <div className="proof-card main-proof">
-                  <div className="proof-label">Agent trust snapshot</div>
-                  {featured && (
-                    <>
-                      <div className="proof-agent">
-                        <AgentLogo name={featured.name} id={featured.source_product_id} logo={featured.logo} />
-                        <div>
-                          <b>{featured.name}</b>
-                          <small>{featured.publisher}</small>
-                        </div>
-                        <span className="rating">
-                          {featured.rating ? `${featured.rating} ★` : "Not rated"}
-                        </span>
-                      </div>
-                      <div className="proof-row">
-                        <span>Evidence tier</span>
-                        <b
-                          className={`status ${
-                            featured.provenance === "Verified" ? "verified" : "success"
-                          }`}
-                        >
-                          {featured.evidence_tier}
-                        </b>
-                      </div>
-                      <div className="proof-row">
-                        <span>Provenance</span>
-                        <b
-                          className={`status ${
-                            featured.provenance === "Verified" ? "verified" : "caution"
-                          }`}
-                        >
-                          {featured.provenance}
-                        </b>
-                      </div>
-                      <div className="proof-row">
-                        <span>Provenance reach</span>
-                        <b>{featured.reach}%</b>
-                      </div>
-                      <div className="reach-bar">
-                        <i style={{ width: `${featured.reach}%` }} />
-                      </div>
-                      <div className="proof-row">
-                        <span>Evidence risk</span>
-                        <b className="status caution">{featured.risk}</b>
-                      </div>
-                      <div className="proof-foot">
-                        <span>
-                          {featured.price_band} · {featured.price_note}
-                        </span>
-                        <span>{featured.delivery}</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-                <div className="floating-proof fp-one">
-                  {featured?.provenance === "Verified"
-                    ? "✓ Microsoft 365 Certified"
-                    : "✓ Publisher attested"}
-                </div>
-                <div className="floating-proof fp-two">
-                  {featured
-                    ? `${featured.layers_known} of ${featured.layers_tracked} build layers traced`
-                    : ""}
-                </div>
-              </div>
-            </div>
+        <ProductGrid />
 
-            <div className="registry-metrics" aria-label="Registry scale">
-              <div className="registry-metric">
-                <b>{stats?.marketplaces ?? 0}</b>
-                <span>Marketplaces accessed</span>
-                <small>Live capture sources</small>
-              </div>
-              <div className="registry-metric">
-                <b>{(stats?.agents ?? cards.length).toLocaleString()}</b>
-                <span>AI agents indexed</span>
-                <small>Captured from marketplace listings</small>
-              </div>
-              <div className="registry-metric">
-                <b>{stats?.certified ?? 0}</b>
-                <span>Independently certified</span>
-                <small>Microsoft 365 Certified attestation</small>
-              </div>
-            </div>
-          </div>
-        </section>
+        <Sovereignty />
+
+        <ServicesGrid />
 
         <section className="section use-cases" id="use-cases">
           <div className="container">
