@@ -37,6 +37,8 @@ export default function SiteFooter({
         <nav className="st-footer__nav" aria-label="Footer">
           <Link href="/">Overview</Link>
           <Link href="/marketplace">Browse AI &amp; Agents</Link>
+          <Link href="/products">Products</Link>
+          <Link href="/services">Services</Link>
           <Link href="/partners">Partners</Link>
           <Link href="/company">Company</Link>
           <Link href="/news">News</Link>

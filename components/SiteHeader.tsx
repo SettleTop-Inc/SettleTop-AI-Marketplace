@@ -63,6 +63,8 @@ export default function SiteHeader({
               Overview
             </Link>
           )}
+          <Link href="/products">Products</Link>
+          <Link href="/services">Services</Link>
           <Link href="/partners">Partners</Link>
           <Link href="/company">Company</Link>
           <Link href="/news">News</Link>
