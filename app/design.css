@@ -73,36 +73,49 @@
   /* ---- Colour ---------------------------------------------------------
      Brand navy and gold are fixed. Everything else is a neutral ramp.
      -------------------------------------------------------------------- */
-  /* Sampled from settletop.com and from the logo's own pixels, not
-     eyeballed: #0F2453 is the site's heading navy, #061C3B its darkest
-     ground, #B9921D the computed colour of the live h1, and #F8B858 the
-     dominant colour of the logo mark itself. */
-  --c-ink: #10233d;         /* primary text */
-  --c-ink-2: #46566f;       /* secondary text */
-  --c-ink-3: #6b7a90;       /* tertiary / captions */
-  --c-navy: #0f2453;        /* brand, headings, primary action */
-  --c-navy-deep: #061c3b;   /* darkest ground */
-  --c-gold: #b9921d;        /* accent — text-safe on white (4.6:1) and on navy */
-  --c-gold-bright: #f8b858; /* the mark's own gold — graphics, accents on dark */
+  /* Brand literals, sampled from settletop.com and the logo's own pixels:
+     #0F2453 is the site's heading navy, #061C3B its darkest ground,
+     #B9921D the computed colour of the live h1, #F8B858 the dominant
+     colour of the logo mark. */
+  --c-navy: #0f2453;
+  --c-navy-deep: #061c3b;
+  --c-gold: #f8b858;        /* the mark's gold — the readable one on dark */
+  --c-gold-deep: #b9921d;   /* for the rare light-ground context */
+  --c-gold-bright: #f8b858; /* retained: still referenced as a graphic accent */
 
-  --c-paper: #ffffff;
-  --c-surface: #f7f9fc;     /* page ground behind cards */
-  --c-surface-2: #eef2f8;   /* inset wells */
-  --c-line: #dfe5ee;        /* borders */
-  --c-line-soft: #ebeff5;   /* internal dividers */
+  /* Grounds, darkest first. The brand's own #061C3B is the page; cards lift
+     off it rather than the page lifting off white. */
+  --c-paper: #0b2242;       /* raised card */
+  --c-surface: #061c3b;     /* page ground */
+  --c-surface-2: #12305a;   /* inset wells, chips */
+  --c-line: #1d3a68;        /* borders */
+  --c-line-soft: #162e56;   /* internal dividers */
+
+  --c-ink: #eef3fa;         /* primary text */
+  --c-ink-2: #b6c6dd;       /* secondary text */
+  --c-ink-3: #8ba0bf;       /* tertiary / captions */
+
+  /* Roles, split out of --c-navy. On white it could be heading colour,
+     button ground and link colour at once; on a navy page those are three
+     different jobs and collapsing them paints navy on navy. */
+  --c-heading: #ffffff;
+  --c-link: var(--c-gold);
+  --c-action-bg: var(--c-gold);
+  --c-action-fg: #0a1c33;
+  --c-action-bg-hover: #ffc978;
 
   /* Evidence semantics. These four are the only saturated colours in the
      product. "Unknown" is deliberately the loudest: the first rule of this
      registry is that Unknown means Unknown, so it must not read as a
      neutral absence. */
-  --c-verified: #0b2b52;
-  --c-verified-bg: #e8eefa;
-  --c-disclosed: #1a6b48;
-  --c-disclosed-bg: #e4f3ec;
-  --c-partial: #8a5a0b;
-  --c-partial-bg: #fbf0dc;
-  --c-unknown: #a81f38;
-  --c-unknown-bg: #fceaed;
+  --c-verified: #a8c6ff;
+  --c-verified-bg: rgba(96, 146, 232, .18);
+  --c-disclosed: #74dcac;
+  --c-disclosed-bg: rgba(58, 190, 132, .16);
+  --c-partial: #f4c874;
+  --c-partial-bg: rgba(230, 170, 60, .16);
+  --c-unknown: #ff9aac;
+  --c-unknown-bg: rgba(226, 68, 100, .22);
 
   --radius-sm: 4px;
   --radius: 8px;
@@ -158,7 +171,7 @@ body {
 .st-prose a:not([class]),
 .st-record__value a:not([class]),
 .st-note a:not([class]) {
-  color: var(--c-navy);
+  color: var(--c-link);
   text-decoration: underline;
   text-underline-offset: 2px;
   text-decoration-thickness: 1px;
@@ -166,7 +179,7 @@ body {
 }
 .st-prose a:not([class]):hover,
 .st-record__value a:not([class]):hover,
-.st-note a:not([class]):hover { text-decoration-color: var(--c-navy); }
+.st-note a:not([class]):hover { text-decoration-color: var(--c-link); }
 
 :where(a, button, input, select, summary):focus-visible {
   outline: 2px solid var(--c-gold);
@@ -203,7 +216,7 @@ body {
   align-items: center;
   /* Near-opaque: at .88 the content scrolling underneath showed through
      and muddied the wordmark. */
-  background: rgba(255, 255, 255, .97);
+  background: rgba(6, 28, 59, .92);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--c-line);
 }
@@ -243,9 +256,9 @@ body {
   text-decoration: none;
   padding: var(--s2) 0;
 }
-.st-header__nav a:hover { color: var(--c-navy); }
+.st-header__nav a:hover { color: var(--c-link); }
 .st-header__nav a[aria-current="page"] {
-  color: var(--c-navy);
+  color: var(--c-heading);
   box-shadow: inset 0 -2px 0 var(--c-gold-bright);
 }
 .st-header__actions {
@@ -280,7 +293,7 @@ body {
 
 .st-footer {
   background: var(--c-navy-deep);
-  color: #c7d2e4;
+  color: var(--c-ink-2);
   padding: var(--s9) 0 var(--s7);
   margin-top: var(--s10);
 }
@@ -295,18 +308,18 @@ body {
   margin: var(--s4) 0 0;
   font-size: var(--t-sm);
   font-weight: 300;
-  color: #9fb0c9;
+  color: var(--c-ink-3);
   max-width: 42ch;
 }
 .st-footer__nav { display: flex; flex-direction: column; gap: var(--s3); }
 .st-footer__nav a {
   font-size: var(--t-sm);
-  color: #c7d2e4;
+  color: var(--c-ink-2);
   text-decoration: none;
 }
 .st-footer__nav a:hover { color: var(--c-gold-bright); }
 .st-footer__legal { text-align: right; }
-.st-footer__legal p { margin: 0; font-size: var(--t-2xs); color: #7e90ab; }
+.st-footer__legal p { margin: 0; font-size: var(--t-2xs); color: var(--c-ink-3); }
 .st-footer__meta {
   font-family: var(--font-data);
   margin-bottom: var(--s2) !important;
@@ -339,7 +352,7 @@ body {
   font-weight: 500;
   letter-spacing: normal;
   line-height: var(--lh-tight);
-  color: var(--c-navy);
+  color: var(--c-heading);
   margin: 0;
 }
 h1.st-display { font-size: var(--t-2xl); }
@@ -447,7 +460,7 @@ h3.st-display { font-size: var(--t-lg); }
   font-family: var(--font-data);
   font-size: var(--t-sm);
   font-weight: 500;
-  color: var(--c-navy);
+  color: var(--c-heading);
 }
 .st-ledger__cells {
   display: grid;
@@ -462,7 +475,7 @@ h3.st-display { font-size: var(--t-lg); }
   box-shadow: inset 0 0 0 1px rgba(16, 35, 61, .06);
 }
 .st-ledger__cell--on {
-  background: var(--c-navy);
+  background: var(--c-gold);
   box-shadow: none;
 }
 
@@ -543,7 +556,7 @@ h3.st-display { font-size: var(--t-lg); }
 }
 .st-record__row > .st-stamp { justify-self: start; }
 .st-record__row:last-child { border-bottom: 0; }
-.st-record__row:nth-child(even) { background: #fbfcfe; }
+.st-record__row:nth-child(even) { background: rgba(255, 255, 255, .025); }
 .st-record__label {
   font-size: var(--t-xs);
   color: var(--c-ink-3);
@@ -638,7 +651,7 @@ h3.st-display { font-size: var(--t-lg); }
   transition: border-color .15s, box-shadow .15s;
 }
 .st-card:hover {
-  border-color: #c9d4e4;
+  border-color: #2c5290;
   box-shadow: var(--shadow);
 }
 
@@ -655,7 +668,7 @@ h3.st-display { font-size: var(--t-lg); }
   font-weight: 600;
   line-height: var(--lh-tight);
   letter-spacing: -.01em;
-  color: var(--c-navy);
+  color: var(--c-heading);
   margin: 0;
 }
 .st-card__pub {
@@ -666,7 +679,7 @@ h3.st-display { font-size: var(--t-lg); }
 .st-card__save {
   border: 0;
   background: transparent;
-  color: #a7b2c3;
+  color: var(--c-ink-3);
   font-size: 18px;
   line-height: 1;
   padding: var(--s1);
@@ -785,20 +798,26 @@ h3.st-display { font-size: var(--t-lg); }
   transition: background .15s, border-color .15s, color .15s;
 }
 .st-btn--primary {
-  background: var(--c-navy);
-  color: #fff;
-  border-color: var(--c-navy);
+  background: var(--c-action-bg);
+  color: var(--c-action-fg);
+  border-color: var(--c-action-bg);
 }
 .st-btn--primary:hover { background: var(--c-navy-deep); border-color: var(--c-navy-deep); }
+/* Lifts off a --c-paper card rather than matching it, which on the old
+   light palette it could get away with. */
 .st-btn--secondary {
-  background: var(--c-paper);
+  background: var(--c-surface-2);
   color: var(--c-ink);
   border-color: var(--c-line);
 }
-.st-btn--secondary:hover { background: var(--c-surface); border-color: #c8d2e2; }
+.st-btn--secondary:hover {
+  background: #17396b;
+  border-color: var(--c-gold);
+  color: var(--c-gold);
+}
 .st-btn--quiet {
   background: transparent;
-  color: var(--c-navy);
+  color: var(--c-link);
   border-color: transparent;
   padding-inline: 0;
 }
@@ -823,7 +842,7 @@ h3.st-display { font-size: var(--t-lg); }
   text-decoration: none;
   margin-bottom: var(--s6);
 }
-.st-back:hover { color: var(--c-navy); }
+.st-back:hover { color: var(--c-link); }
 
 .st-passport-id {
   display: grid;
@@ -854,7 +873,7 @@ h3.st-display { font-size: var(--t-lg); }
   font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: 600;
-  color: var(--c-navy);
+  color: var(--c-link);
   cursor: pointer;
   list-style: none;
   padding: var(--s2) 0;
@@ -891,6 +910,178 @@ details[open] > .st-disclosure::before { content: "− "; }
   .st-passport-id { grid-template-columns: 1fr; gap: var(--s4); }
   h1.st-display { font-size: var(--t-xl); }
 }
+
+/* =========================================================================
+   Legacy surface — globals.css on a dark ground
+
+   globals.css was written for a white page and hardcodes light grounds in
+   roughly two dozen rules. Measured on the landing page after the palette
+   flipped: 145 contrast failures and 1,219 elements still painting a light
+   background, some at a 1.0 ratio — invisible.
+
+   globals.css declares its own :root vars, so redefining those here flips
+   most of the surface in one move; the rest are literal hex grounds that
+   need naming individually.
+
+   Sections replaced by the new homepage will shed these overrides with
+   them. The registry section survives, and it is the reason this block
+   exists rather than waiting.
+   ========================================================================= */
+
+:root {
+  --ink: var(--c-ink);
+  --muted: var(--c-ink-3);
+  --line: var(--c-line);
+  --soft: var(--c-paper);
+  --softblue: var(--c-surface-2);
+  --blue: var(--c-gold);
+  --blue2: var(--c-gold);
+  --shadow: 0 4px 16px rgba(0, 0, 0, .35);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, .45);
+}
+
+/* Page grounds */
+.hero {
+  background:
+    radial-gradient(circle at 80% 18%, rgba(248, 184, 88, .10), transparent 30%),
+    radial-gradient(circle at 16% 28%, rgba(96, 146, 232, .10), transparent 30%),
+    var(--c-surface);
+  border-bottom: 1px solid var(--c-line);
+}
+.agents-section,
+.registry-section { background: var(--c-surface); border-color: var(--c-line); }
+.provenance-section { background: var(--c-surface); }
+footer { background: var(--c-surface); }
+
+/* Raised panels */
+.proof-card,
+.usecase-card,
+.registry-metrics,
+.filters,
+.registry-search,
+.prov-map,
+.node,
+.floating-proof,
+.empty-state,
+.provenance-value-grid div,
+.modal-card,
+.segmented button,
+.top-agent-card,
+.registry-card {
+  background: var(--c-paper);
+  border-color: var(--c-line);
+  color: var(--c-ink);
+}
+.provenance-workbench { border-color: var(--c-line); }
+.prov-sidebar { background: var(--c-surface-2); border-right-color: var(--c-line); }
+.graph-shell { background-image: radial-gradient(rgba(255, 255, 255, .07) .7px, transparent .7px); }
+.connectors path { stroke: var(--c-line); }
+.unknown-node { background: rgba(226, 68, 100, .10); }
+
+/* Inset wells */
+.passport-summary div,
+.access-box,
+.modal-note,
+.agent-tags span,
+.usecase-icon,
+.value-icon,
+.kicker {
+  background: var(--c-surface-2);
+  border-color: var(--c-line);
+  color: var(--c-ink-2);
+}
+.usecase-icon, .value-icon { color: var(--c-gold); }
+.reach-bar, .reach-track { background: var(--c-surface-2); }
+.ring:before { background: var(--c-surface-2); }
+
+/* Controls */
+.filters select,
+.registry-search input,
+.hero-search {
+  background: var(--c-paper);
+  border-color: var(--c-line);
+  color: var(--c-ink);
+}
+.filters select option { background: var(--c-paper); color: var(--c-ink); }
+.secondary-btn {
+  background: var(--c-surface-2);
+  border-color: var(--c-line);
+  color: var(--c-ink);
+}
+.secondary-btn:hover { background: #17396b; }
+.primary-btn, .hero-search button {
+  background: var(--c-action-bg);
+  color: var(--c-action-fg);
+}
+.primary-btn:hover, .hero-search button:hover { background: var(--c-action-bg-hover); }
+.light-btn { background: var(--c-action-bg); color: var(--c-action-fg); }
+.text-btn, .link-btn { color: var(--c-link); }
+.segmented button { color: var(--c-ink-2); border-right-color: var(--c-line); }
+.segmented button.active { background: var(--c-surface-2); color: var(--c-gold); }
+.bookmark, .arrow { color: var(--c-ink-3); }
+
+/* Status chips: reuse the evidence roles rather than a second palette */
+.status.success, .prov-pill.disclosed, .evidence.disclosed, .disclosed-mini,
+.availability-pill.available {
+  background: var(--c-disclosed-bg); color: var(--c-disclosed) !important; border-color: transparent;
+}
+.status.verified, .prov-pill.verified, .evidence.verified, .verified-mini {
+  background: var(--c-verified-bg); color: var(--c-verified) !important; border-color: transparent;
+}
+.status.caution, .prov-pill.partial, .evidence.partial,
+.availability-pill.coming-soon {
+  background: var(--c-partial-bg); color: var(--c-partial) !important; border-color: transparent;
+}
+.prov-pill.unknown, .evidence.unknown, .unknown-mini {
+  background: var(--c-unknown-bg); color: var(--c-unknown) !important; border-color: transparent;
+}
+.risk-low { color: var(--c-disclosed) !important; }
+.risk-medium { color: var(--c-partial) !important; }
+.risk-high, .risk-unknown { color: var(--c-unknown) !important; }
+.registry-disclosure {
+  background: rgba(248, 184, 88, .07);
+  border-color: rgba(248, 184, 88, .22);
+  color: var(--c-ink-2);
+}
+.registry-disclosure b { color: var(--c-ink); }
+.evidence-tier-row { border-top-color: var(--c-line-soft); }
+.evidence-tier-row span { color: var(--c-gold); }
+.evidence-tier-row small, .availability-row, .marketplace-source { color: var(--c-ink-3); }
+.reach-mini { border-top-color: var(--c-line-soft); }
+
+/* Text colours globals.css hardcodes rather than taking from --ink/--muted.
+   Each of these was measured failing on the dark ground: .node b at 1.3:1
+   across all nine graph nodes, .registry-metric b at 1.12:1, .rating at
+   1.68:1. */
+.node b, .map-title b, .registry-metric b, .prov-agent-title b,
+.reach-score > div:last-child b, .ring b, .proof-agent b,
+.agent-title h3, .filter-title b, .result-total b, .empty-state b {
+  color: var(--c-ink);
+}
+.registry-metric span, .rating, .proof-row b, .risk-summary span,
+.agent-bottom > div:first-child b {
+  color: var(--c-ink-2);
+}
+.search-icon, .proof-label, .center-node small, .node span,
+.registry-metric small, .proof-foot, .legend span, .reach-score p,
+.result-total span, .agent-title span, .filters label, .agent-bottom small,
+.risk-label span, .usecase-card small, .map-title span {
+  color: var(--c-ink-3);
+}
+
+/* Remaining light grounds: the segmented control's own box and any input
+   still defaulting to the UA white. */
+.segmented { background: var(--c-paper); border-color: var(--c-line); }
+.hero-search input, .registry-search input, .filters select {
+  background: transparent;
+  color: var(--c-ink);
+}
+.hero-search { background: var(--c-paper); }
+.hero-search input::placeholder,
+.registry-search input::placeholder { color: var(--c-ink-3); }
+
+/* The dark CTA band already was dark; it only needs the accent aligning. */
+.vendor-cta { background: linear-gradient(110deg, #04162f, var(--c-navy) 65%, #17396b); }
 
 /* =========================================================================
    Landing surface
@@ -947,7 +1138,7 @@ details[open] > .st-disclosure::before { content: "− "; }
 .hero-search input { font-size: var(--t-base); }
 .hero-search button { font-size: var(--t-sm); }
 .popular { font-size: var(--t-xs); color: var(--c-ink-3); }
-.popular button { font-size: var(--t-xs); color: var(--c-navy); }
+.popular button { font-size: var(--t-xs); color: var(--c-link); }
 
 /* ---- Registry metrics band -------------------------------------------- */
 .registry-metric b { font-size: var(--t-2xl); }
@@ -1020,7 +1211,7 @@ details[open] > .st-disclosure::before { content: "− "; }
 
 /* ---- Vendor CTA + footer ------------------------------------------------ */
 .vendor-cta { padding: var(--s10) 0; }
-.vendor-cta p { font-size: var(--t-base); color: #dbe4f0; }
+.vendor-cta p { font-size: var(--t-base); color: var(--c-ink-2); }
 .footer-grid > p { font-size: var(--t-2xs); color: var(--c-ink-3); }
 footer { padding: var(--s6) 0; }
 
