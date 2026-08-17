@@ -187,8 +187,6 @@ export default function LandingApp({
         sections={[
           { href: "#products", label: "Products" },
           { href: "#services", label: "Services" },
-          { href: "#provenance", label: "Provenance" },
-          { href: "#registry", label: "Registry" },
         ]}
         onVendor={() => setModal({ kind: "vendor" })}
       />
