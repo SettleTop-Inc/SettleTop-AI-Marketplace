@@ -687,7 +687,11 @@ h3.st-display { font-size: var(--t-lg); }
   border-top: 1px solid var(--c-line-soft);
 }
 .st-card__foot { margin-bottom: var(--s5); }
-.st-card__actions > * { flex: 1; }
+/* Wrap to stacked full-width buttons rather than letting a label break
+   across two lines — the landing grid's cards are ~310px, where "Open
+   passport" does not fit beside "Quick look". */
+.st-card__actions { flex-wrap: wrap; }
+.st-card__actions > * { flex: 1 1 130px; white-space: nowrap; }
 
 /* =========================================================================
    Buttons
@@ -815,6 +819,176 @@ details[open] > .st-disclosure::before { content: "− "; }
 @media (max-width: 720px) {
   .st-passport-id { grid-template-columns: 1fr; gap: var(--s4); }
   h1.st-display { font-size: var(--t-xl); }
+}
+
+/* =========================================================================
+   Landing surface
+
+   globals.css still carries the landing page's original rules. Rather than
+   unpick nine eras of appended patches inside minified lines, this block
+   re-bases that surface on the design system: it loads after globals.css,
+   so equal-specificity selectors here win.
+
+   The landing page had 127 text elements under 12px, bottoming out at 7px
+   in the provenance graph. Nothing below 12px survives.
+   ========================================================================= */
+
+/* ---- Display voice --------------------------------------------------
+   The landing page spoke in tight bold sans while the passport and the
+   marketplace speak in Source Serif, so the two halves of the product
+   read as two different products. One voice across all three. */
+.hero h1,
+.section-heading h2,
+.provenance-intro h2,
+.vendor-cta h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -.02em;
+}
+.hero h1 { font-size: var(--t-3xl); line-height: 1.08; }
+.section-heading h2,
+.provenance-intro h2 { font-size: var(--t-2xl); line-height: var(--lh-tight); }
+.vendor-cta h2 { font-size: var(--t-2xl); }
+
+.overline, .light-overline {
+  font-family: var(--font-data);
+  font-size: var(--t-2xs);
+  font-weight: 500;
+  letter-spacing: .14em;
+}
+.hero-copy > p { font-size: var(--t-md); color: var(--c-ink-2); }
+.section-heading p,
+.provenance-intro p { font-size: var(--t-base); color: var(--c-ink-2); }
+.kicker { font-size: var(--t-xs); }
+.section { padding: var(--s10) 0; }
+.use-cases { padding-top: var(--s9); }
+
+/* ---- Hero proof card -------------------------------------------------- */
+.proof-label { font-size: var(--t-2xs); letter-spacing: .12em; }
+.proof-agent b { font-size: var(--t-md); }
+.proof-agent small { font-size: var(--t-xs); color: var(--c-ink-3); }
+.rating { font-size: var(--t-sm); }
+.proof-row { font-size: var(--t-sm); }
+.proof-row b { font-size: var(--t-sm); }
+.status { font-size: var(--t-2xs) !important; letter-spacing: .04em; }
+.proof-foot { font-size: var(--t-2xs); color: var(--c-ink-3); }
+.floating-proof { font-size: var(--t-2xs); color: var(--c-ink-2); }
+.hero-search input { font-size: var(--t-base); }
+.hero-search button { font-size: var(--t-sm); }
+.popular { font-size: var(--t-xs); color: var(--c-ink-3); }
+.popular button { font-size: var(--t-xs); color: var(--c-navy); }
+
+/* ---- Registry metrics band -------------------------------------------- */
+.registry-metric b { font-size: var(--t-2xl); }
+.registry-metric span { font-size: var(--t-sm); font-weight: 700; }
+.registry-metric small { font-size: var(--t-2xs); color: var(--c-ink-3); }
+
+/* ---- Use cases -------------------------------------------------------- */
+/* Titles run to one or two lines depending on the name, which left every
+   description and count in a row starting at a different height. Reserve
+   two lines for the title and pin the count to the bottom, so the row
+   reads as a row. */
+.usecase-card { padding: var(--s5); min-height: 0; align-items: stretch; }
+.usecase-card > div { display: flex; flex-direction: column; height: 100%; }
+.usecase-card b {
+  font-size: var(--t-md);
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+  min-height: calc(var(--t-md) * var(--lh-tight) * 2);
+}
+.usecase-card p { font-size: var(--t-sm); line-height: var(--lh-snug); color: var(--c-ink-2); margin: var(--s2) 0 var(--s4); }
+.usecase-card small { font-size: var(--t-2xs); color: var(--c-ink-3); margin-top: auto; }
+.usecase-card .arrow { align-self: start; }
+.usecase-icon { font-size: var(--t-sm); }
+.usecase-grid { gap: var(--s4); }
+
+/* ---- Provenance workbench --------------------------------------------
+   The graph nodes ran at 7px and 7.5px — the smallest type anywhere in
+   the product, and unreadable. Nodes widened to carry 12px comfortably. */
+.prov-agent-title b { font-size: var(--t-md); }
+.prov-agent-title small { font-size: var(--t-xs); color: var(--c-ink-3); }
+.ring b { font-size: var(--t-lg); }
+.ring small { font-size: var(--t-2xs); }
+.reach-score > div:last-child b { font-size: var(--t-sm); }
+.reach-score p { font-size: var(--t-xs); color: var(--c-ink-3); line-height: var(--lh-snug); }
+.legend span { font-size: var(--t-2xs); color: var(--c-ink-3); }
+.risk-summary { font-size: var(--t-xs); }
+.prov-sidebar .secondary-btn { font-size: var(--t-xs); }
+.map-title b { font-size: var(--t-sm); }
+.map-title span { font-size: var(--t-2xs); color: var(--c-ink-3); }
+.node { width: 190px; padding: var(--s3); }
+.node span { font-size: var(--t-2xs); letter-spacing: .07em; }
+.node b { font-size: var(--t-xs); margin: var(--s1) 0; }
+.node .mini-status { font-size: var(--t-2xs); padding: 2px var(--s2); }
+.center-node { width: 210px; }
+.center-node b { font-size: var(--t-sm); }
+.center-node small { font-size: var(--t-2xs); }
+.center-node .node-icon { font-size: var(--t-2xs); width: 32px; height: 32px; }
+.footer-brand .brand-registry { font-size: var(--t-2xs); }
+.provenance-value-grid b { font-size: var(--t-md); font-family: var(--font-display); font-weight: 600; }
+.provenance-value-grid p { font-size: var(--t-sm); line-height: var(--lh-snug); color: var(--c-ink-2); }
+.provenance-value-grid div { padding: var(--s5); }
+
+/* ---- Registry section -------------------------------------------------- */
+.result-total b { font-size: var(--t-xl); font-family: var(--font-display); font-weight: 600; }
+.result-total span { font-size: var(--t-2xs); color: var(--c-ink-3); }
+.filter-title b { font-size: var(--t-sm); }
+.filter-title button { font-size: var(--t-xs); color: var(--c-gold); font-weight: 600; }
+.filters { padding: var(--s5); border-radius: var(--radius-lg); }
+.filters label { font-size: var(--t-2xs); color: var(--c-ink-3); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; margin-top: var(--s4); }
+.filters select { font-size: var(--t-sm); padding: 9px var(--s3); border-radius: var(--radius); color: var(--c-ink); }
+.registry-search { height: 44px; border-radius: var(--radius); }
+.registry-search input { font-size: var(--t-sm); }
+.registry-grid { gap: var(--s5); }
+.registry-layout { grid-template-columns: 240px minmax(0, 1fr); gap: var(--s7); }
+.segmented button { font-size: var(--t-xs); padding: 9px var(--s3); }
+.empty-state { border-radius: var(--radius-lg); padding: var(--s10) var(--s6); }
+.empty-state b { font-size: var(--t-md); }
+.empty-state p { font-size: var(--t-sm); color: var(--c-ink-2); }
+
+/* ---- Vendor CTA + footer ------------------------------------------------ */
+.vendor-cta { padding: var(--s10) 0; }
+.vendor-cta p { font-size: var(--t-base); color: #dbe4f0; }
+.footer-grid > p { font-size: var(--t-2xs); color: var(--c-ink-3); }
+footer { padding: var(--s6) 0; }
+
+/* The landing page's own registry section is not the marketplace, and
+   giving it the marketplace's heading made the two surfaces read as
+   duplicates of each other. */
+.registry-section .section-heading p { max-width: 62ch; }
+/* .registry-title centres its three children against a tall heading block,
+   which left the count and the marketplace link hanging at unrelated
+   heights. Sit them on the heading's baseline instead. */
+.registry-section .section-heading { align-items: flex-end; }
+.registry-section .result-total b { line-height: 1; }
+.registry-section .link-btn { font-size: var(--t-sm); font-weight: 600; white-space: nowrap; }
+
+/* The graph's nodes are absolutely positioned at percentage tops (10/27/
+   44/61% of a 500px shell = 85px apart). Legible type makes a node 98px
+   tall, so every consecutive pair overlapped by 13px. Percentages cannot
+   express "don't collide"; fixed offsets can. Node height is constant
+   because .node b is nowrap + ellipsis, so 126px spacing holds at every
+   width above the mobile breakpoint.
+
+   Scoped to min-width 581px: globals.css restacks the graph into a single
+   column below that, inside a media query that this later sheet would
+   otherwise outrank. */
+@media (min-width: 581px) {
+  .graph-shell { height: 560px; }
+  .n1, .r1 { top: 20px; }
+  .n2, .r2 { top: 146px; }
+  .n3, .r3 { top: 272px; }
+  .n4, .r4 { top: 398px; }
+}
+
+@media (max-width: 1050px) {
+  .node { width: 165px; }
+  .center-node { width: 190px; }
+}
+@media (max-width: 580px) {
+  .hero h1 { font-size: var(--t-2xl); }
+  .section-heading h2, .provenance-intro h2 { font-size: var(--t-xl); }
 }
 
 @media (prefers-reduced-motion: reduce) {
