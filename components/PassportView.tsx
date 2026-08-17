@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { AssetPassport } from "@/lib/types";
 import AgentLogo from "@/components/AgentLogo";
 import {
@@ -19,9 +20,14 @@ import {
  * The agent passport.
  *
  * Every row prints what the capture says or it prints Unknown. Nothing here
- * infers, rounds, or fills a gap from a neighbouring field. The status chip on
+ * infers, rounds, or fills a gap from a neighbouring field. The stamp on
  * each row records WHO said it: Verified means Microsoft assessed it on the
  * app certification page, Disclosed means the publisher stated it.
+ *
+ * Laid out as a document, not a card: an identity band carrying the name,
+ * publisher and layer ledger, then the record itself in a centred measure.
+ * It previously reused .modal-card — an 820px MODAL style — as its page
+ * layout, which left the whole page flush-left inside a centred container.
  */
 
 function Row({
@@ -33,16 +39,73 @@ function Row({
   value: string;
   status: string;
 }) {
+  const unknown = !isKnown(value);
   return (
-    <div className="passport-row">
-      <span>{label}</span>
-      <b>{value}</b>
-      <em className={`evidence ${statusClass(status)}`}>{status}</em>
+    <div className="st-record__row">
+      <span className="st-record__label">{label}</span>
+      <span
+        className={`st-record__value${unknown ? " st-record__value--unknown" : ""}`}
+      >
+        {value}
+      </span>
+      <em className={`st-stamp st-stamp--${statusClass(status)}`}>{status}</em>
     </div>
   );
 }
 
-export default function PassportView({ a }: { a: AssetPassport }) {
+/**
+ * The layer ledger.
+ *
+ * One cell per tracked layer, filled up to layers_known. Both numbers come
+ * from the database — this renders them, it does not decide which specific
+ * layers are known, which would be a second definition of a derived value.
+ */
+function LayerLedger({ known, tracked }: { known: number; tracked: number }) {
+  return (
+    <div className="st-ledger">
+      <div className="st-ledger__head">
+        <span className="st-ledger__label">Provenance reach</span>
+        <span className="st-ledger__count">
+          {known} of {tracked} layers traced
+        </span>
+      </div>
+      <div
+        className="st-ledger__cells"
+        role="img"
+        aria-label={`${known} of ${tracked} build layers traced`}
+      >
+        {Array.from({ length: tracked }, (_, i) => (
+          <span
+            key={i}
+            className={`st-ledger__cell${i < known ? " st-ledger__cell--on" : ""}`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SectionHead({ children, count }: { children: string; count?: string }) {
+  return (
+    <div className="st-section-head">
+      <h2 className="st-display">{children}</h2>
+      {count && <span className="st-section-head__count">{count}</span>}
+    </div>
+  );
+}
+
+/**
+ * `back` is present on the standalone /agent/[id] route and absent when the
+ * landing page renders the same record inside its modal, which supplies its
+ * own close control and its own width.
+ */
+export default function PassportView({
+  a,
+  back,
+}: {
+  a: AssetPassport;
+  back?: { href: string; label: string };
+}) {
   const ev = a.evidence ?? {};
   const cert = a.certification;
   const fromListing = (v: string) => statusFor(v, "listing", cert);
@@ -71,299 +134,298 @@ export default function PassportView({ a }: { a: AssetPassport }) {
 
   const renderBlock = (b: (typeof blocks)[number], i: number) =>
     b.type === "ul" ? (
-      <ul
-        key={i}
-        className="passport-description"
-        style={{ margin: "0 0 9px", paddingLeft: 16 }}
-      >
+      <ul key={i} style={{ margin: "0 0 var(--s4)", paddingLeft: "1.1em" }}>
         {b.items.map((item, j) => (
-          <li key={j} style={{ margin: "2px 0" }}>
+          <li key={j} style={{ margin: "var(--s1) 0" }}>
             {item}
           </li>
         ))}
       </ul>
     ) : (
-      <p key={i} className="passport-description" style={{ margin: "0 0 9px" }}>
-        {b.text}
-      </p>
+      <p key={i}>{b.text}</p>
     );
 
   return (
-    <>
-      <div className="passport-header">
-        <AgentLogo name={a.name} id={a.source_product_id} logo={a.logo} large />
-        <div>
-          <span className="overline">AGENT PASSPORT</span>
-          <h2>{a.name}</h2>
-          <p>
-            {a.publisher ?? UNKNOWN} · {a.function_category}
-          </p>
-        </div>
-      </div>
-
-      <div className="agent-tags" style={{ marginTop: 12 }}>
-        {(a.surfaces ?? []).map((s) => (
-          <span key={s}>{s}</span>
-        ))}
-        {!a.capture_complete && <span>Partial capture</span>}
-        <span>{a.cert_label}</span>
-      </div>
-
-      <div className="passport-summary">
-        <div>
-          <span>User rating</span>
-          <b>{ratingLabel(a)}</b>
-          <small>{ratingDetail(a)}</small>
-        </div>
-        <div>
-          <span>Runs on</span>
-          <b>{runsOn(a)}</b>
-          <small>{a.delivery ?? UNKNOWN}</small>
-        </div>
-        <div>
-          <span>Provenance</span>
-          <b>{a.provenance}</b>
-          <small>{a.reach}% of the build traced</small>
-        </div>
-        <div>
-          <span>Evidence risk</span>
-          <b className={`risk-${a.risk.toLowerCase()}`}>{a.risk}</b>
-          <small>{a.risk_basis}</small>
-        </div>
-      </div>
-
-      <div className="modal-reach">
-        <div>
-          <b>Provenance reach</b>
-          <span>
-            {a.layers_known} of {a.layers_tracked} layers
-          </span>
-        </div>
-        <div className="reach-track large-track">
-          <i style={{ width: `${a.reach}%` }} />
-        </div>
-      </div>
-
-      <h3 className="modal-section-title">What the publisher says</h3>
-      {blocks.length === 0 ? (
-        <p className="passport-description">
-          This listing publishes no overview text.
-        </p>
-      ) : (
-        <>
-          {head.map(renderBlock)}
-          {rest.length > 0 && (
-            <details style={{ marginTop: 2 }}>
-              <summary
-                style={{
-                  cursor: "pointer",
-                  fontSize: 10,
-                  color: "#0b2b52",
-                  fontWeight: 700,
-                  listStyle: "none",
-                }}
-              >
-                Show the rest of the publisher’s description ({restLines} more
-                line{restLines === 1 ? "" : "s"})
-              </summary>
-              <div style={{ marginTop: 9 }}>{rest.map(renderBlock)}</div>
-            </details>
+    <div className={`st-passport${back ? "" : " st-passport--embedded"}`}>
+      <div className="st-passport-band">
+        <div className="st-shell">
+          {back && (
+            <Link className="st-back" href={back.href}>
+              ← {back.label}
+            </Link>
           )}
-        </>
-      )}
 
-      <h3 className="modal-section-title">Agent build and provenance</h3>
-      <div className="passport-table">
-        <Row
-          label="Creator / vendor"
-          value={a.publisher ?? UNKNOWN}
-          status={isKnown(a.publisher) ? "Disclosed" : UNKNOWN}
-        />
-        <Row label="Primary model / LLM" value={llm} status={fromListing(llm)} />
-        <Row label="Agent framework" value={framework} status={fromListing(framework)} />
-        <Row label="Tools / MCP" value={tools} status={fromListing(tools)} />
-        <Row label="Data sources" value={data} status={fromListing(data)} />
-        <Row
-          label="Integrations / works with"
-          value={integrations}
-          status={fromListing(integrations)}
-        />
-        <Row label="Hosting model" value={hosting} status={fromCert(hosting)} />
-        <Row label="Data residency" value={residency} status={fromCert(residency)} />
-        <Row
-          label="Microsoft Graph permissions"
-          value={permissions}
-          status={fromCert(permissions)}
-        />
-        <Row
-          label="Compliance certifications"
-          value={compliance}
-          status={fromCert(compliance)}
-        />
-        <Row
-          label="Deployment / government readiness"
-          value={deployment}
-          status={fromListing(deployment)}
-        />
-        <Row
-          label="Access model"
-          value={a.acquire_using ?? UNKNOWN}
-          status={isKnown(a.acquire_using) ? "Disclosed" : UNKNOWN}
-        />
-        <Row
-          label="Listing version"
-          value={
-            (a.listing_version ? `v${a.listing_version}` : "Not stated") +
-            (a.listing_updated ? ` · updated ${a.listing_updated}` : "")
-          }
-          status={a.listing_version || a.listing_updated ? "Disclosed" : UNKNOWN}
-        />
-        <Row label="Marketplace / source" value={a.marketplace_name} status="Disclosed" />
-        <Row label="Source type" value="Marketplace listing" status="Disclosed" />
-        <Row
-          label="Evidence tier"
-          value={a.evidence_tier ?? UNKNOWN}
-          status={cert === "microsoft_365_certified" ? "Verified" : "Disclosed"}
-        />
-      </div>
-
-      {a.cert_data_handling && (
-        <div className="modal-note">
-          <b>Customer data, per the certification page</b>
-          <p>{a.cert_data_handling}</p>
-        </div>
-      )}
-
-      {a.plans?.length > 0 && (
-        <>
-          <h3 className="modal-section-title">Plans and pricing as listed</h3>
-          <div className="passport-table">
-            {a.plans.slice(0, 12).map((p, i) => {
-              const meters = planMeters(p.unit);
-              return (
-                <div
-                  key={i}
-                  className="passport-row"
-                  style={{ gridTemplateColumns: "1.5fr 1fr", alignItems: "start" }}
-                >
-                  <div>
-                    <b style={{ fontSize: 10 }}>{p.name ?? "Plan"}</b>
-                    {meters.length > 0 && (
-                      <ul
-                        style={{
-                          margin: "5px 0 0",
-                          paddingLeft: 14,
-                          fontSize: 8.5,
-                          color: "#7f899b",
-                          lineHeight: 1.5,
-                        }}
-                      >
-                        {meters.slice(0, 6).map((m, j) => (
-                          <li key={j} style={{ margin: "2px 0" }}>
-                            {m}
-                          </li>
-                        ))}
-                        {meters.length > 6 && (
-                          <li style={{ margin: "2px 0" }}>
-                            and {meters.length - 6} more meters
-                          </li>
-                        )}
-                      </ul>
-                    )}
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <b style={{ fontSize: 11 }}>{p.price ?? "Not stated"}</b>
-                    {p.billing && (
-                      <div
-                        style={{ fontSize: 8.5, color: "#7f899b", marginTop: 3 }}
-                      >
-                        {p.billing}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-            {a.plans.length > 12 && (
-              <div className="passport-row" style={{ gridTemplateColumns: "1fr" }}>
-                <span>and {a.plans.length - 12} more plans on the listing</span>
+          <div className="st-passport-id">
+            <AgentLogo name={a.name} id={a.source_product_id} logo={a.logo} large />
+            <div className="st-passport-id__text">
+              <span className="st-eyebrow">Agent passport</span>
+              <h1 className="st-display">{a.name}</h1>
+              <p className="st-passport-id__by">
+                <b>{a.publisher ?? UNKNOWN}</b> · {a.function_category}
+              </p>
+              <div className="st-tags">
+                {(a.surfaces ?? []).map((s) => (
+                  <span className="st-tag" key={s}>
+                    {s}
+                  </span>
+                ))}
+                {!a.capture_complete && <span className="st-tag">Partial capture</span>}
+                <span className="st-tag">{a.cert_label}</span>
               </div>
-            )}
+            </div>
           </div>
-        </>
-      )}
 
-      <h3 className="modal-section-title">Sources</h3>
-      <div className="passport-table">
-        <SourceRow
-          label="Marketplace listing"
-          url={a.listing_url}
-          note="marketplace.microsoft.com"
-          verified={false}
-        />
-        {a.cert_url && (
-          <SourceRow
-            label="App certification"
-            url={a.cert_url}
-            note="learn.microsoft.com"
-            verified={cert === "microsoft_365_certified"}
+          <LayerLedger known={a.layers_known} tracked={a.layers_tracked} />
+        </div>
+      </div>
+
+      <div className="st-shell st-passport-body">
+        <div className="st-fields">
+          <div className="st-field">
+            <span className="st-field__label">User rating</span>
+            <span className="st-field__value">{ratingLabel(a)}</span>
+            <span className="st-field__note">{ratingDetail(a)}</span>
+          </div>
+          <div className="st-field">
+            <span className="st-field__label">Runs on</span>
+            <span className="st-field__value">{runsOn(a)}</span>
+            <span className="st-field__note">{a.delivery ?? UNKNOWN}</span>
+          </div>
+          <div className="st-field">
+            <span className="st-field__label">Provenance</span>
+            <span className="st-field__value">{a.provenance}</span>
+            <span className="st-field__note">{a.reach}% of the build traced</span>
+          </div>
+          <div className="st-field">
+            <span className="st-field__label">Evidence risk</span>
+            <span
+              className={`st-field__value st-field__value--${a.risk.toLowerCase()}`}
+            >
+              {a.risk}
+            </span>
+            <span className="st-field__note">{a.risk_basis}</span>
+          </div>
+        </div>
+
+        <SectionHead>What the publisher says</SectionHead>
+        <div className="st-prose">
+          {blocks.length === 0 ? (
+            <p>This listing publishes no overview text.</p>
+          ) : (
+            <>
+              {head.map(renderBlock)}
+              {rest.length > 0 && (
+                <details>
+                  <summary className="st-disclosure">
+                    Show the rest of the publisher’s description ({restLines} more
+                    line{restLines === 1 ? "" : "s"})
+                  </summary>
+                  <div style={{ marginTop: "var(--s4)" }}>{rest.map(renderBlock)}</div>
+                </details>
+              )}
+            </>
+          )}
+        </div>
+
+        <SectionHead>Agent build and provenance</SectionHead>
+        <div className="st-record">
+          <Row
+            label="Creator / vendor"
+            value={a.publisher ?? UNKNOWN}
+            status={isKnown(a.publisher) ? "Disclosed" : UNKNOWN}
           />
+          <Row label="Primary model / LLM" value={llm} status={fromListing(llm)} />
+          <Row label="Agent framework" value={framework} status={fromListing(framework)} />
+          <Row label="Tools / MCP" value={tools} status={fromListing(tools)} />
+          <Row label="Data sources" value={data} status={fromListing(data)} />
+          <Row
+            label="Integrations / works with"
+            value={integrations}
+            status={fromListing(integrations)}
+          />
+          <Row label="Hosting model" value={hosting} status={fromCert(hosting)} />
+          <Row label="Data residency" value={residency} status={fromCert(residency)} />
+          <Row
+            label="Microsoft Graph permissions"
+            value={permissions}
+            status={fromCert(permissions)}
+          />
+          <Row
+            label="Compliance certifications"
+            value={compliance}
+            status={fromCert(compliance)}
+          />
+          <Row
+            label="Deployment / government readiness"
+            value={deployment}
+            status={fromListing(deployment)}
+          />
+          <Row
+            label="Access model"
+            value={a.acquire_using ?? UNKNOWN}
+            status={isKnown(a.acquire_using) ? "Disclosed" : UNKNOWN}
+          />
+          <Row
+            label="Listing version"
+            value={
+              (a.listing_version ? `v${a.listing_version}` : "Not stated") +
+              (a.listing_updated ? ` · updated ${a.listing_updated}` : "")
+            }
+            status={a.listing_version || a.listing_updated ? "Disclosed" : UNKNOWN}
+          />
+          <Row label="Marketplace / source" value={a.marketplace_name} status="Disclosed" />
+          <Row label="Source type" value="Marketplace listing" status="Disclosed" />
+          <Row
+            label="Evidence tier"
+            value={a.evidence_tier ?? UNKNOWN}
+            status={cert === "microsoft_365_certified" ? "Verified" : "Disclosed"}
+          />
+        </div>
+
+        {a.cert_data_handling && (
+          <div className="st-callout">
+            <p className="st-callout__title">
+              Customer data, per the certification page
+            </p>
+            <p>{a.cert_data_handling}</p>
+          </div>
         )}
-        {(a.product_links ?? []).slice(0, 5).map((l, i) => (
+
+        {a.plans?.length > 0 && (
+          <>
+            <SectionHead count={`${a.plans.length} listed`}>
+              Plans and pricing as listed
+            </SectionHead>
+            <div className="st-record">
+              {a.plans.slice(0, 12).map((p, i) => {
+                const meters = planMeters(p.unit);
+                return (
+                  <div
+                    key={i}
+                    className="st-record__row"
+                    style={{ gridTemplateColumns: "minmax(0,2fr) minmax(0,1fr)" }}
+                  >
+                    <div>
+                      <span className="st-record__value">{p.name ?? "Plan"}</span>
+                      {meters.length > 0 && (
+                        <ul
+                          style={{
+                            margin: "var(--s2) 0 0",
+                            paddingLeft: "1.1em",
+                            fontSize: "var(--t-xs)",
+                            color: "var(--c-ink-3)",
+                            lineHeight: 1.6,
+                          }}
+                        >
+                          {meters.slice(0, 6).map((m, j) => (
+                            <li key={j}>{m}</li>
+                          ))}
+                          {meters.length > 6 && (
+                            <li>and {meters.length - 6} more meters</li>
+                          )}
+                        </ul>
+                      )}
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <span className="st-record__value">{p.price ?? "Not stated"}</span>
+                      {p.billing && (
+                        <div
+                          style={{
+                            fontSize: "var(--t-xs)",
+                            color: "var(--c-ink-3)",
+                            marginTop: "var(--s1)",
+                          }}
+                        >
+                          {p.billing}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {a.plans.length > 12 && (
+                <div
+                  className="st-record__row"
+                  style={{ gridTemplateColumns: "1fr" }}
+                >
+                  <span className="st-record__label">
+                    and {a.plans.length - 12} more plans on the listing
+                  </span>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        <SectionHead>Sources</SectionHead>
+        <div className="st-record">
           <SourceRow
-            key={`p${i}`}
-            label={l.label ?? "Publisher link"}
-            url={l.url}
-            note={l.label ?? l.url}
+            label="Marketplace listing"
+            url={a.listing_url}
+            note="marketplace.microsoft.com"
             verified={false}
           />
-        ))}
-        {(a.legal_links ?? []).slice(0, 4).map((l, i) => (
-          <SourceRow
-            key={`l${i}`}
-            label={l.label ?? "Legal"}
-            url={l.url}
-            note={l.label ?? l.url}
-            verified={false}
-          />
-        ))}
-      </div>
-
-      <div className="access-box">
-        <div>
-          <span>Pricing</span>
-          <b>{a.price_band ?? UNKNOWN}</b>
-          <small>{a.price_note ?? "Not stated"}</small>
+          {a.cert_url && (
+            <SourceRow
+              label="App certification"
+              url={a.cert_url}
+              note="learn.microsoft.com"
+              verified={cert === "microsoft_365_certified"}
+            />
+          )}
+          {(a.product_links ?? []).slice(0, 5).map((l, i) => (
+            <SourceRow
+              key={`p${i}`}
+              label={l.label ?? "Publisher link"}
+              url={l.url}
+              note={l.label ?? l.url}
+              verified={false}
+            />
+          ))}
+          {(a.legal_links ?? []).slice(0, 4).map((l, i) => (
+            <SourceRow
+              key={`l${i}`}
+              label={l.label ?? "Legal"}
+              url={l.url}
+              note={l.label ?? l.url}
+              verified={false}
+            />
+          ))}
         </div>
-        <div>
-          <span>Delivery</span>
-          <b>{a.delivery ?? UNKNOWN}</b>
-          <small>{a.support ?? a.marketplace_name}</small>
-        </div>
-        <a
-          className="primary-btn external-link"
-          href={a.listing_url}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Open the source listing ↗
-        </a>
-      </div>
 
-      <p
-        className="passport-description"
-        style={{ marginTop: 14, fontSize: 9 }}
-      >
-        Evidence risk is the share of the build you cannot see before you deploy,
-        not a security rating. It starts at the attestation level, then moves one
-        band on how much of the build this source can disclose that it actually
-        does. Three of the {a.layers_tracked} layers — hosting, data residency
-        and permission scope — are only ever stated on an app certification page,
-        so a listing without one is scored against the nine it can state. Every
-        value above is copied from this listing or its certification page.
-        Unknown means the source does not state it.
-      </p>
-    </>
+        <div className="st-access">
+          <div>
+            <span className="st-field__label">Pricing</span>
+            <div className="st-field__value">{a.price_band ?? UNKNOWN}</div>
+            <span className="st-field__note">{a.price_note ?? "Not stated"}</span>
+          </div>
+          <div>
+            <span className="st-field__label">Delivery</span>
+            <div className="st-field__value">{a.delivery ?? UNKNOWN}</div>
+            <span className="st-field__note">{a.support ?? a.marketplace_name}</span>
+          </div>
+          <a
+            className="st-btn st-btn--primary"
+            href={a.listing_url}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Open the source listing ↗
+          </a>
+        </div>
+
+        <p className="st-note">
+          Evidence risk is the share of the build you cannot see before you deploy,
+          not a security rating. It starts at the attestation level, then moves one
+          band on how much of the build this source can disclose that it actually
+          does. Three of the {a.layers_tracked} layers — hosting, data residency
+          and permission scope — are only ever stated on an app certification page,
+          so a listing without one is scored against the nine it can state. Every
+          value above is copied from this listing or its certification page.
+          Unknown means the source does not state it.
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -379,19 +441,16 @@ function SourceRow({
   verified: boolean;
 }) {
   return (
-    <div className="passport-row">
-      <span>{label}</span>
-      <b>
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ color: "#0b2b52" }}
-        >
+    <div className="st-record__row">
+      <span className="st-record__label">{label}</span>
+      <span className="st-record__value">
+        <a href={url} target="_blank" rel="noopener noreferrer">
           {note} ↗
         </a>
-      </b>
-      <em className={`evidence ${verified ? "verified" : "disclosed"}`}>Source</em>
+      </span>
+      <em className={`st-stamp st-stamp--${verified ? "verified" : "disclosed"}`}>
+        Source
+      </em>
     </div>
   );
 }

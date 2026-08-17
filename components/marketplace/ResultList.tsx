@@ -69,15 +69,30 @@ export default function ResultList({
               <div className="mkt-row-sub">{c.publisher ?? UNKNOWN}</div>
             </div>
             <div className="mkt-row-sub mkt-hide-sm">{c.function_category ?? UNKNOWN}</div>
-            <span className={`prov-pill ${statusClass(c.provenance)}`}>{c.provenance}</span>
+            <span className={`st-stamp st-stamp--${statusClass(c.provenance)}`}>
+              {c.provenance}
+            </span>
             <div className="mkt-row-reach">
-              <div className="reach-track">
-                <i style={{ width: `${c.reach}%` }} />
+              <div
+                className="st-ledger__cells"
+                role="img"
+                aria-label={`${c.layers_known} of ${c.layers_tracked} build layers traced`}
+              >
+                {Array.from({ length: c.layers_tracked }, (_, i) => (
+                  <span
+                    key={i}
+                    className={`st-ledger__cell${
+                      i < c.layers_known ? " st-ledger__cell--on" : ""
+                    }`}
+                  />
+                ))}
               </div>
-              <b>{c.reach}%</b>
+              <b className="st-ledger__count">
+                {c.layers_known}/{c.layers_tracked}
+              </b>
             </div>
-            <div className="risk-label">
-              <b className={`risk-${c.risk.toLowerCase()}`}>{c.risk}</b>
+            <div className="mkt-row-risk">
+              <b className={`st-field__value--${c.risk.toLowerCase()}`}>{c.risk}</b>
               {c.risk_basis && <small className="mkt-risk-basis">{c.risk_basis}</small>}
             </div>
           </article>

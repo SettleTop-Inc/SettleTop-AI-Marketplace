@@ -42,3 +42,6 @@ secrets.*
 .supabase/
 .netrc
 .npmrc
+
+# Local Claude Code tooling (launch configs, worktrees)
+.claude/

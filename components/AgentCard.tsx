@@ -6,6 +6,17 @@ import { MAX_COMPARE } from "@/lib/marketplace-query";
 import { UNKNOWN, statusClass } from "@/lib/present";
 import type { RegistryCard } from "@/lib/types";
 
+/**
+ * One agent, as a card. Shared by the landing page and the marketplace.
+ *
+ * Laid out in four zones — identity, what it does, what is proven, what it
+ * costs — so the eye can skip to the one it wants. The previous version
+ * stacked eight undifferentiated rows of 9–11px text carrying six competing
+ * colours, which is what made the grid read as noise.
+ *
+ * The evidence zone is the point of the product, so it gets the tinted well
+ * and the ledger; everything else stays quiet around it.
+ */
 export default function AgentCard({
   c,
   compact = false,
@@ -17,6 +28,8 @@ export default function AgentCard({
   atCap,
 }: {
   c: RegistryCard;
+  /** Landing "top agents" strip. Currently identical treatment; kept so the
+      two call sites stay distinguishable if they diverge again. */
   compact?: boolean;
   /** Absent on surfaces with no passport modal — the button is then omitted. */
   onOpen?: (m: { kind: "agent"; id: string }) => void;
@@ -43,39 +56,21 @@ export default function AgentCard({
    */
   atCap?: boolean;
 }) {
-  /**
-   * The passport control is an anchor, not a button, so middle-click and
-   * open-in-new-tab keep working. But `globals.css` styles this row with
-   * `.card-buttons button`, and `.get-btn` only carries the colours — so an
-   * anchor lands here with no padding, no radius, browser-default 16px/400
-   * type, and the UA underline. These properties restate that button rule.
-   *
-   * They live here rather than in the stylesheet because CLAUDE.md freezes
-   * `globals.css`: restyle the components, not the sheet.
-   */
-  const passportLink: React.CSSProperties = {
-    display: "grid",
-    placeItems: "center",
-    padding: 9,
-    borderRadius: 6,
-    fontSize: 10,
-    fontWeight: 700,
-    textDecoration: "none",
-    border: "1px solid #334056",
-    // Alone in a two-column grid it would sit half-width against the left
-    // edge. `View details` is absent wherever there is no passport modal.
-    gridColumn: onOpen ? undefined : "1 / -1",
-  };
+  const href = `/agent/${encodeURIComponent(c.source_product_id)}${
+    from ? `?from=${from}${back ? `&back=${encodeURIComponent(back)}` : ""}` : ""
+  }`;
+
   return (
-    <article className={compact ? "top-agent-card" : "registry-card"}>
-      <div className="agent-card-head">
+    <article className={`st-card${compact ? " st-card--compact" : ""}`}>
+      <div className="st-card__head">
         <AgentLogo name={c.name} id={c.source_product_id} logo={c.logo} />
-        <div className="agent-title">
-          <h3>{c.name}</h3>
-          <span>{c.publisher ?? UNKNOWN}</span>
+        <div className="st-card__id">
+          <h3 className="st-card__name">{c.name}</h3>
+          <p className="st-card__pub">{c.publisher ?? UNKNOWN}</p>
         </div>
         {onSelect ? (
           <label
+            className="st-card__select"
             title={
               atCap && !selected
                 ? `Comparison is capped at ${MAX_COMPARE} agents`
@@ -83,7 +78,7 @@ export default function AgentCard({
             }
             aria-disabled={(atCap && !selected) || undefined}
           >
-            <span className="mkt-sr">Select {c.name} to compare</span>
+            <span className="st-sr">Select {c.name} to compare</span>
             <input
               type="checkbox"
               checked={!!selected}
@@ -92,72 +87,90 @@ export default function AgentCard({
             />
           </label>
         ) : (
-          <button className="bookmark" title="Save agent">
+          <button className="st-card__save" title="Save agent" aria-label="Save agent">
             ☆
           </button>
         )}
       </div>
-      <p className="agent-description">{c.tagline ?? "Not stated"}</p>
-      <div className="agent-tags">
-        <span>{c.function_category}</span>
-        <span>{c.delivery}</span>
-        <span>{c.cert_label}</span>
+
+      <p className="st-card__meta">
+        {c.rating ? `${c.rating} ★ · ${c.rating_count} reviews` : "Not rated"}
+        {" · "}
+        {c.marketplace_name}
+      </p>
+
+      <p className="st-card__tagline">{c.tagline ?? "Not stated"}</p>
+
+      <div className="st-card__tags">
+        {c.function_category && <span className="st-tag">{c.function_category}</span>}
+        {c.delivery && <span className="st-tag">{c.delivery}</span>}
       </div>
-      <div className="agent-meta-row">
-        <span>
-          {c.rating ? (
-            <>
-              <b>{c.rating}</b> ★ <small>({c.rating_count})</small>
-            </>
-          ) : (
-            <>
-              <b>Not rated</b> <small>(0 reviews)</small>
-            </>
+
+      <div className="st-card__evidence">
+        <div className="st-ledger">
+          <div className="st-ledger__head">
+            <span className="st-ledger__label">Provenance reach</span>
+            <span className="st-ledger__count">
+              {c.layers_known} of {c.layers_tracked}
+            </span>
+          </div>
+          <div
+            className="st-ledger__cells"
+            role="img"
+            aria-label={`${c.layers_known} of ${c.layers_tracked} build layers traced`}
+          >
+            {Array.from({ length: c.layers_tracked }, (_, i) => (
+              <span
+                key={i}
+                className={`st-ledger__cell${
+                  i < c.layers_known ? " st-ledger__cell--on" : ""
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+        <div className="st-card__stamps">
+          <span className={`st-stamp st-stamp--${statusClass(c.provenance)}`}>
+            {c.provenance}
+          </span>
+          <span className="st-card__tier">{c.evidence_tier ?? UNKNOWN}</span>
+        </div>
+      </div>
+
+      <div className="st-card__foot">
+        <div className="st-card__cell">
+          <span className="st-field__label">Pricing</span>
+          <span className="st-card__figure">{c.price_band ?? UNKNOWN}</span>
+          {/* Many listings set price_note to the same word as price_band
+              ("Free" / "Free"); printing it twice reads as a rendering bug. */}
+          {c.price_note && c.price_note !== c.price_band && (
+            <span className="st-field__note">{c.price_note}</span>
           )}
-        </span>
-        <span className={`prov-pill ${statusClass(c.provenance)}`}>{c.provenance}</span>
-      </div>
-      <div className="availability-row">
-        <span className="availability-pill available">Available</span>
-        <span>{c.marketplace_name}</span>
-      </div>
-      <div className="evidence-tier-row">
-        <span>{c.evidence_tier}</span>
-        <small>Marketplace listing</small>
-      </div>
-      <div className="reach-mini">
-        <div>
-          <span>Provenance reach</span>
-          <b>{c.reach}%</b>
         </div>
-        <div className="reach-track">
-          <i style={{ width: `${c.reach}%` }} />
+        {/* risk_basis is deliberately not repeated here: on a card it reads
+            "Microsoft 365 Certified · 12 of 12 disclosable layers stated",
+            which is the evidence tier and the ledger count already shown
+            directly above. It stays on the passport, where it has room. */}
+        <div className="st-card__cell st-card__cell--end">
+          <span className="st-field__label">Evidence risk</span>
+          <span
+            className={`st-card__figure st-field__value--${c.risk.toLowerCase()}`}
+          >
+            {c.risk}
+          </span>
         </div>
       </div>
-      <div className="agent-bottom">
-        <div>
-          <b>{c.price_band}</b>
-          <small>{c.price_note}</small>
-        </div>
-        <div className="risk-label">
-          <span>Evidence risk</span>
-          <b className={`risk-${c.risk.toLowerCase()}`}>{c.risk}</b>
-          {c.risk_basis && <small>{c.risk_basis}</small>}
-        </div>
-      </div>
-      <div className="card-buttons">
+
+      <div className="st-card__actions">
         {onOpen && (
-          <button onClick={() => onOpen({ kind: "agent", id: c.source_product_id })}>
-            View details
+          <button
+            className="st-btn st-btn--secondary"
+            onClick={() => onOpen({ kind: "agent", id: c.source_product_id })}
+          >
+            Quick look
           </button>
         )}
-        <Link
-          className="get-btn"
-          href={`/agent/${encodeURIComponent(c.source_product_id)}${
-            from ? `?from=${from}${back ? `&back=${encodeURIComponent(back)}` : ""}` : ""
-          }`}
-          style={passportLink}
-        >
+        <Link className="st-btn st-btn--primary" href={href}>
           Open passport
         </Link>
       </div>

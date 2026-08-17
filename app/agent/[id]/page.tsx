@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import PassportView from "@/components/PassportView";
+import SiteHeader from "@/components/SiteHeader";
 import { getPassport } from "@/lib/registry";
 
 export const revalidate = 300;
@@ -49,23 +49,15 @@ export default async function AgentPage({
   // anything it doesn't recognise rather than applying it.
   const back =
     from === "marketplace"
-      ? { href: `/marketplace${backQS ? `?${backQS}` : ""}`, label: "← Back to the marketplace" }
-      : { href: "/", label: "← Back to the registry" };
+      ? { href: `/marketplace${backQS ? `?${backQS}` : ""}`, label: "Back to the marketplace" }
+      : { href: "/", label: "Back to the overview" };
 
   return (
-    <main id="top">
-      <section className="section">
-        <div className="container">
-          <p style={{ marginBottom: 18 }}>
-            <Link className="link-btn" href={back.href}>
-              {back.label}
-            </Link>
-          </p>
-          <div className="modal-card" style={{ maxHeight: "none", boxShadow: "none" }}>
-            <PassportView a={a} />
-          </div>
-        </div>
-      </section>
-    </main>
+    <>
+      <SiteHeader current={from === "marketplace" ? "marketplace" : undefined} />
+      <main id="top">
+        <PassportView a={a} back={back} />
+      </main>
+    </>
   );
 }
