@@ -51,20 +51,21 @@ export default function SiteHeader({
         </Link>
 
         <nav className="st-header__nav" aria-label="Primary">
-          {sections
-            ? sections.map((s) => (
-                <a key={s.href} href={s.href}>
-                  {s.label}
-                </a>
-              ))
-            : (
-              <Link
-                href="/"
-                aria-current={current === "overview" ? "page" : undefined}
-              >
-                Overview
-              </Link>
-            )}
+          {/* The homepage adds its in-page anchors; the standing routes are
+              shown everywhere so no page is a dead end. */}
+          {sections?.map((s) => (
+            <a key={s.href} href={s.href}>
+              {s.label}
+            </a>
+          ))}
+          {!sections && (
+            <Link href="/" aria-current={current === "overview" ? "page" : undefined}>
+              Overview
+            </Link>
+          )}
+          <Link href="/partners">Partners</Link>
+          <Link href="/company">Company</Link>
+          <Link href="/news">News</Link>
         </nav>
 
         <div className="st-header__actions">

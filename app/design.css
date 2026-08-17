@@ -1181,6 +1181,150 @@ details[open] > .st-disclosure::before { content: "− "; }
   color: var(--c-ink-2);
 }
 
+/* =========================================================================
+   Company / Partners / News
+
+   Content pages carried over from settletop.com. They use the document
+   shell rather than the wide one — these are things to read.
+   ========================================================================= */
+
+.pg-hero {
+  background: var(--c-navy);
+  border-bottom: 1px solid var(--c-line);
+  padding: var(--s10) 0 var(--s9);
+}
+.pg-hero__title {
+  font-family: var(--font-display);
+  font-size: var(--t-2xl);
+  font-weight: 500;
+  line-height: var(--lh-tight);
+  color: var(--c-heading);
+  margin: var(--s4) 0 var(--s4);
+  max-width: 24ch;
+}
+.pg-hero__lede {
+  font-size: var(--t-md);
+  font-weight: 300;
+  color: var(--c-ink-2);
+  margin: 0;
+  max-width: 56ch;
+}
+.pg-subhead { font-size: var(--t-lg); margin: var(--s9) 0 var(--s5); }
+
+/* People. No photographs: the live site's are on its own CDN, and hotlinking
+   another host's images into this app is not a dependency worth taking for
+   a headshot. */
+.pg-people {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--s4);
+}
+.pg-person {
+  border: 1px solid var(--c-line);
+  border-left: 3px solid var(--c-accent);
+  border-radius: var(--radius);
+  padding: var(--s5);
+  background: var(--c-paper);
+}
+.pg-person__name {
+  font-size: var(--t-md);
+  font-weight: 500;
+  color: var(--c-heading);
+  margin: 0;
+}
+.pg-person__role {
+  font-size: var(--t-sm);
+  color: var(--c-ink-2);
+  margin: var(--s2) 0 0;
+}
+.pg-person__detail {
+  font-size: var(--t-xs);
+  color: var(--c-ink-3);
+  margin: var(--s1) 0 0;
+  line-height: var(--lh-snug);
+}
+
+/* The four lifecycle stages are an ordered path on the source page, so they
+   are an <ol> and the numbering is real rather than decorative. */
+.pg-paths {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: path;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--s4);
+}
+.pg-path {
+  counter-increment: path;
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius);
+  padding: var(--s5);
+  background: var(--c-paper);
+}
+.pg-path::before {
+  content: counter(path, decimal-leading-zero);
+  font-family: var(--font-data);
+  font-size: var(--t-2xs);
+  color: var(--c-accent);
+  display: block;
+  margin-bottom: var(--s3);
+}
+.pg-path__name {
+  font-size: var(--t-md);
+  font-weight: 500;
+  color: var(--c-heading);
+  margin: 0 0 var(--s2);
+}
+.pg-path__body {
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  color: var(--c-ink-2);
+  margin: 0;
+}
+.pg-neutral { margin-top: var(--s9); max-width: 74ch; }
+
+/* News reads as a dated index, so the date is a fixed column and the
+   headline is the link. */
+.pg-news { list-style: none; margin: 0; padding: 0; }
+.pg-news__item {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: var(--s6);
+  align-items: baseline;
+  padding: var(--s5) 0;
+  border-bottom: 1px solid var(--c-line-soft);
+}
+.pg-news__item:first-child { border-top: 1px solid var(--c-line-soft); }
+.pg-news__meta { display: flex; flex-direction: column; gap: var(--s1); }
+.pg-news__date {
+  font-family: var(--font-data);
+  font-size: var(--t-xs);
+  color: var(--c-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.pg-news__cats {
+  font-size: var(--t-2xs);
+  color: var(--c-accent);
+}
+.pg-news__title {
+  font-size: var(--t-md);
+  font-weight: 500;
+  line-height: var(--lh-snug);
+  color: var(--c-heading);
+  text-decoration: none;
+}
+.pg-news__title:hover { color: var(--c-accent); text-decoration: underline; }
+
+@media (max-width: 720px) {
+  .pg-news__item { grid-template-columns: 1fr; gap: var(--s2); }
+  .pg-hero { padding: var(--s9) 0 var(--s8); }
+  .pg-hero__title { font-size: var(--t-xl); }
+}
+
 /* ---- Marketplace hand-off ---------------------------------------------- */
 .hm-handoff {
   display: flex;
