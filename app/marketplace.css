@@ -1,0 +1,121 @@
+/* Marketplace-only styles. globals.css ships unchanged; every class here is
+   mkt- prefixed because App Router never unloads route CSS, so a bare class
+   name shared with globals.css would repaint "/" after a back-navigation. */
+.mkt-shell { background: #f8fafc; min-height: 100vh; }
+.mkt-bar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 12px;
+  padding: 12px 0; background: rgba(255,255,255,.97); border-bottom: 1px solid #e1e6ec;
+  backdrop-filter: blur(16px); }
+.mkt-back { font-size: 12px; font-weight: 700; color: #0b2b52; text-decoration: none; white-space: nowrap; }
+.mkt-search { flex: 1; display: grid; grid-template-columns: 30px 1fr; align-items: center;
+  height: 38px; background: #fff; border: 1px solid #d7dde8; border-radius: 8px; min-width: 0; }
+.mkt-search span { text-align: center; color: #8a94a5; }
+.mkt-search input { border: 0; background: transparent; font-size: 12px; padding-right: 10px; min-width: 0; }
+.mkt-search input:focus-visible { outline: 2px solid #0b2b52; outline-offset: 2px; border-radius: 6px; }
+.mkt-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 22px; padding: 22px 0 60px; }
+.mkt-rail { background: #fff; border: 1px solid #e1e6ec; border-radius: 10px; padding: 14px;
+  height: max-content; position: sticky; top: 74px; }
+.mkt-rail-head { display: flex; justify-content: space-between; align-items: center;
+  padding-bottom: 10px; border-bottom: 1px solid #e1e6ec; }
+.mkt-rail-head b { font-size: 12px; }
+.mkt-clear { border: 0; background: transparent; color: #c58d1d; font-size: 10px; font-weight: 700; }
+.mkt-group { border: 0; padding: 12px 0 0; margin: 0; }
+.mkt-group legend { font-size: 9px; font-weight: 800; letter-spacing: .08em;
+  text-transform: uppercase; color: #8a94a5; padding: 0; }
+.mkt-note { font-size: 9px; line-height: 1.5; color: #6d788c; margin: 5px 0 7px; }
+.mkt-facet { display: flex; align-items: center; gap: 7px; font-size: 10.5px; color: #44516a;
+  padding: 3px 0; cursor: pointer; }
+.mkt-facet input { margin: 0; }
+.mkt-facet input:focus-visible { outline: 2px solid #0b2b52; outline-offset: 2px; }
+.mkt-facet[aria-disabled="true"] { color: #a9b2c0; cursor: not-allowed; }
+.mkt-count { margin-left: auto; font-size: 9.5px; color: #8a94a5; font-variant-numeric: tabular-nums; }
+.mkt-results { min-width: 0; }
+.mkt-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.mkt-total b { font-size: 20px; }
+.mkt-total span { font-size: 10px; color: #8a94a5; margin-left: 5px; }
+.mkt-spacer { margin-left: auto; }
+.mkt-control { border: 1px solid #d4dae5; background: #fff; color: #44516a; border-radius: 6px;
+  padding: 8px 10px; font-size: 11px; font-weight: 700; }
+.mkt-control:focus-visible { outline: 2px solid #0b2b52; outline-offset: 2px; }
+.mkt-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
+.mkt-empty { background: #fff; border: 1px dashed #cbd3df; border-radius: 10px; text-align: center; padding: 46px; }
+.mkt-empty b { font-size: 14px; display: block; }
+.mkt-empty p { color: #5f6d7e; font-size: 11px; }
+.mkt-error { background: #fff5f5; border: 1px solid #f0c9c7; border-left: 3px solid #c23b36;
+  border-radius: 8px; padding: 18px; }
+.mkt-error b { font-size: 13px; display: block; color: #c23b36; }
+.mkt-error p { font-size: 11px; color: #5f6d7e; margin: 6px 0 0; }
+.mkt-pages { display: flex; justify-content: center; gap: 5px; margin-top: 24px; }
+.mkt-page { min-width: 30px; height: 30px; border: 1px solid #d4dae5; background: #fff;
+  border-radius: 6px; font-size: 11px; color: #44516a; }
+.mkt-page[aria-current="page"] { background: #0b2b52; color: #fff; border-color: #0b2b52; }
+.mkt-page:disabled { opacity: .4; }
+.mkt-page:focus-visible { outline: 2px solid #0b2b52; outline-offset: 2px; }
+.mkt-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 1050px) { .mkt-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 820px) {
+  .mkt-layout { grid-template-columns: 1fr; }
+  .mkt-rail { position: static; }
+}
+@media (max-width: 580px) { .mkt-grid { grid-template-columns: minmax(0, 1fr); } }
+.mkt-list { display: grid; gap: 6px; }
+.mkt-row { display: grid; grid-template-columns: 34px minmax(0, 2fr) minmax(0, 1fr) 96px 90px 108px;
+  gap: 12px; align-items: center; background: #fff; border: 1px solid #e1e6ec;
+  border-radius: 7px; padding: 9px 12px; }
+.mkt-row-name { font-size: 12px; font-weight: 700; margin: 0; }
+.mkt-row-sub { font-size: 9.5px; color: #8a94a5; }
+.mkt-row-reach { display: flex; align-items: center; gap: 7px; font-size: 10px; }
+.mkt-row-reach .reach-track { flex: 1; margin: 0; }
+/* risk_basis subtext in the list row: risk-label/risk-* are shared with
+   globals.css (same visual language as the card), but the extra line is
+   list-row-only, so it's mkt- prefixed per this file's own rule above. */
+.mkt-risk-basis { display: block; color: #8a94a5; font-size: 8.5px; line-height: 1.3; margin-top: 3px; }
+.mkt-toggle { display: flex; border: 1px solid #d4dae5; border-radius: 6px; overflow: hidden; }
+.mkt-toggle button { border: 0; border-right: 1px solid #e2e6ee; background: #fff;
+  padding: 8px 11px; font-size: 11px; font-weight: 700; color: #667085; }
+.mkt-toggle button:last-child { border-right: 0; }
+.mkt-toggle button[aria-pressed="true"] { background: #eef3f8; color: #0b2b52; }
+.mkt-toggle button:focus-visible { outline: 2px solid #0b2b52; outline-offset: -2px; }
+@media (max-width: 820px) {
+  .mkt-row { grid-template-columns: 34px minmax(0, 1fr) 76px 84px; }
+  .mkt-row-sub.mkt-hide-sm, .mkt-row-reach { display: none; }
+}
+
+/* Compare-select checkboxes on AgentCard and ResultList, at the MAX_COMPARE
+   cap: same aria-disabled treatment as .mkt-facet above, applied to the
+   checkbox itself since these labels carry no visible value text. Scoped to
+   .mkt-shell so it never reaches AgentCard's other caller, the landing page,
+   which has no compare tray and never sets aria-disabled here. */
+.mkt-shell label[aria-disabled="true"] { cursor: not-allowed; }
+.mkt-shell label[aria-disabled="true"] input[type="checkbox"] { cursor: not-allowed; opacity: .45; }
+
+/* Compare tray + table */
+.mkt-tray { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: #0b2b52;
+  color: #fff; padding: 11px 0; box-shadow: 0 -8px 24px rgba(11,35,66,.18); }
+.mkt-tray-inner { display: flex; align-items: center; gap: 12px; font-size: 12px; font-weight: 700; }
+.mkt-tray-list { display: flex; gap: 7px; flex-wrap: wrap; }
+.mkt-chip { background: rgba(255,255,255,.13); border: 0; color: #fff; border-radius: 999px;
+  padding: 5px 10px; font-size: 10.5px; }
+.mkt-cmp-wrap { overflow-x: auto; border: 1px solid #dce2eb; border-radius: 9px; background: #fff; }
+.mkt-cmp { border-collapse: collapse; width: 100%; min-width: 640px; }
+.mkt-cmp th, .mkt-cmp td { text-align: left; padding: 9px 12px; border-bottom: 1px solid #f0f3f7;
+  font-size: 11px; vertical-align: top; }
+.mkt-cmp thead th { background: #fbfcfe; border-bottom: 1px solid #e1e6ec; font-size: 12px; }
+.mkt-cmp tbody th { background: #fbfcfe; color: #5f6d7e; font-weight: 600; width: 170px; }
+.mkt-cmp tr.mkt-diff th { border-left: 3px solid #f2b84b; }
+.mkt-cmp tr.mkt-diff { background: #fffdf7; }
+.mkt-cmp .mkt-none { color: #8a94a5; font-style: italic; }
+.mkt-cmp-legend { display: flex; gap: 16px; font-size: 10.5px; color: #5f6d7e; margin-top: 10px; }
+/* Non-colour signal for a "differs" row: readable text, not reliant on hue,
+   so it reaches both screen readers and colour-blind sighted visitors —
+   the row tint + left border alone reach neither. */
+.mkt-diff-flag { margin-left: 7px; font-size: 8.5px; font-weight: 800; letter-spacing: .05em;
+  text-transform: uppercase; color: #8a6416; background: #fbe9c6; border-radius: 4px;
+  padding: 1px 5px; vertical-align: middle; }
+
+/* Selectable list rows (compare checkbox): one extra leading grid column,
+   only when ResultList is given onSelect. */
+.mkt-list-select .mkt-row { grid-template-columns: 22px 34px minmax(0, 2fr) minmax(0, 1fr) 96px 90px 108px; }
+.mkt-row-select { display: flex; align-items: center; justify-content: center; }
+@media (max-width: 820px) {
+  .mkt-list-select .mkt-row { grid-template-columns: 22px 34px minmax(0, 1fr) 76px 84px; }
+}
