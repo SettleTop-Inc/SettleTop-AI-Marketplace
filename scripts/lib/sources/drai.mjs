@@ -26,6 +26,22 @@ export const PRESS_URL = `${ORIGIN}/press-room`;
 export const PUBLISHER = "Data Room AI (DRAI)";
 export const SUPPORT_EMAIL = "corey@product-ties.com";
 
+/**
+ * The DRAI site mark, used for every DRAI asset.
+ *
+ * DRAI publishes no per-agent artwork, so there is nothing per-agent to find.
+ * This is the icon the site itself declares — the same image behind its
+ * favicon, apple-touch-icon and mask-icon — taken untransformed rather than
+ * through one of the Wix resize URLs, because those serve a 192px crop and the
+ * source is 174KB at full resolution. Archiving the crop would mean holding a
+ * worse copy than the publisher offers.
+ *
+ * capture_meta.logo_is_publisher_mark is set alongside it so nobody later reads
+ * twenty-three identical images as per-agent branding.
+ */
+export const PUBLISHER_MARK =
+  "https://static.wixstatic.com/media/998621_324d126c6a864d4cb77d872e484b12a6~mv2.png";
+
 /** The launch post for the platform itself. It is linked from the GovCon
  *  module tagline, so it looks like an agent link and is not one. */
 export const WORKSPACE_POST =
@@ -431,7 +447,10 @@ export function toPayload({ agent, post, cert, capturedAt }) {
         { label: "Press Room", url: PRESS_URL },
       ],
       legal_links: Object.entries(DOCS).map(([k, url]) => ({ label: k, url })),
-      logo_url: null, // set by the logo pass; DRAI publishes no per-agent mark
+      // The publisher mark, not a per-agent logo: DRAI has none. Set here
+      // rather than by a separate pass, because unlike Microsoft there is no
+      // DOM to inspect to decide which image is the logo.
+      logo_url: PUBLISHER_MARK,
       screenshot_urls: posted ? post.images : [],
       media_image_urls: [],
       // Left empty on purpose. Every technology DRAI names sits in the security
