@@ -56,7 +56,7 @@ async function pending() {
     if (want <= 0) break;
     const url =
       `${URL_BASE}/rest/v1/v_logo_status?state=${state}` +
-      `&select=source_product_id,name,link_id,logo_url` +
+      `&select=marketplace_id,source_product_id,name,link_id,logo_url` +
       // Ordered by a unique column: link_id is one row per capture link, so no
       // two rows can straddle a page boundary and be served twice or skipped.
       `&order=link_id.asc` +
@@ -83,13 +83,23 @@ async function pending() {
  */
 const STORAGE_SAFE = /[^A-Za-z0-9!\-_.*'()]/g;
 
-function storageKey(sourceProductId, ext) {
+/**
+ * The bucket prefix is the marketplace, not a constant. It was hardcoded to
+ * "microsoft/" when there was only one source; a DRAI slug written under that
+ * prefix would claim to be a Microsoft product, and two sources are free to
+ * mint the same slug.
+ *
+ * Existing objects are untouched by this change: Microsoft rows carry
+ * marketplace_id "microsoft", so they resolve to byte-identical paths and the
+ * 6,820 logos already in the bucket stay where they are.
+ */
+function storageKey(marketplaceId, sourceProductId, ext) {
   const safe = sourceProductId.replace(STORAGE_SAFE, "-");
   const stem =
     safe === sourceProductId
       ? sourceProductId
       : `${safe}-${createHash("sha256").update(sourceProductId).digest("hex").slice(0, 8)}`;
-  return `microsoft/${stem}.${ext}`;
+  return `${marketplaceId}/${stem}.${ext}`;
 }
 
 const EXT = {
@@ -110,7 +120,7 @@ async function archiveOne(row) {
 
   const hash = createHash("sha256").update(buf).digest("hex");
   // path is stable per product, so re-archiving overwrites rather than piling up
-  const path = storageKey(row.source_product_id, EXT[type]);
+  const path = storageKey(row.marketplace_id, row.source_product_id, EXT[type]);
 
   const up = await fetch(`${URL_BASE}/storage/v1/object/${BUCKET}/${path}`, {
     method: "POST",

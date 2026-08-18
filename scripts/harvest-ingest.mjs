@@ -14,7 +14,8 @@
  * One capture per product per sweep — the three fetch passes contribute to a
  * single observation rather than three, so the change feed stays meaningful.
  */
-import { readJsonl, toPayload, supabaseEnv, rpc, pool } from "./lib/marketplace.mjs";
+import { readJsonl, supabaseEnv, rpc, pool, dataPath } from "./lib/marketplace.mjs";
+import { toPayload, ID } from "./lib/sources/microsoft.mjs";
 
 const limitArg = process.argv.indexOf("--limit");
 const limit = limitArg > -1 ? Number(process.argv[limitArg + 1]) : 0;
@@ -23,11 +24,11 @@ const dry = process.argv.includes("--dry");
 const env = dry ? null : supabaseEnv();
 const capturedAt = new Date().toISOString();
 
-const tiles = await readJsonl("data/tiles.jsonl");
+const tiles = await readJsonl(dataPath(ID, "tiles.jsonl"));
 if (!tiles.length) { console.error("No data/tiles.jsonl. Run harvest-catalog.mjs first."); process.exit(1); }
 
-const details = new Map((await readJsonl("data/details.jsonl")).map((d) => [d.id, d]));
-const plans = new Map((await readJsonl("data/plans.jsonl")).map((p) => [p.id, p.plans]));
+const details = new Map((await readJsonl(dataPath(ID, "details.jsonl"))).map((d) => [d.id, d]));
+const plans = new Map((await readJsonl(dataPath(ID, "plans.jsonl"))).map((p) => [p.id, p.plans]));
 
 let work = tiles;
 if (limit) work = work.slice(0, limit);

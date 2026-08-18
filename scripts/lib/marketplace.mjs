@@ -1,28 +1,36 @@
 /**
- * Shared harvest helpers.
+ * Shared harvest helpers — everything true of any source.
  *
- * The storefront is server-rendered and embeds its whole payload in
- * window.__INITIAL_STATE__. Everything except plan pricing can therefore be had
- * with a plain HTTP fetch — no browser, no API key. Plan pricing lives only in
- * React component state after hydration, so that one pass needs Playwright.
+ * What lives here: fetching with backoff, bounded concurrency, jsonl, the
+ * Supabase calls, and the embedded-state extractor. What does not: any URL,
+ * any page shape, any field mapping. Those belong to a source adapter under
+ * lib/sources, because they are the only things that actually differ between
+ * marketplaces.
+ *
+ * The storefronts this reads are server-rendered and embed their whole payload
+ * as JSON in the page — Microsoft as window.__INITIAL_STATE__, DRAI as Wix
+ * warmup data. Same trick, different marker, so extractState takes the marker
+ * as a parameter. That is why almost nothing here needs a browser: only
+ * Microsoft plan pricing does, because it exists solely in React state after
+ * hydration.
  */
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 
-export const ORIGIN = "https://marketplace.microsoft.com";
-export const CATEGORY = "ai-apps-and-agents";
-export const PAGE_URL = (p) =>
-  `${ORIGIN}/en-us/search/products?category=${CATEGORY}&page=${p}`;
-export const PRODUCT_URL = (id) =>
-  `${ORIGIN}/en-us/product/${encodeURIComponent(id)}`;
-
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36";
 
-/** Pull window.__INITIAL_STATE__ out of a server-rendered page. */
-export function extractState(html) {
-  const m = html.match(/__INITIAL_STATE__\s*=\s*/);
+const MS_STATE_MARKER = /__INITIAL_STATE__\s*=\s*/;
+
+/**
+ * Pull an embedded JSON blob out of a server-rendered page, given the marker that
+ * precedes it. Microsoft ships window.__INITIAL_STATE__; other server-rendered
+ * storefronts ship the same idea under a different name, so the marker is a
+ * parameter and the brace-matching walk below is shared.
+ */
+export function extractState(html, marker = MS_STATE_MARKER) {
+  const m = html.match(marker);
   if (!m) return null;
   const start = html.indexOf("{", m.index + m[0].length);
   if (start < 0) return null;
@@ -44,7 +52,7 @@ export function extractState(html) {
   return null;
 }
 
-export async function fetchState(url, { retries = 3 } = {}) {
+export async function fetchState(url, { retries = 3, parse = extractState } = {}) {
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -59,8 +67,8 @@ export async function fetchState(url, { retries = 3 } = {}) {
         throw new Error(`http ${res.status}`);
       }
       if (!res.ok) return { ok: false, status: res.status, state: null };
-      const state = extractState(await res.text());
-      if (!state) throw new Error("no __INITIAL_STATE__ in response");
+      const state = parse(await res.text());
+      if (!state) throw new Error("no embedded state in response");
       return { ok: true, status: res.status, state };
     } catch (e) {
       lastErr = e;
@@ -112,14 +120,6 @@ export async function readJsonl(path) {
     .map((l) => JSON.parse(l));
 }
 
-// -------------------------------------------------------------- mapping ----
-
-const CERT_MAP = {
-  MicrosoftCertified: "microsoft_365_certified",
-  SelfAttested: "publisher_attestation",
-  None: "none",
-};
-
 /** HTML description to plain text, preserving paragraph and list structure. */
 export function htmlToText(html) {
   if (!html) return "";
@@ -137,91 +137,6 @@ export function htmlToText(html) {
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-}
-
-const arr = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
-const names = (v) => arr(v).map((x) => (typeof x === "string" ? x : x?.Title || x?.name)).filter(Boolean);
-
-/**
- * Build the ingest_capture payload from a tile, optional detail block, and
- * optional plans.
- *
- * The `stated` evidence block is deliberately left EMPTY. The database verifies
- * every stated value verbatim against the capture's own text, and structured
- * marketplace fields are not the publisher's prose — asserting "integrates with
- * Teams" because a taxonomy field says so is exactly the inference the registry
- * refuses. Only LanguagesSupported maps across, because it is an explicit
- * enumeration rather than a claim about the build.
- */
-export function toPayload({ tile, detail, plans, capturedAt }) {
-  const info = detail?.info || {};
-  const core = detail?.core || {};
-  const id = tile.entityId;
-  const overview = htmlToText(info.Description || "");
-
-  const productLinks = [];
-  if (info.HelpLink) productLinks.push({ label: "Help", url: info.HelpLink });
-  if (info.SupportLink) productLinks.push({ label: "Support", url: info.SupportLink });
-
-  const legalLinks = [];
-  if (info.PrivacyPolicyUrl) legalLinks.push({ label: "Privacy Policy", url: info.PrivacyPolicyUrl });
-  if (tile.licenseTermsUrl) legalLinks.push({ label: "License Terms", url: tile.licenseTermsUrl });
-
-  return {
-    capture_meta: {
-      template_version: "3.0-embedded-state",
-      marketplace_id: "microsoft",
-      source_product_id: id,
-      listing_url: PRODUCT_URL(id),
-      captured_at_utc: capturedAt,
-      capture_complete: !!detail,
-      missing: detail ? [] : ["product detail page not fetched"],
-      source_view_url: `${ORIGIN}/en-us/search/products?category=${CATEGORY}`,
-    },
-    extract: {
-      extract_spec_version: "v3",
-      name: tile.title,
-      publisher: tile.publisher,
-      tagline: tile.shortDescription || null,
-      surfaces: names(core.products || tile.products) ,
-      categories: names(tile.categoriesDetails),
-      industries: names(tile.industriesDetails),
-      works_with: names(info.WorksWith),
-      pricing: tile.startingPrice?.pricingData?.displayPrice || null,
-      acquire_using: tile.actionString || null,
-      version: info.AppVersion || null,
-      updated: info.ReleaseDate ? String(info.ReleaseDate).slice(0, 10) : null,
-      overview_text: overview.slice(0, 6000),
-      support: info.SupportLink ? "Support" : null,
-      rating: tile.AverageRating || null,
-      rating_count: tile.NumberOfRatings || 0,
-      native_rating: tile.AverageRating || null,
-      native_count: tile.NumberOfRatings || 0,
-      external_source: null,
-      external_rating: null,
-      external_count: null,
-      certification: CERT_MAP[tile.CertificationState] || "none",
-      cert_url: tile.CertificationLink || null,
-      cert_detail: {
-        hosting: null, data_location: null, data_handling: null,
-        graph_permissions: [], compliance: [],
-        developer_last_updated: null, page_last_updated: null, full_text: null,
-      },
-      plans: plans || [],
-      product_links: productLinks,
-      legal_links: legalLinks,
-      logo_url: info.LargeIconUri || tile.iconURL || null,
-      screenshot_urls: arr(info.Images).map((i) => i?.Uri || i).filter((x) => typeof x === "string"),
-      media_image_urls: [],
-      stated: {
-        models: [], frameworks: [], tools_mcp: [], data_sources: [],
-        integrations: [], deployment: [],
-        languages: names(info.LanguagesSupported),
-      },
-    },
-    raw: { tile, detail: detail || null },
-    ingest_source: "dual_write",
-  };
 }
 
 // -------------------------------------------------------------- supabase ----
@@ -245,4 +160,18 @@ export async function rpc(env, fn, body) {
   const text = await res.text();
   if (!res.ok) throw new Error(`${fn}: ${res.status} ${text.slice(0, 300)}`);
   return text ? JSON.parse(text) : null;
+}
+
+// ------------------------------------------------------------- data paths ----
+
+/**
+ * Where a source's harvest files live: data/{sourceId}/{name}.
+ *
+ * The files used to sit flat in data/ because there was only ever one source.
+ * A second one makes the flat layout ambiguous — two sources both want a
+ * tiles.jsonl, and joining them by bare id across sources would silently mix
+ * catalogues, since nothing in an id says which marketplace it came from.
+ */
+export function dataPath(sourceId, name) {
+  return `data/${sourceId}/${name}`;
 }

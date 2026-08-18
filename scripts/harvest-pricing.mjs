@@ -13,10 +13,11 @@
  * Only products with hasPrices are visited: about 49% of the catalog.
  * Resumable — already-scraped ids are skipped.
  */
-import { PRODUCT_URL, readJsonl, writeJsonl, sleep } from "./lib/marketplace.mjs";
+import { readJsonl, writeJsonl, sleep, dataPath } from "./lib/marketplace.mjs";
+import { PRODUCT_URL, ID } from "./lib/sources/microsoft.mjs";
 
-const TILES = "data/tiles.jsonl";
-const OUT = "data/plans.jsonl";
+const TILES = dataPath(ID, "tiles.jsonl");
+const OUT = dataPath(ID, "plans.jsonl");
 
 const argN = (flag, dflt) => {
   const i = process.argv.indexOf(flag);

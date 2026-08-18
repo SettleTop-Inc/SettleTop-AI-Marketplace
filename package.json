@@ -16,7 +16,9 @@
     "harvest:pricing": "node scripts/harvest-pricing.mjs",
     "harvest:ingest": "node scripts/harvest-ingest.mjs",
     "harvest:logos": "node scripts/archive-logos.mjs",
-    "harvest": "npm run harvest:catalog && npm run harvest:detail && npm run harvest:pricing && npm run harvest:ingest && npm run harvest:logos"
+    "harvest": "node scripts/harvest.mjs",
+    "harvest:drai": "node scripts/harvest.mjs --marketplace drai",
+    "harvest:microsoft": "node scripts/harvest.mjs --marketplace microsoft"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

@@ -13,10 +13,11 @@
  *
  * ~6,800 products, roughly five minutes.
  */
-import { PRODUCT_URL, fetchState, pool, readJsonl, writeJsonl } from "./lib/marketplace.mjs";
+import { fetchState, pool, readJsonl, writeJsonl, dataPath } from "./lib/marketplace.mjs";
+import { PRODUCT_URL, ID } from "./lib/sources/microsoft.mjs";
 
-const TILES = "data/tiles.jsonl";
-const OUT = "data/details.jsonl";
+const TILES = dataPath(ID, "tiles.jsonl");
+const OUT = dataPath(ID, "details.jsonl");
 const CONCURRENCY = 8;
 
 const limitArg = process.argv.indexOf("--limit");
