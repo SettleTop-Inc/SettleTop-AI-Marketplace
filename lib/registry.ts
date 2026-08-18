@@ -31,22 +31,45 @@ export const revalidate = 300;
  * Deliberately reads `archived_url` and not `logo_url`: the second is the
  * publisher's CDN, which we do not serve from. A product missing from this map
  * has no logo we actually hold, and the UI falls back to initials.
+ *
+ * Scoped to the ids being rendered rather than fetching the whole registry's
+ * logos. It used to read every archived row and build a lookup table, which
+ * PostgREST capped at 1000 with no error — so once the registry passed a
+ * thousand products, which logo a card got depended on whether it happened to
+ * fall inside an arbitrary 1000-row slice. Server-side pagination fixed the
+ * cards but not this: it is a separate read that ran in full on every render.
+ * Observed on marketplace page 60 before the change: Claude Opus 4.5, 4.6 and
+ * 4.7 rendered logos while 4.8 showed initials, all four archived.
  */
-export async function getLogos(): Promise<Record<string, string>> {
-  const { data, error } = await supabase
-    .from("v_logo_status")
-    .select("source_product_id,archived_url")
-    .eq("state", "archived");
-  if (error) {
-    console.error("getLogos", error.message);
-    return {};
-  }
+export async function getLogos(
+  sourceProductIds: string[]
+): Promise<Record<string, string>> {
+  if (sourceProductIds.length === 0) return {};
+
   const map: Record<string, string> = {};
-  for (const row of (data ?? []) as Array<{
-    source_product_id: string;
-    archived_url: string | null;
-  }>) {
-    if (row.archived_url) map[row.source_product_id] = row.archived_url;
+  // Chunked so the caller cannot silently lose logos by asking for a lot of
+  // them: `in.(...)` travels in the query string, and product ids run long
+  // (PUBID.publisher|AID.offer|PAPPID.guid). 50 keeps the URL well inside any
+  // limit and, at 12-96 cards a page, is one request in practice.
+  const CHUNK = 50;
+  for (let i = 0; i < sourceProductIds.length; i += CHUNK) {
+    const { data, error } = await supabase
+      .from("v_logo_status")
+      .select("source_product_id,archived_url")
+      .eq("state", "archived")
+      .in("source_product_id", sourceProductIds.slice(i, i + CHUNK));
+    if (error) {
+      // Return what we have. A missing logo degrades to initials, which is the
+      // designed fallback — far better than failing the whole page render.
+      console.error("getLogos", error.message);
+      return map;
+    }
+    for (const row of (data ?? []) as Array<{
+      source_product_id: string;
+      archived_url: string | null;
+    }>) {
+      if (row.archived_url) map[row.source_product_id] = row.archived_url;
+    }
   }
   return map;
 }

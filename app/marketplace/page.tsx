@@ -52,11 +52,18 @@ export default async function MarketplacePage({
   }
   const criteria = parseCriteria(sp);
 
-  const [result, logos, stats] = await Promise.all([
+  const [result, stats] = await Promise.all([
     searchRegistry(criteria),
-    getLogos(),
     getStats(),
   ]);
+
+  // Sequenced after the search rather than run alongside it: the logos we need
+  // are exactly the ones on this page, and we cannot know those ids until the
+  // query returns. That is one extra round trip for a lookup of at most 96 ids,
+  // in exchange for never again asking the database for the other 6,700.
+  const logos = result.ok
+    ? await getLogos(result.data.rows.map((r) => r.source_product_id))
+    : {};
 
   return (
     <MarketplaceApp
