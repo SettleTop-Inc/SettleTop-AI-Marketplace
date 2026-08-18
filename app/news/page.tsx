@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
-import { NEWS, NEWS_BASE } from "@/lib/site-content";
+import Link from "next/link";
+import { NEWS } from "@/lib/site-content";
 
 export const metadata: Metadata = {
   title: "News, insights and resources — SettleTop",
@@ -32,16 +33,9 @@ export default function NewsPage() {
                       <span className="pg-news__cats">{n.categories.join(" · ")}</span>
                     )}
                   </div>
-                  {/* Article bodies have not been migrated, so each entry
-                      points at the published piece. */}
-                  <a
-                    className="pg-news__title"
-                    href={`${NEWS_BASE}/${n.slug}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
+                  <Link className="pg-news__title" href={`/news/${n.slug}`}>
                     {n.title}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ol>
