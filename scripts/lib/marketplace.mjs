@@ -51,7 +51,11 @@ export async function fetchState(url, { retries = 3 } = {}) {
       const res = await fetch(url, {
         headers: { "user-agent": UA, "accept-language": "en-US,en;q=0.9" },
       });
-      if (res.status === 429 || res.status >= 500) {
+      // 403 belongs with the retryable statuses, not the fatal ones. Nothing
+      // here is authenticated, and the same URL succeeds on a later attempt —
+      // it is how this storefront sheds load. Treating it as fatal is why the
+      // detail pass used to need repeated whole-script runs to converge.
+      if (res.status === 403 || res.status === 429 || res.status >= 500) {
         throw new Error(`http ${res.status}`);
       }
       if (!res.ok) return { ok: false, status: res.status, state: null };
