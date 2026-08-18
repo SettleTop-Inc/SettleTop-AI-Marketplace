@@ -18,10 +18,12 @@
  * registry does not actually hold the logo, and v_logo_status says so.
  */
 import { createHash } from "node:crypto";
+import { pool } from "./lib/marketplace.mjs";
 
 const URL_BASE = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const BUCKET = "logos";
+const CONCURRENCY = 6;
 
 if (!URL_BASE || !KEY) {
   console.error("Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
@@ -141,10 +143,20 @@ if (rows.length === 0) {
   process.exit(0);
 }
 
-console.log(`${rows.length} logo(s) to archive\n`);
+console.log(`${rows.length} logo(s) to archive, ${CONCURRENCY} at a time\n`);
 let ok = 0;
 const failed = [];
-for (const row of rows) {
+
+// Each logo is a fetch from a publisher CDN followed by an upload to Storage,
+// and the two are unrelated between products — so awaiting them one at a time
+// spent almost the whole run idle on network. Every other harvest pass already
+// runs its work through pool(); this one was the exception, and at ~5,500 rows
+// that is the difference between minutes and hours.
+//
+// Deliberately modest, and lower than the detail pass's 8: this hits publisher
+// CDNs and our own Storage at once, and the point is to stop being serial, not
+// to extract the last request per second from someone else's infrastructure.
+await pool(rows, CONCURRENCY, async (row) => {
   try {
     const r = await archiveOne(row);
     ok++;
@@ -153,7 +165,7 @@ for (const row of rows) {
     failed.push([row.source_product_id, e.message]);
     console.error(`  ✗ ${row.name} — ${e.message}`);
   }
-}
+});
 
 console.log(`\narchived ${ok}, failed ${failed.length}`);
 if (failed.length) {
