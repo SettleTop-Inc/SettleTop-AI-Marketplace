@@ -1,3 +1,5 @@
+import { PAINT, STOP_A, STOP_B } from "./diagramPaint";
+
 /**
  * The MITRE chain, drawn.
  *
@@ -15,6 +17,10 @@
  * Inline SVG rather than an exported image: it takes the theme's tokens, so
  * there is one drawing rather than a light copy and a dark copy to keep in
  * step, and it stays sharp at any width.
+ *
+ * Paint is carried as presentation attributes as well as CSS classes — see
+ * diagramPaint.ts. The classes theme it; the attributes mean it is never a
+ * black rectangle when the stylesheet does not arrive.
  */
 
 const CHAIN = [
@@ -97,8 +103,8 @@ export default function MitreChain() {
             x2={W - N_X0}
             y2="0"
           >
-            <stop offset="0" className="kg__stop-a" />
-            <stop offset="1" className="kg__stop-b" />
+            <stop offset="0" className="kg__stop-a" stopColor={STOP_A} />
+            <stop offset="1" className="kg__stop-b" stopColor={STOP_B} />
           </linearGradient>
           <linearGradient
             id="kgDown"
@@ -108,8 +114,8 @@ export default function MitreChain() {
             x2="0"
             y2={P_Y}
           >
-            <stop offset="0" className="kg__stop-a" />
-            <stop offset="1" className="kg__stop-b" />
+            <stop offset="0" className="kg__stop-a" stopColor={STOP_A} />
+            <stop offset="1" className="kg__stop-b" stopColor={STOP_B} />
           </linearGradient>
           <marker
             id="kgTip"
@@ -120,13 +126,23 @@ export default function MitreChain() {
             markerHeight="6"
             orient="auto"
           >
-            <path className="kg__tip" d="M 0 0 L 8 4 L 0 8 z" />
+            <path className="kg__tip" d="M 0 0 L 8 4 L 0 8 z" {...PAINT.tip} />
           </marker>
           <radialGradient id="kgHalo" cx="50%" cy="50%" r="50%">
-            <stop offset="0" className="kg__halo-in" />
-            <stop offset="1" className="kg__halo-out" />
+            <stop offset="0" className="kg__halo-in" stopColor={STOP_B} stopOpacity="0.10" />
+            <stop offset="1" className="kg__halo-out" stopColor={STOP_B} stopOpacity="0" />
           </radialGradient>
         </defs>
+
+        <rect
+          className="kg__card"
+          x="1"
+          y="1"
+          width={W - 2}
+          height={H - 2}
+          rx="14"
+          {...PAINT.card}
+        />
 
         {/* A soft wash behind the convergence, so the eye lands there. */}
         <ellipse
@@ -142,6 +158,7 @@ export default function MitreChain() {
           <path
             key={`s-${n.id}`}
             className="kg__link kg__link--series"
+            {...PAINT.link}
             markerEnd="url(#kgTip)"
             d={`M ${nx(i) + N_W} ${N_Y + N_H / 2} H ${nx(i + 1) - 3}`}
           />
@@ -150,6 +167,7 @@ export default function MitreChain() {
         {/* Convergence: CWE curves down into CVE. */}
         <path
           className="kg__link kg__link--lead"
+          {...PAINT.link}
           d={drop(nMid(3), N_Y + N_H, C_MID, C_Y)}
         />
         {/* Fan: CVE out to each feed. */}
@@ -157,6 +175,7 @@ export default function MitreChain() {
           <path
             key={`f-${c.label}`}
             className="kg__link"
+            {...PAINT.link}
             d={drop(C_MID, C_Y + C_H, pMid(i), P_Y)}
           />
         ))}
@@ -165,13 +184,15 @@ export default function MitreChain() {
             for anyone who has asked motion to stop. */}
         <path
           className="kg__pulse"
+          fill="none"
+          stroke={STOP_B}
           d={`M ${nMid(0)} ${N_Y + N_H / 2} H ${nMid(3)} ${drop(nMid(3), N_Y + N_H, C_MID, C_Y).slice(1)}`}
         />
 
-        <text className="kg__edge-label" x={C_MID + 168} y={C_Y - 26} textAnchor="start">
+        <text className="kg__edge-label" {...PAINT.sub} x={C_MID + 168} y={C_Y - 26} textAnchor="start">
           resolves to
         </text>
-        <text className="kg__edge-label" x={C_MID - 168} y={C_Y + C_H + 44} textAnchor="end">
+        <text className="kg__edge-label" {...PAINT.sub} x={C_MID - 168} y={C_Y + C_H + 44} textAnchor="end">
           enriched by
         </text>
 
@@ -179,16 +200,17 @@ export default function MitreChain() {
           <g key={n.id}>
             <rect
               className="kg__node"
+              {...PAINT.node}
               x={nx(i)}
               y={N_Y}
               width={N_W}
               height={N_H}
               rx="12"
             />
-            <text className="kg__label" x={nMid(i)} y={N_Y + 33} textAnchor="middle">
+            <text className="kg__label" {...PAINT.label} x={nMid(i)} y={N_Y + 33} textAnchor="middle">
               {n.label}
             </text>
-            <text className="kg__sub" x={nMid(i)} y={N_Y + 55} textAnchor="middle">
+            <text className="kg__sub" {...PAINT.sub} x={nMid(i)} y={N_Y + 55} textAnchor="middle">
               {n.sub}
             </text>
           </g>
@@ -197,6 +219,7 @@ export default function MitreChain() {
         <g>
           <rect
             className="kg__node kg__node--focus"
+            {...PAINT.node}
             style={{ stroke: "url(#kgDown)" }}
             x={C_X}
             y={C_Y}
@@ -204,10 +227,10 @@ export default function MitreChain() {
             height={C_H}
             rx="14"
           />
-          <text className="kg__label kg__label--lg" x={C_MID} y={C_Y + 40} textAnchor="middle">
+          <text className="kg__label kg__label--lg" {...PAINT.label} x={C_MID} y={C_Y + 40} textAnchor="middle">
             CVE
           </text>
-          <text className="kg__sub" x={C_MID} y={C_Y + 64} textAnchor="middle">
+          <text className="kg__sub" {...PAINT.sub} x={C_MID} y={C_Y + 64} textAnchor="middle">
             the vulnerability record
           </text>
         </g>
@@ -216,16 +239,17 @@ export default function MitreChain() {
           <g key={c.label}>
             <rect
               className="kg__chip"
+              {...PAINT.chip}
               x={px(i)}
               y={P_Y}
               width={P_W}
               height={P_H}
               rx="10"
             />
-            <text className="kg__label kg__label--sm" x={pMid(i)} y={P_Y + 31} textAnchor="middle">
+            <text className="kg__label kg__label--sm" {...PAINT.label} x={pMid(i)} y={P_Y + 31} textAnchor="middle">
               {c.label}
             </text>
-            <text className="kg__sub" x={pMid(i)} y={P_Y + 53} textAnchor="middle">
+            <text className="kg__sub" {...PAINT.sub} x={pMid(i)} y={P_Y + 53} textAnchor="middle">
               {c.sub}
             </text>
           </g>

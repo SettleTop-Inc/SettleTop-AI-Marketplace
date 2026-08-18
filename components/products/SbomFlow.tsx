@@ -1,3 +1,5 @@
+import { PAINT, STOP_A, STOP_B } from "./diagramPaint";
+
 /**
  * What CodeRoot Open Source does to an SBOM.
  *
@@ -14,6 +16,10 @@
  *
  * Every stage and every signal is taken from the product's own README and the
  * running instance the screenshots came from.
+ *
+ * Paint is carried as presentation attributes as well as CSS classes — see
+ * diagramPaint.ts. The classes theme it; the attributes mean it is never a
+ * black rectangle when the stylesheet does not arrive.
  */
 
 const STAGES = [
@@ -83,8 +89,8 @@ export default function SbomFlow() {
             x2={W - X0}
             y2="0"
           >
-            <stop offset="0" className="kg__stop-a" />
-            <stop offset="1" className="kg__stop-b" />
+            <stop offset="0" className="kg__stop-a" stopColor={STOP_A} />
+            <stop offset="1" className="kg__stop-b" stopColor={STOP_B} />
           </linearGradient>
           <marker
             id="flTip"
@@ -95,15 +101,26 @@ export default function SbomFlow() {
             markerHeight="6"
             orient="auto"
           >
-            <path className="kg__tip" d="M 0 0 L 8 4 L 0 8 z" />
+            <path className="kg__tip" d="M 0 0 L 8 4 L 0 8 z" {...PAINT.tip} />
           </marker>
         </defs>
+
+        <rect
+          className="kg__card"
+          x="1"
+          y="1"
+          width={W - 2}
+          height={H - 2}
+          rx="14"
+          {...PAINT.card}
+        />
 
         {/* The line through the pipeline. */}
         {STAGES.slice(0, -1).map((s, i) => (
           <path
             key={`e-${s.id}`}
             className="kg__link kg__link--series"
+            {...PAINT.link}
             style={{ stroke: "url(#flFlow)" }}
             markerEnd="url(#flTip)"
             d={`M ${nx(i) + N_W} ${N_Y + N_H / 2} H ${nx(i + 1) - 3}`}
@@ -115,6 +132,7 @@ export default function SbomFlow() {
           <line
             key={`d-${s.id}`}
             className={`kg__link${PANELS[s.id].muted ? " fl-link--muted" : ""}`}
+            {...PAINT.link}
             style={{ stroke: "url(#flFlow)" }}
             x1={nMid(i + 1)}
             y1={N_Y + N_H}
@@ -130,16 +148,17 @@ export default function SbomFlow() {
               // No node is emphasised: the input is not the payoff, and the
               // fork already carries the diagram's point.
               className="kg__node"
+              {...PAINT.node}
               x={nx(i)}
               y={N_Y}
               width={N_W}
               height={N_H}
               rx="12"
             />
-            <text className="kg__label" x={nMid(i)} y={N_Y + 34} textAnchor="middle">
+            <text className="kg__label" {...PAINT.label} x={nMid(i)} y={N_Y + 34} textAnchor="middle">
               {s.label}
             </text>
-            <text className="kg__sub" x={nMid(i)} y={N_Y + 56} textAnchor="middle">
+            <text className="kg__sub" {...PAINT.sub} x={nMid(i)} y={N_Y + 56} textAnchor="middle">
               {s.sub}
             </text>
           </g>
@@ -151,6 +170,7 @@ export default function SbomFlow() {
             <g key={`p-${s.id}`}>
               <rect
                 className={`kg__chip${p.muted ? " fl-panel--muted" : ""}`}
+                {...(p.muted ? { ...PAINT.chip, fill: "none" } : PAINT.chip)}
                 x={nx(i + 1)}
                 y={P_Y}
                 width={N_W}
@@ -159,6 +179,7 @@ export default function SbomFlow() {
               />
               <text
                 className="fl-panel__title"
+                {...PAINT.tip}
                 x={nx(i + 1) + 18}
                 y={P_Y + 25}
               >
@@ -168,6 +189,7 @@ export default function SbomFlow() {
                 <text
                   key={it}
                   className="kg__sub"
+                  {...PAINT.sub}
                   x={nx(i + 1) + 18}
                   y={P_Y + 48 + j * ROW}
                 >
