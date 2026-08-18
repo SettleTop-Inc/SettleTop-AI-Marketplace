@@ -1,0 +1,24 @@
+-- Restore the grants on v_logo_status, and keep them next to the view.
+--
+-- CREATE OR REPLACE VIEW drops every grant on the view. v_logo_status was
+-- replaced to add marketplace_id and listing_url, and the replacement carried
+-- no grant block, so SELECT silently fell back to the owner alone.
+--
+-- Two things broke at once, and only one of them was noticeable:
+--
+--   service_role lost it, so archive-logos.mjs failed with 42501 on its next
+--   run -- loudly, and easy to trace.
+--
+--   anon lost it too, and that is the one that mattered. getLogos() reads this
+--   view with the anon key and returns {} on error, so every logo on the
+--   marketplace and the homepage silently fell back to initials while the
+--   registry still held all 6,820 archived images. A read that fails as an
+--   empty result rather than an error is exactly the failure mode this project
+--   keeps having to design against.
+--
+-- Any future replacement of this view must re-grant. That is a property of
+-- CREATE OR REPLACE VIEW, not something a migration can prevent -- so the
+-- grants live here, immediately after the view, where the next person editing
+-- it will see them.
+
+grant select on public.v_logo_status to anon, authenticated, service_role;
