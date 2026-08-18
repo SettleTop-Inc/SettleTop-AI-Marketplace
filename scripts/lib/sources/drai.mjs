@@ -422,7 +422,14 @@ export function toPayload({ agent, post, cert, capturedAt }) {
       works_with: [],
       // Null unless the listing states tier membership. DRAI prices the
       // platform, not the agent, and most posts name no tier at all.
-      pricing: tiers.length ? tiers.map((n) => TIERS[n].price).join(" to ") : null,
+      // A range, not every tier chained together: joining three prices with
+      // "to" rendered as "$3,999/mo to $9,999/mo to $29,999/mo" on the card,
+      // which reads as gibberish rather than as a price.
+      pricing: tiers.length
+        ? tiers.length === 1
+          ? TIERS[tiers[0]].price
+          : `${TIERS[tiers[0]].price} to ${TIERS[tiers[tiers.length - 1]].price}`
+        : null,
       acquire_using: "DRAI subscription",
       version: null,
       updated: posted ? post.updated : null,
