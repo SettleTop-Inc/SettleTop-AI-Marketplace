@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
 import ProductLogo from "@/components/ProductLogo";
+import MitreChain from "@/components/products/MitreChain";
 import { PRODUCTS, byslug } from "@/lib/products";
 
 type Params = Promise<{ slug: string }>;
@@ -59,6 +60,22 @@ export default async function ProductPage({ params }: { params: Params }) {
             )}
           </div>
         </section>
+
+        {p.visual === "mitre-chain" && (
+          <section className="hm-section">
+            <div className="st-shell st-shell--wide">
+              <header className="hm-section__head">
+                <p className="st-eyebrow">The shape of it</p>
+                <h2 className="st-display">One graph, joined up</h2>
+                <p className="st-lede">
+                  There is no dashboard to show you — the product is the graph and
+                  the endpoint your model asks. So here is the graph.
+                </p>
+              </header>
+              <MitreChain />
+            </div>
+          </section>
+        )}
 
         {p.shots && p.shots.length > 0 && (
           <section className="hm-section">
