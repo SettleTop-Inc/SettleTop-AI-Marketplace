@@ -59,7 +59,8 @@ console.log(
     `${cert.compliance.length} compliance sentences${dry ? " | DRY RUN" : ""}\n`
 );
 
-const tally = { created: 0, updated: 0, unchanged: 0, already_ingested: 0, failed: 0, rejected: 0 };
+const tally = { created: 0, updated: 0, unchanged: 0, already_ingested: 0, failed: 0, rejected: 0, logos: 0 };
+const logoMisses = [];
 const failures = [];
 
 await pool(work, CONCURRENCY, async (agent) => {
@@ -79,6 +80,24 @@ await pool(work, CONCURRENCY, async (agent) => {
     const status = r?.status ?? "unknown";
     tally[status] = (tally[status] ?? 0) + 1;
     tally.rejected += r?.evidence_rejected ?? 0;
+
+    // ingest_capture does not create the logo link; set_capture_logo does, and
+    // the Microsoft pass has always called it separately. Putting logo_url in
+    // the payload alone left every DRAI asset at no_logo_identified with
+    // nothing for the archiver to fetch.
+    //
+    // The third argument is required here. It defaults to microsoft, so
+    // omitting it looks up a Microsoft asset with a DRAI slug and returns
+    // no_capture without failing.
+    if (payload.extract.logo_url) {
+      const lr = await rpc(env, "set_capture_logo", {
+        p_product_id: agent.slug,
+        p_url: payload.extract.logo_url,
+        p_marketplace_id: ID,
+      });
+      if (lr === "no_capture") logoMisses.push(agent.slug);
+      else tally.logos++;
+    }
     console.log(
       `  ${status.padEnd(16)} ${agent.slug.padEnd(38)} reach ${String(r?.reach ?? "-").padStart(3)} ${r?.risk ?? ""}` +
         (r?.evidence_rejected ? `  REJECTED ${r.evidence_rejected}` : "")
