@@ -59,16 +59,57 @@ export async function getStats(): Promise<RegistryStats | null> {
  * the design. When it outgrows that, move the filters into the query — the
  * view already carries every column the filters use.
  */
+/**
+ * PostgREST answers at most 1000 rows per request, whatever the query asks
+ * for, and it does so without an error — the read simply returns a truncated
+ * list. The registry passed that mark, so /marketplace was quietly showing
+ * the first 1000 agents and reporting "1,000 agents" as if that were all of
+ * them.
+ *
+ * This pages until a short page comes back. Rows are ordered by a unique
+ * column so the windows cannot overlap or skip: ordering by a non-unique
+ * column lets equal rows land on either side of a page boundary.
+ */
+const PAGE = 1000;
+
+async function fetchAllCards(): Promise<
+  { ok: true; data: RegistryCard[] } | { ok: false; error: string }
+> {
+  const all: RegistryCard[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from("v_registry_card")
+      .select("*")
+      .order("asset_id", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) return { ok: false, error: error.message };
+    const rows = (data ?? []) as RegistryCard[];
+    all.push(...rows);
+    if (rows.length < PAGE) break;
+    // A registry this size is plausible; a runaway loop is not.
+    if (all.length >= 100_000) break;
+  }
+  // Paging a table that is being written to can return the same row twice:
+  // a row inserted ahead of the cursor shifts everything after it down, and
+  // the next window re-reads what the last one already returned. The capture
+  // worker writes continuously, so this is the normal case, not a rare race.
+  // Without the de-dupe the facet counts exceed the total, which is how it
+  // was first noticed.
+  const seen = new Set<string>();
+  const unique = all.filter((c) => !seen.has(c.asset_id) && seen.add(c.asset_id));
+
+  // The UI wants them by name; the paging had to be by a unique key.
+  unique.sort((a, b) => a.name.localeCompare(b.name));
+  return { ok: true, data: unique };
+}
+
 export async function getCards(): Promise<RegistryCard[]> {
-  const { data, error } = await supabase
-    .from("v_registry_card")
-    .select("*")
-    .order("name", { ascending: true });
-  if (error) {
-    console.error("getCards", error.message);
+  const r = await fetchAllCards();
+  if (!r.ok) {
+    console.error("getCards", r.error);
     return [];
   }
-  return (data ?? []) as RegistryCard[];
+  return r.data;
 }
 
 /**
@@ -81,15 +122,9 @@ export async function getCards(): Promise<RegistryCard[]> {
 export type ReadResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
 export async function getCardsResult(): Promise<ReadResult<RegistryCard[]>> {
-  const { data, error } = await supabase
-    .from("v_registry_card")
-    .select("*")
-    .order("name", { ascending: true });
-  if (error) {
-    console.error("getCardsResult", error.message);
-    return { ok: false, error: error.message };
-  }
-  return { ok: true, data: (data ?? []) as RegistryCard[] };
+  const r = await fetchAllCards();
+  if (!r.ok) console.error("getCardsResult", r.error);
+  return r;
 }
 
 /**
