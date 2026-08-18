@@ -9,7 +9,13 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test lib/marketplace-query.test.ts"
+    "test": "node --experimental-strip-types --test lib/marketplace-query.test.ts",
+    "harvest:catalog": "node scripts/harvest-catalog.mjs",
+    "harvest:detail": "node scripts/harvest-detail.mjs",
+    "harvest:pricing": "node scripts/harvest-pricing.mjs",
+    "harvest:ingest": "node scripts/harvest-ingest.mjs",
+    "harvest:logos": "node scripts/archive-logos.mjs",
+    "harvest": "npm run harvest:catalog && npm run harvest:detail && npm run harvest:pricing && npm run harvest:ingest && npm run harvest:logos"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
@@ -21,6 +27,7 @@
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "playwright": "^1.62.1",
     "typescript": "^5.7.0"
   }
 }
