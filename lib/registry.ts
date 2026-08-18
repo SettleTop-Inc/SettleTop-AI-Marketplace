@@ -326,9 +326,18 @@ export async function getPassports(
   return { ok: true, data: (data ?? []) as AssetPassport[] };
 }
 
+/**
+ * One passport, with "we could not read" kept distinct from "there is no such
+ * record". Collapsing the two is what the comment above getPassports() warns
+ * about, and this reader used to do exactly that: it returned null for a failed
+ * read, the route called notFound(), and the 404 page told the visitor there is
+ * no captured record for that agent and that the registry never invents one to
+ * fill a gap. A confident claim of absence, produced by an outage, about a
+ * record that exists — and cached by ISR for five minutes after recovery.
+ */
 export async function getPassport(
   sourceProductId: string
-): Promise<AssetPassport | null> {
+): Promise<ReadResult<AssetPassport | null>> {
   const { data, error } = await supabase
     .from("v_asset_passport")
     .select("*")
@@ -336,9 +345,9 @@ export async function getPassport(
     .maybeSingle();
   if (error) {
     console.error("getPassport", error.message);
-    return null;
+    return { ok: false, error: error.message };
   }
-  return (data as AssetPassport) ?? null;
+  return { ok: true, data: (data as AssetPassport) ?? null };
 }
 
 /**

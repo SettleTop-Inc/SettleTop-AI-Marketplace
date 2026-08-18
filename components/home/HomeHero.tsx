@@ -16,8 +16,9 @@ export default function HomeHero({
   agentCount,
 }: {
   /** Live count from the registry, so the proof strip states a fact rather
-      than a marketing round number. */
-  agentCount: number;
+      than a marketing round number. null means the stats read failed — it is
+      never rendered as zero, which would claim an empty registry. */
+  agentCount: number | null;
 }) {
   return (
     <section className="hm-hero">
@@ -52,9 +53,18 @@ export default function HomeHero({
             <dt>Nine</dt>
             <dd>ingest sources feeding the vulnerability database, unattended</dd>
           </div>
+          {/* null is "we could not read the count", not "the count is zero".
+              Rendering 0 here told visitors the registry was empty whenever a
+              stats read failed, which is the one claim this page must never
+              make by accident. The figure is dropped and the sentence stands
+              on its own rather than asserting a number we do not have. */}
           <div>
-            <dt>{agentCount}</dt>
-            <dd>AI agents indexed, each with a provenance passport</dd>
+            <dt>{agentCount === null ? "Every" : agentCount.toLocaleString()}</dt>
+            <dd>
+              {agentCount === null
+                ? "AI agent indexed carries a provenance passport"
+                : "AI agents indexed, each with a provenance passport"}
+            </dd>
           </div>
           <div>
             <dt>Zero</dt>

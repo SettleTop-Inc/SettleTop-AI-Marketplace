@@ -16,7 +16,11 @@ export async function generateMetadata({
   params: Params;
 }): Promise<Metadata> {
   const { id } = await params;
-  const a = await getPassport(decodeURIComponent(id));
+  const read = await getPassport(decodeURIComponent(id));
+  // Only a successful read that found nothing may say "not found". A failed
+  // read gets a neutral title rather than announcing an absence it cannot know.
+  if (!read.ok) return { title: "Agent Passport — SettleTop" };
+  const a = read.data;
   if (!a) return { title: "Agent not found — SettleTop AI Marketplace" };
   return {
     title: `${a.name} — Agent Passport — SettleTop`,
@@ -41,7 +45,16 @@ export default async function AgentPage({
   // string (e.g. "risk=Low&q=agent"). Do NOT decodeURIComponent it again —
   // a second decode would corrupt any literal `%` inside it and throw.
   const { from, back: backQS } = await searchParams;
-  const passport = await getPassport(decodeURIComponent(id));
+  const read = await getPassport(decodeURIComponent(id));
+
+  // Thrown rather than rendered, deliberately. notFound() here would cache a
+  // 404 for revalidate seconds and tell the visitor the agent does not exist;
+  // rendering an error page inline would cache the outage just as long. A
+  // thrown error is not cached by ISR, so the page recovers the moment the
+  // database does, and error.tsx says whose fault it is.
+  if (!read.ok) throw new Error(`registry read failed: ${read.error}`);
+
+  const passport = read.data;
   if (!passport) notFound();
 
   // v_asset_passport carries no logo column — logos have their own archival
