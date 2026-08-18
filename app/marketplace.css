@@ -362,3 +362,16 @@
 @media (max-width: 900px) {
   .mkt-list-select .mkt-row { grid-template-columns: 24px 40px minmax(0, 1fr) 100px 100px; }
 }
+
+/* The next page is on its way. The current results stay in place and readable
+   rather than being replaced by a spinner — only their liveness is dimmed, so
+   nothing reflows and the visitor keeps their reading position. Paired with
+   aria-busy on the same element, which is what actually tells a screen reader
+   the list is stale. */
+.mkt-results[aria-busy="true"] {
+  opacity: 0.55;
+  transition: opacity 0.12s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mkt-results[aria-busy="true"] { transition: none; }
+}

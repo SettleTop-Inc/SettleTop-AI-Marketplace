@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState, useTransition } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import AgentCard from "@/components/AgentCard";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
@@ -18,29 +18,40 @@ import {
   type ViewMode,
   MAX_COMPARE,
   defaultCriteria,
-  parseCriteria,
-  runQuery,
   serializeCriteria,
 } from "@/lib/marketplace-query";
+import type { RegistryPage } from "@/lib/registry";
 import type { RegistryCard } from "@/lib/types";
 
+/**
+ * The marketplace shell.
+ *
+ * Filtering used to happen here, over every card in the registry. It now
+ * happens in Postgres: this component receives one page of results and the
+ * criteria that produced them, and its controls do nothing but rewrite the
+ * URL. The server re-runs the query and streams back new props.
+ *
+ * The trade is a round trip per filter click instead of an instant local
+ * recompute. useTransition covers it — React keeps the current results on
+ * screen and marks them busy rather than blanking the grid, so the page reads
+ * as working rather than broken.
+ */
 export default function MarketplaceApp({
-  cards,
-  loadFailed,
+  criteria,
+  result,
+  registryTotal,
 }: {
-  cards: RegistryCard[];
-  loadFailed?: boolean;
+  criteria: Criteria;
+  /** null means the read failed — never "no matches". */
+  result: RegistryPage | null;
+  registryTotal: number | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const [pending, startTransition] = useTransition();
 
-  const criteria = useMemo(
-    () => parseCriteria(new URLSearchParams(searchParams.toString())),
-    [searchParams]
-  );
-
-  const result = useMemo(() => runQuery(cards, criteria), [cards, criteria]);
+  const loadFailed = result === null;
+  const rows = result?.rows ?? [];
 
   // The exact query string for the current view, threaded onto every passport
   // link below so "Back to the marketplace" restores the search that was
@@ -55,7 +66,9 @@ export default function MarketplaceApp({
   const write = useCallback(
     (next: Criteria, mode: "push" | "replace") => {
       const qs = serializeCriteria(next);
-      router[mode](qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      startTransition(() =>
+        router[mode](qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+      );
     },
     [pathname, router]
   );
@@ -66,9 +79,8 @@ export default function MarketplaceApp({
     return () => clearTimeout(t);
   }, [text, criteria, write]);
 
-  // Any criteria change resets to page 1. Clamping is only for inbound URLs —
-  // without this, changing a facet on page 4 strands the visitor mid-way
-  // through a different result set.
+  // Any criteria change resets to page 1 — without this, changing a facet on
+  // page 4 strands the visitor mid-way through a different result set.
   const toggleFacet = (key: FacetKey, value: string) => {
     const current = criteria.facets[key];
     const next = current.includes(value)
@@ -98,32 +110,32 @@ export default function MarketplaceApp({
 
   // Selection is a scratch pad, not a view: it lives in component state, not
   // the URL, so it survives filtering and paging rather than being reset by
-  // every write() call above. Capped at MAX_COMPARE, the compare table's own
-  // limit — shared from lib/marketplace-query so the two cannot drift.
-  const [selected, setSelected] = useState<string[]>([]);
+  // every write() above.
+  //
+  // The cards themselves are held, not just their ids. Selection outlives the
+  // page it was made on, and the server only sends the current page — so an
+  // id alone could no longer be resolved to a card once the visitor moves on,
+  // and the tray would empty itself as they browsed. A card can only be ticked
+  // while it is on screen, so it is always available to capture here.
+  const [picked, setPicked] = useState<RegistryCard[]>([]);
+  const selected = picked.map((c) => c.asset_id);
 
   const toggleSelect = (assetId: string) =>
-    setSelected((s) =>
-      s.includes(assetId)
-        ? s.filter((x) => x !== assetId)
-        : s.length >= MAX_COMPARE
-          ? s
-          : [...s, assetId]
-    );
+    setPicked((s) => {
+      if (s.some((c) => c.asset_id === assetId)) {
+        return s.filter((c) => c.asset_id !== assetId);
+      }
+      if (s.length >= MAX_COMPARE) return s;
+      const card = rows.find((c) => c.asset_id === assetId);
+      return card ? [...s, card] : s;
+    });
 
   // An unselected checkbox at the cap must visibly refuse (disabled +
   // aria-disabled) rather than silently no-op on click — toggleSelect above
   // already returns the identical array in that case, so without this the
   // control looks live and never explains why nothing happened. An
   // already-selected checkbox stays enabled so it can still be un-ticked.
-  const atCap = selected.length >= MAX_COMPARE;
-
-  // Selection survives filtering and paging, so candidates can be gathered from
-  // more than one screen. Resolve against all cards, not the current page.
-  const selectedCards = useMemo(
-    () => selected.map((id) => cards.find((c) => c.asset_id === id)).filter(Boolean) as RegistryCard[],
-    [selected, cards]
-  );
+  const atCap = picked.length >= MAX_COMPARE;
 
   return (
     <div className="mkt-shell">
@@ -147,7 +159,11 @@ export default function MarketplaceApp({
             <input
               id="mkt-q"
               type="search"
-              placeholder={loadFailed ? "Search agents" : `Search ${cards.length} agents`}
+              placeholder={
+                registryTotal === null
+                  ? "Search agents"
+                  : `Search ${registryTotal.toLocaleString()} agents`
+              }
               value={text}
               onChange={(e) => setText(e.target.value)}
             />
@@ -155,7 +171,7 @@ export default function MarketplaceApp({
         </header>
 
         <div className="mkt-layout">
-          {!loadFailed && (
+          {result && (
             <FacetRail
               facets={result.facets}
               onToggle={toggleFacet}
@@ -164,8 +180,12 @@ export default function MarketplaceApp({
             />
           )}
 
-          <div className="mkt-results">
-            {!loadFailed && (
+          {/* aria-busy rather than a spinner that replaces the results: the
+              previous page stays readable while the next one is fetched, and
+              a screen reader is told it is stale instead of being handed a
+              silently changing list. */}
+          <div className="mkt-results" aria-busy={pending || undefined}>
+            {result && (
               <ResultToolbar
                 total={result.total}
                 sort={criteria.sort}
@@ -188,14 +208,18 @@ export default function MarketplaceApp({
             ) : result.total === 0 ? (
               <div className="mkt-empty">
                 <b>No agents match these filters</b>
-                <p>The registry holds {cards.length} agents. Try removing a filter.</p>
+                <p>
+                  {registryTotal === null
+                    ? "Try removing a filter."
+                    : `The registry holds ${registryTotal.toLocaleString()} agents. Try removing a filter.`}
+                </p>
                 <button className="mkt-control" onClick={clear}>
                   Clear filters
                 </button>
               </div>
             ) : criteria.view === "list" ? (
               <ResultList
-                rows={result.rows}
+                rows={rows}
                 from="marketplace"
                 back={backQS}
                 selectedIds={selected}
@@ -204,7 +228,7 @@ export default function MarketplaceApp({
               />
             ) : (
               <div className="mkt-grid">
-                {result.rows.map((c) => (
+                {rows.map((c) => (
                   <AgentCard
                     key={c.asset_id}
                     c={c}
@@ -218,14 +242,14 @@ export default function MarketplaceApp({
               </div>
             )}
 
-            {!loadFailed && (
+            {result && (
               <Pagination page={result.page} pageCount={result.pageCount} onPage={setPage} />
             )}
           </div>
         </div>
       </div>
       <SiteFooter wide />
-      <CompareTray selected={selectedCards} onRemove={toggleSelect} onClear={() => setSelected([])} />
+      <CompareTray selected={picked} onRemove={toggleSelect} onClear={() => setPicked([])} />
     </div>
   );
 }

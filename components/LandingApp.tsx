@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -19,6 +19,7 @@ import type {
   RegistryCard,
   RegistryStats,
 } from "@/lib/types";
+import type { TopFilter } from "@/lib/registry";
 import {
   UNKNOWN,
   evidence,
@@ -27,117 +28,36 @@ import {
   listed,
   permissionValue,
 } from "@/lib/present";
-import { defaultCriteria, facetValueOf, searchBlob, serializeCriteria } from "@/lib/marketplace-query";
+import { defaultCriteria, serializeCriteria } from "@/lib/marketplace-query";
 
 /**
- * The registry site.
+ * The registry site's front page.
  *
- * Card data arrives from the server already fetched, and filtering runs in the
- * browser so the design keeps its instant response. Passport detail is fetched
- * on demand when a modal opens — the card list deliberately does not carry
- * overview text, which would multiply its size several times over.
+ * It carries no card corpus. Browsing lives on /marketplace, which queries
+ * Postgres; this page receives only the eight use-case counts and the short
+ * ranked lists it actually renders. Passport detail is still fetched on demand
+ * when a modal opens — the card shape deliberately does not carry overview
+ * text, which would multiply its size several times over.
  */
 export default function LandingApp({
-  cards,
+  useCaseCounts,
+  topAgents,
   stats,
   featured,
 }: {
-  cards: RegistryCard[];
+  useCaseCounts: Record<string, number>;
+  topAgents: Record<TopFilter, RegistryCard[]>;
   stats: RegistryStats | null;
   featured: AssetPassport | null;
 }) {
-  const [q, setQ] = useState("");
-  const [fn, setFn] = useState("");
-  const [mp, setMp] = useState("");
-  const [dep, setDep] = useState("");
-  const [tier, setTier] = useState("");
-  const [prov, setProv] = useState("");
-  const [price, setPrice] = useState("");
-  const [risk, setRisk] = useState("");
-  const [topFilter, setTopFilter] = useState<"All" | "Verified" | "Free">("All");
+  const [topFilter, setTopFilter] = useState<TopFilter>("All");
   const [modal, setModal] = useState<null | { kind: "vendor" } | { kind: "agent"; id: string }>(null);
   const [passport, setPassport] = useState<AssetPassport | null>(null);
   const [loadingPassport, setLoadingPassport] = useState(false);
 
   const router = useRouter();
 
-  /** Carry whatever the visitor has already narrowed to into the tool. */
-  const marketplaceHref = () => {
-    const c = defaultCriteria();
-    if (q.trim()) c.q = q;
-    if (fn) c.facets.function = [fn];
-    if (mp) c.facets.source = [mp];
-    if (dep) c.facets.delivery = [dep];
-    if (tier) c.facets.tier = [tier];
-    if (prov) c.facets.provenance = [prov];
-    if (price) c.facets.price = [price];
-    if (risk) c.facets.risk = [risk];
-    const qs = serializeCriteria(c);
-    return qs ? `/marketplace?${qs}` : "/marketplace";
-  };
-
-  const distinct = (pick: (c: RegistryCard) => string | null | undefined) =>
-    Array.from(new Set(cards.map(pick).filter(Boolean) as string[])).sort();
-
-  const functions = useMemo(() => distinct((c) => c.function_category), [cards]);
-  const markets = useMemo(() => distinct((c) => c.marketplace_name), [cards]);
-  const deployments = useMemo(
-    () => distinct((c) => (c.delivery === UNKNOWN ? null : c.delivery)),
-    [cards]
-  );
-  const tiers = useMemo(() => distinct((c) => c.evidence_tier), [cards]);
-
-  const counts = useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const c of cards) {
-      // UNKNOWN, not a synthetic "Unclassified" label: the marketplace facet
-      // this chip hands off to normalises a null function_category to UNKNOWN,
-      // and a third spelling here would mean the two surfaces can never match.
-      const k = c.function_category ?? UNKNOWN;
-      m[k] = (m[k] ?? 0) + 1;
-    }
-    return m;
-  }, [cards]);
-
-  const blobs = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const c of cards) m.set(c.asset_id, searchBlob(c));
-    return m;
-  }, [cards]);
-
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    // Facet equality goes through facetValueOf rather than a raw field
-    // compare, so a null and the literal "Unknown" collapse into the same
-    // bucket exactly as they do on /marketplace. A hand-rolled compare here
-    // would agree with the marketplace only by coincidence of today's data.
-    return cards.filter(
-      (c) =>
-        (!needle || (blobs.get(c.asset_id) ?? "").includes(needle)) &&
-        (!fn || facetValueOf(c, "function") === fn) &&
-        (!mp || facetValueOf(c, "source") === mp) &&
-        (!dep || facetValueOf(c, "delivery") === dep) &&
-        (!tier || facetValueOf(c, "tier") === tier) &&
-        (!prov || facetValueOf(c, "provenance") === prov) &&
-        (!price || facetValueOf(c, "price") === price) &&
-        (!risk || facetValueOf(c, "risk") === risk)
-    );
-  }, [cards, blobs, q, fn, mp, dep, tier, prov, price, risk]);
-
-  const top = useMemo(() => {
-    let list = [...cards];
-    if (topFilter === "Verified") list = list.filter((c) => c.provenance === "Verified");
-    if (topFilter === "Free")
-      list = list.filter((c) => c.price_band === "Free" || c.price_band === "Freemium");
-    return list
-      .sort(
-        (a, b) =>
-          (b.rating ?? 0) - (a.rating ?? 0) ||
-          b.rating_count - a.rating_count ||
-          b.reach - a.reach
-      )
-      .slice(0, 6);
-  }, [cards, topFilter]);
+  const top = topAgents[topFilter];
 
   useEffect(() => {
     if (!modal || modal.kind !== "agent") {
@@ -162,17 +82,6 @@ export default function LandingApp({
     };
   }, [modal]);
 
-  const clearFilters = () => {
-    setQ("");
-    setFn("");
-    setMp("");
-    setDep("");
-    setTier("");
-    setProv("");
-    setPrice("");
-    setRisk("");
-  };
-
   const pickUseCase = (name: string) => {
     const c = defaultCriteria();
     c.facets.function = [name];
@@ -188,7 +97,7 @@ export default function LandingApp({
       />
 
       <main id="top">
-        <HomeHero agentCount={stats?.agents ?? cards.length} />
+        <HomeHero agentCount={stats?.agents ?? 0} />
 
         <ProductGrid />
 
@@ -222,7 +131,7 @@ export default function LandingApp({
                   <div>
                     <b>{u.name}</b>
                     <p>{u.desc}</p>
-                    <small>{counts[u.name] ?? 0} agents</small>
+                    <small>{useCaseCounts[u.name] ?? 0} agents</small>
                   </div>
                   <span className="arrow">→</span>
                 </button>
@@ -325,7 +234,7 @@ export default function LandingApp({
             <div className="hm-handoff">
               <div>
                 <span className="st-eyebrow">Every agent on record</span>
-                <h2 className="st-display">{cards.length} agents, one record each</h2>
+                <h2 className="st-display">{(stats?.agents ?? 0).toLocaleString()} agents, one record each</h2>
                 <p className="st-lede">
                   Filter by function, source, deployment, evidence tier,
                   provenance, pricing and evidence risk. Compare them
@@ -333,7 +242,7 @@ export default function LandingApp({
                   source is silent, the value reads Unknown.
                 </p>
               </div>
-              <Link className="st-btn st-btn--primary" href={marketplaceHref()}>
+              <Link className="st-btn st-btn--primary" href="/marketplace">
                 Open the marketplace →
               </Link>
             </div>
