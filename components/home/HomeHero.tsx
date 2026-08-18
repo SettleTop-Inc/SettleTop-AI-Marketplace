@@ -46,6 +46,23 @@ const VULN_PROOF = [
   { figure: "360,000+", label: "scored by EPSS" },
 ] as const;
 
+/**
+ * The registry row's labels are driven by live counts, so a hardcoded plural
+ * eventually reads wrong. It already did: exactly one marketplace is indexed
+ * today, and the strip said "1 marketplaces indexed". That is the settled
+ * state of that figure rather than a transient edge case, since a second
+ * marketplace is a deliberate piece of work rather than something the crawl
+ * discovers.
+ *
+ * Applied to all four counts, not just the one currently at 1 — the others
+ * are only correct by accident of being large, and a figure that can be
+ * computed can be one.
+ *
+ * The vulnerability row below needs none of this: its figures are fixed
+ * strings, already written to read correctly.
+ */
+const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
+
 export default function HomeHero({
   stats,
 }: {
@@ -96,19 +113,22 @@ export default function HomeHero({
             <dl className="hm-proof__row">
               <div>
                 <dt>{stats.marketplaces.toLocaleString()}</dt>
-                <dd>marketplaces indexed</dd>
+                <dd>{plural(stats.marketplaces, "marketplace", "marketplaces")} indexed</dd>
               </div>
               <div>
                 <dt>{stats.agents.toLocaleString()}</dt>
-                <dd>agents &amp; AI apps</dd>
+                <dd>
+                  {plural(stats.agents, "agent", "agents")} &amp;{" "}
+                  {plural(stats.agents, "AI app", "AI apps")}
+                </dd>
               </div>
               <div>
                 <dt>{stats.publishers.toLocaleString()}</dt>
-                <dd>publishers</dd>
+                <dd>{plural(stats.publishers, "publisher", "publishers")}</dd>
               </div>
               <div>
                 <dt>{stats.changes.toLocaleString()}</dt>
-                <dd>changes tracked</dd>
+                <dd>{plural(stats.changes, "change", "changes")} tracked</dd>
               </div>
             </dl>
           )}
