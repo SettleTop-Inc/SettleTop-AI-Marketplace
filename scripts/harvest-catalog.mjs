@@ -47,17 +47,10 @@
  * Touches no database — enumeration is cheap and re-runnable, and keeping it
  * separate means a bad ingest never costs a re-crawl.
  */
-import {
-  ORIGIN,
-  CATEGORY,
-  PAGE_URL,
-  fetchState,
-  pool,
-  readJsonl,
-  writeJsonl,
-} from "./lib/marketplace.mjs";
+import { fetchState, pool, readJsonl, writeJsonl, dataPath } from "./lib/marketplace.mjs";
+import { ORIGIN, CATEGORY, PAGE_URL, ID } from "./lib/sources/microsoft.mjs";
 
-const OUT = "data/tiles.jsonl";
+const OUT = dataPath(ID, "tiles.jsonl");
 const TILE_PAGE = 60; // tiles per storefront page
 const FLAT_CONCURRENCY = 5;
 const SEARCH_CONCURRENCY = 3; // 4+ draws sustained 403s on search slices
