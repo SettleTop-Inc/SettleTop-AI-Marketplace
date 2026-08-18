@@ -197,6 +197,7 @@ export default function MitreChain() {
         <g>
           <rect
             className="kg__node kg__node--focus"
+            style={{ stroke: "url(#kgDown)" }}
             x={C_X}
             y={C_Y}
             width={C_W}
