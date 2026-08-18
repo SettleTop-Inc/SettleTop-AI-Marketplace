@@ -1572,6 +1572,43 @@ details[open] > .st-disclosure::before { content: "− "; }
   .pd-shots { grid-template-columns: 1fr; gap: var(--s6); }
 }
 
+/* ---- Article body -------------------------------------------------------
+   .st-prose sets the measure and paragraph rhythm; this adds the elements an
+   imported article actually uses. */
+.ar-body { max-width: 74ch; }
+.ar-body h2,
+.ar-body h3,
+.ar-body h4 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  color: var(--c-heading);
+  line-height: var(--lh-tight);
+  margin: var(--s8) 0 var(--s4);
+}
+.ar-body h2 { font-size: var(--t-xl); }
+.ar-body h3 { font-size: var(--t-lg); }
+.ar-body h4 { font-size: var(--t-md); }
+.ar-body ul,
+.ar-body ol { margin: 0 0 var(--s5); padding-left: 1.3em; display: grid; gap: var(--s2); }
+.ar-body li { line-height: var(--lh-body); }
+.ar-body strong { color: var(--c-ink); font-weight: 600; }
+.ar-body blockquote {
+  margin: var(--s6) 0;
+  padding: var(--s2) 0 var(--s2) var(--s5);
+  border-left: 3px solid var(--c-accent);
+  color: var(--c-ink);
+  font-size: var(--t-md);
+}
+.ar-body img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: var(--s6) 0;
+  border-radius: var(--radius);
+  border: 1px solid var(--c-line);
+}
+.ar-body a { color: var(--c-link); }
+
 /* ---- Marketplace hand-off ---------------------------------------------- */
 .hm-handoff {
   display: flex;
