@@ -1,10 +1,20 @@
-import { supabase } from "@/lib/supabase";
+import { supabase } from "./supabase.ts";
+import {
+  type Criteria,
+  type FacetGroup,
+  type FacetKey,
+  type FacetValue,
+  FACET_KEYS,
+  FACET_LABELS,
+  PAGE_SIZE,
+  PAGE_SIZES,
+} from "./marketplace-query.ts";
 import type {
   AssetPassport,
   ChangeRow,
   RegistryCard,
   RegistryStats,
-} from "@/lib/types";
+} from "./types.ts";
 
 /**
  * Every read the site performs. Server components call these directly.
@@ -54,12 +64,6 @@ export async function getStats(): Promise<RegistryStats | null> {
 }
 
 /**
- * The whole card list. At registry scale (hundreds to low thousands) shipping
- * this once and filtering in the browser preserves the instant-filter feel of
- * the design. When it outgrows that, move the filters into the query — the
- * view already carries every column the filters use.
- */
-/**
  * PostgREST answers at most 1000 rows per request, whatever the query asks
  * for, and it does so without an error — the read simply returns a truncated
  * list. The registry passed that mark, so /marketplace was quietly showing
@@ -103,6 +107,12 @@ async function fetchAllCards(): Promise<
   return { ok: true, data: unique };
 }
 
+/**
+ * No page calls this any more — searchRegistry below replaced it. It stays as
+ * the input to the SQL/TypeScript parity test, which needs the whole corpus in
+ * order to run runQuery over it and compare. Do not reach for it from a page:
+ * that is the megabyte-per-load behaviour this change removed.
+ */
 export async function getCards(): Promise<RegistryCard[]> {
   const r = await fetchAllCards();
   if (!r.ok) {
@@ -121,10 +131,156 @@ export async function getCards(): Promise<RegistryCard[]> {
  */
 export type ReadResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
-export async function getCardsResult(): Promise<ReadResult<RegistryCard[]>> {
-  const r = await fetchAllCards();
-  if (!r.ok) console.error("getCardsResult", r.error);
-  return r;
+/**
+ * Every facet's distinct values and counts, with no rows attached.
+ *
+ * The landing page used to derive this by receiving all ~5,000 cards and
+ * counting them in the browser, to print "N agents" on eight use-case tiles.
+ * registry_search already computes exactly these counts, so ask it for them
+ * and no rows: p_limit 0 makes the page window empty while the facet
+ * aggregation still runs over the whole registry.
+ */
+export async function getFacetCounts(): Promise<Partial<Record<FacetKey, FacetValue[]>>> {
+  const { data, error } = await supabase.rpc("registry_search", { p_limit: 0 });
+  if (error) {
+    console.error("getFacetCounts", error.message);
+    return {};
+  }
+  return (data as { facets?: Partial<Record<FacetKey, FacetValue[]>> }).facets ?? {};
+}
+
+export type TopFilter = "All" | "Verified" | "Free";
+
+/**
+ * The handful of agents the landing page features, one short list per tab.
+ *
+ * Three small reads rather than one big one. Ranking the whole registry in the
+ * browser meant shipping the whole registry; the top six of a tab cannot be
+ * taken from the global top six either, because a tab's filter can exclude
+ * all of them.
+ *
+ * Ordering matches what the client did — rating, then rating_count, then
+ * reach — with nulls last, which is where `rating ?? 0` already put them.
+ */
+export async function getTopAgents(n = 6): Promise<Record<TopFilter, RegistryCard[]>> {
+  const ranked = () =>
+    supabase
+      .from("v_registry_card")
+      .select("*")
+      .order("rating", { ascending: false, nullsFirst: false })
+      .order("rating_count", { ascending: false, nullsFirst: false })
+      .order("reach", { ascending: false, nullsFirst: false })
+      .limit(n);
+
+  const [all, verified, free] = await Promise.all([
+    ranked(),
+    ranked().eq("provenance", "Verified"),
+    ranked().in("price_band", ["Free", "Freemium"]),
+  ]);
+
+  for (const [label, r] of [["All", all], ["Verified", verified], ["Free", free]] as const) {
+    if (r.error) console.error(`getTopAgents(${label})`, r.error.message);
+  }
+
+  return {
+    All: (all.data ?? []) as RegistryCard[],
+    Verified: (verified.data ?? []) as RegistryCard[],
+    Free: (free.data ?? []) as RegistryCard[],
+  };
+}
+
+export interface RegistryPage {
+  rows: RegistryCard[];
+  facets: FacetGroup[];
+  total: number;
+  page: number;
+  pageCount: number;
+}
+
+/** The shape registry_search() returns. Facet groups arrive keyed by facet. */
+interface SearchPayload {
+  total: number;
+  rows: RegistryCard[];
+  facets: Partial<Record<FacetKey, FacetValue[]>>;
+}
+
+/**
+ * One page of the registry, filtered, sorted and counted by Postgres.
+ *
+ * Replaces shipping every card to the browser and filtering there. That held
+ * while the registry was in the hundreds; at 5,000+ it was megabytes of JSON
+ * per page load to render 24 cards.
+ *
+ * Everything comes back in a single call because the facet counts cannot be
+ * computed any other way: PostgREST has no GROUP BY, and the counts are
+ * self-excluding, so they depend on the current selection and cannot be
+ * precomputed. See supabase/migrations/20260818120000_registry_search.sql.
+ *
+ * A single call is also a single snapshot, which is what makes the totals
+ * agree. fetchAllCards above has to de-dupe because the capture worker writes
+ * between its pages; this function cannot observe a mid-write registry at all.
+ */
+export async function searchRegistry(c: Criteria): Promise<ReadResult<RegistryPage>> {
+  // runQuery guards the page size too. Criteria normally comes from
+  // parseCriteria, but it is a plain object and can be built by hand.
+  const per = (PAGE_SIZES as readonly number[]).includes(c.perPage) ? c.perPage : PAGE_SIZE;
+
+  const call = async (page: number): Promise<ReadResult<SearchPayload>> => {
+    const { data, error } = await supabase.rpc("registry_search", {
+      p_q: c.q,
+      p_source: c.facets.source,
+      p_function: c.facets.function,
+      p_provenance: c.facets.provenance,
+      p_risk: c.facets.risk,
+      p_tier: c.facets.tier,
+      p_delivery: c.facets.delivery,
+      p_price: c.facets.price,
+      p_sort: c.sort,
+      p_dir: c.dir,
+      p_limit: per,
+      p_offset: (page - 1) * per,
+    });
+    if (error) return { ok: false, error: error.message };
+    return { ok: true, data: data as SearchPayload };
+  };
+
+  const requested = Math.max(1, c.page);
+  let got = await call(requested);
+  if (!got.ok) {
+    console.error("searchRegistry", got.error);
+    return got;
+  }
+
+  let page = requested;
+  let pageCount = Math.max(1, Math.ceil(got.data.total / per));
+
+  // An inbound ?page=999 lands on the last page rather than an empty grid,
+  // matching what runQuery does by clamping before it slices. Server-side the
+  // total is only known after the read, so an out-of-range page costs a
+  // second call — rare enough to be worth the honest landing.
+  if (requested > pageCount) {
+    page = pageCount;
+    got = await call(page);
+    if (!got.ok) {
+      console.error("searchRegistry", got.error);
+      return got;
+    }
+    pageCount = Math.max(1, Math.ceil(got.data.total / per));
+  }
+
+  // Keyed object to the ordered, labelled array the rail renders. Driven by
+  // FACET_KEYS so the rail's order stays the client's decision, not the
+  // order jsonb_object_agg happened to build.
+  const facets: FacetGroup[] = FACET_KEYS.map((key) => ({
+    key,
+    label: FACET_LABELS[key],
+    values: got.ok ? (got.data.facets[key] ?? []) : [],
+  }));
+
+  return {
+    ok: true,
+    data: { rows: got.data.rows ?? [], facets, total: got.data.total, page, pageCount },
+  };
 }
 
 /**

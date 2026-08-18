@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test lib/marketplace-query.test.ts"
+    "test": "node --experimental-strip-types --test lib/*.test.ts",
+    "test:parity": "node --experimental-strip-types --env-file-if-exists=.env.local --test lib/registry-search.parity.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

@@ -1,11 +1,9 @@
-import { Suspense } from "react";
 import type { Metadata } from "next";
 import MarketplaceApp from "@/components/marketplace/MarketplaceApp";
 import { withLogos } from "@/lib/logos";
-import { getCardsResult, getLogos } from "@/lib/registry";
+import { getLogos, getStats, searchRegistry } from "@/lib/registry";
+import { parseCriteria } from "@/lib/marketplace-query";
 import "@/app/marketplace.css";
-
-export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: "Browse AI agents — SettleTop AI Marketplace",
@@ -13,50 +11,63 @@ export const metadata: Metadata = {
     "Filter AI agents by function, source marketplace, provenance, evidence tier, deployment, pricing and evidence risk.",
 };
 
-export default async function MarketplacePage() {
-  const [cards, logos] = await Promise.all([getCardsResult(), getLogos()]);
+type Search = Promise<Record<string, string | string[] | undefined>>;
 
-  // This <Suspense> boundary is load-bearing for `npm run build`: without it,
-  // useSearchParams() inside MarketplaceApp throws BailoutToCSRError on this
-  // statically-optimized route. Do not remove or move it.
-  //
-  // KNOWN ISSUE, `next dev` only (npm run build && npm run start is
-  // unaffected — confirmed below): a cold load of /marketplace under `next
-  // dev` can render permanently inert — two `.mkt-shell` elements in the
-  // DOM, no React fiber anywhere under the boundary, no control responds.
-  //
-  // Root cause, traced via the actual inline reveal script Next streams into
-  // the page: unlike the production static build (which ships only this
-  // fallback and lets the client fully render MarketplaceApp through
-  // ordinary hydration), `next dev` has a real request URL to resolve
-  // useSearchParams() against, so it renders BOTH this fallback AND the
-  // fully-resolved real content for the same boundary, then hands the swap
-  // to React's own streaming-reveal runtime ($RC/$RV, plus a follow-up
-  // `_reactRetry` to actually attach React to the swapped-in DOM) — both
-  // steps scheduled via requestAnimationFrame. Browsers fully suspend rAF
-  // callbacks for a tab that isn't visible (Page Visibility spec), so if the
-  // tab is backgrounded at load — the normal state for headless/automated
-  // browser tooling, and possible for an ordinary background-tab open — the
-  // reveal never fires and the page is stuck until the tab becomes visible,
-  // at which point it self-heals with no reload (verified by manually
-  // invoking the pending $RV/_reactRetry callbacks: the DOM collapses to one
-  // shell and the inputs hydrate immediately).
-  //
-  // Confirmed this is not something our route code controls: `export const
-  // dynamic = "force-dynamic"` does not change the behavior (dev still
-  // performs the same dual-render/reveal dance regardless of the route's
-  // static/dynamic classification), and `next build && next start` hydrates
-  // correctly under the identical backgrounded-tab condition. Treat this as
-  // an upstream `next dev` characteristic (Next 15.5.23) for this
-  // useSearchParams()-under-Suspense pattern, not an application bug — when
-  // verifying interactivity on this route, use `npm run build && npm run
-  // start`, or make sure the dev tab is actually foregrounded/visible.
+/**
+ * The query runs in Postgres, not the browser.
+ *
+ * This page used to hand MarketplaceApp every card in the registry and let it
+ * filter locally. That was ~5,000 cards of JSON to render 24 of them, and it
+ * grew with every capture sweep. Now the URL is read here, the work happens in
+ * registry_search(), and only the page being shown crosses the wire.
+ *
+ * Two things follow from that, both deliberate:
+ *
+ * Reading searchParams makes this route dynamic, so there is no `revalidate`
+ * to set — every distinct filter combination is its own render. The reads are
+ * a single RPC plus a small logo map.
+ *
+ * MarketplaceApp no longer calls useSearchParams(), which is why the Suspense
+ * boundary that used to wrap it is gone. That boundary was working around a
+ * `next dev` hazard: dev renders both the fallback and the resolved content
+ * for a useSearchParams() boundary and hands the swap to a
+ * requestAnimationFrame-driven reveal, which browsers suspend entirely in a
+ * backgrounded tab — so a cold load in a background tab stayed permanently
+ * inert. Criteria now arrive as a prop from the server, so that whole class of
+ * failure is gone. Do not reintroduce useSearchParams() here without bringing
+ * the boundary back with it.
+ */
+export default async function MarketplacePage({
+  searchParams,
+}: {
+  searchParams: Search;
+}) {
+  // parseCriteria owns every validation rule — page size allow-list, closed
+  // unions for risk and provenance, sort keys. Rebuild a URLSearchParams from
+  // Next's object so this page cannot drift into a second, laxer parser.
+  const sp = new URLSearchParams();
+  for (const [key, value] of Object.entries(await searchParams)) {
+    if (Array.isArray(value)) for (const v of value) sp.append(key, v);
+    else if (value !== undefined) sp.set(key, value);
+  }
+  const criteria = parseCriteria(sp);
+
+  const [result, logos, stats] = await Promise.all([
+    searchRegistry(criteria),
+    getLogos(),
+    getStats(),
+  ]);
+
   return (
-    <Suspense fallback={<div className="mkt-shell" aria-busy="true" />}>
-      <MarketplaceApp
-        cards={cards.ok ? withLogos(cards.data, logos) : []}
-        loadFailed={!cards.ok}
-      />
-    </Suspense>
+    <MarketplaceApp
+      criteria={criteria}
+      result={
+        result.ok ? { ...result.data, rows: withLogos(result.data.rows, logos) } : null
+      }
+      // The size of the whole registry, for "the registry holds N agents" in
+      // the empty state. result.total is the size of THIS query and would
+      // read 0 there, which is the one number that empty state must not show.
+      registryTotal={stats?.agents ?? null}
+    />
   );
 }
