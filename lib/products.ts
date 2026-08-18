@@ -29,6 +29,8 @@ export type Product = {
   /** Long-form sections, product page only. */
   sections?: { title: string; body: string; items?: string[] }[];
   shots?: Shot[];
+  /** A drawn diagram instead of screenshots, for products with no UI. */
+  visual?: "mitre-chain";
   audience?: string[];
   deploy?: { k: string; v: string }[];
   cta?: { label: string; href: string; external?: boolean };
@@ -178,6 +180,7 @@ export const PRODUCTS: Product[] = [
     summary:
       "D3FEND to ATT&CK to CAPEC to CWE to CVE, with the CISA KEV catalog, EPSS scores, the NVD CPE dictionary and both tiers of GitHub Security Advisories. It comes up empty, populates itself and stays current with no operator intervention.",
     tags: ["Bring your own model", "Air-gap capable", "Read-only MCP"],
+    visual: "mitre-chain",
     points: [
       "Nine ingest sources, unattended",
       "A read-only MCP server your own model can query",
@@ -193,6 +196,19 @@ export const PRODUCTS: Product[] = [
         title: "Built for your model, not ours",
         body:
           "It ships a read-only MCP server so an agent can ask questions and get answers with citations. There is no bundled LLM client and no model credentials: you point your own model at it. Queries run against a fixed surface rather than free-form SQL, so an agent cannot wander outside what it is allowed to read.",
+      },
+      {
+        title: "Nine sources, one fixed order",
+        body:
+          "The pipeline order is not incidental. Taxonomy first, then the product dictionary, then the known-exploited catalogue, then CVE records, then the operational enrichment that hangs off them, then a data-quality report. KEV deliberately loads before CVE: it keys on a CVE id as text with no foreign key into the CVE table, so a CVE outage still fails loudly while KEV, EPSS and the rest survive it.",
+        items: [
+          "Phase 1 — MITRE taxonomy: cwe, capec, attack, d3fend",
+          "Phase 2 — product dictionary: nvd_cpe, roughly 1.3 million entries",
+          "Phase 3 — known-exploited catalogue: kev",
+          "Phase 4 — CVE records: cve",
+          "Phase 5 — operational enrichment: epss, ghsa",
+          "Phase 6 — data-quality report",
+        ],
       },
       {
         title: "Unattended by design",
