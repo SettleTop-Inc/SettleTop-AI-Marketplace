@@ -97,7 +97,7 @@ export default function LandingApp({
       />
 
       <main id="top">
-        <HomeHero agentCount={stats?.agents ?? 0} />
+        <HomeHero agentCount={stats?.agents ?? null} />
 
         <ProductGrid />
 
@@ -234,7 +234,11 @@ export default function LandingApp({
             <div className="hm-handoff">
               <div>
                 <span className="st-eyebrow">Every agent on record</span>
-                <h2 className="st-display">{(stats?.agents ?? 0).toLocaleString()} agents, one record each</h2>
+                <h2 className="st-display">
+                  {stats
+                    ? `${stats.agents.toLocaleString()} agents, one record each`
+                    : "One record each"}
+                </h2>
                 <p className="st-lede">
                   Filter by function, source, deployment, evidence tier,
                   provenance, pricing and evidence risk. Compare them
@@ -272,7 +276,9 @@ export default function LandingApp({
         wide
         meta={
           <>
-            {stats?.captures ?? 0} captures · {stats?.changes ?? 0} recorded changes
+            {stats
+              ? `${stats.captures.toLocaleString()} captures · ${stats.changes.toLocaleString()} recorded changes`
+              : "capture counts unavailable"}
             {stats?.last_captured_at
               ? ` · last capture ${stats.last_captured_at.slice(0, 10)}`
               : ""}
