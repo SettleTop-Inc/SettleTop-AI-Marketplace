@@ -445,6 +445,10 @@ export function toPayload({ agent, post, cert, capturedAt }) {
     },
     reviews_summary: { available: false, note: "DRAI publishes no ratings or reviews" },
     raw: { agent, post: post ?? null },
-    ingest_source: "harvest",
+    // dual_write is the enum value the harvester already uses for Microsoft.
+    // ingest_source is a Postgres enum of dual_write | backfill | reconcile, so
+    // an invented label is not a loose string that flows through — it is a 400
+    // that fails every capture in the run.
+    ingest_source: "dual_write",
   };
 }
