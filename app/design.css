@@ -1289,6 +1289,38 @@ details[open] > .st-disclosure::before { content: "− "; }
 }
 .pg-neutral { margin-top: var(--s9); max-width: 74ch; }
 
+/* Third-party marks are drawn for a light ground, so the card stays white in
+   both themes rather than being tinted or inverted. */
+.pg-brands {
+  background: #ffffff;
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-lg);
+  padding: var(--s5);
+  max-width: 900px;
+}
+.pg-brands img { width: 100%; height: auto; display: block; }
+
+/* The names in text as well as in the artwork: the composite is one image,
+   so without this the section is unreadable to anything that cannot see it. */
+.pg-brand-names {
+  list-style: none;
+  margin: var(--s5) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s3);
+  max-width: 900px;
+}
+.pg-brand-names li {
+  font-size: var(--t-xs);
+  color: var(--c-ink-3);
+}
+.pg-brand-names li:not(:last-child)::after {
+  content: "·";
+  margin-left: var(--s3);
+  color: var(--c-line);
+}
+
 /* News reads as a dated index, so the date is a fixed column and the
    headline is the link. */
 .pg-news { list-style: none; margin: 0; padding: 0; }

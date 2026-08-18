@@ -71,6 +71,27 @@ export const PARTNERS = {
   ],
   neutral:
     "SettleTop provides a neutral provenance platform focused on empowering your AI tools, solutions and services — we give you more transparency, context and trust.",
+  brandsTitle: "Working With Leading Brands",
+  /* The live site publishes this as one composite PNG rather than as separate
+     logo files. It is reproduced as published; the names are transcribed from
+     it so the section is readable without seeing the image, and so the alt
+     text says who is actually shown. The heading is theirs — "working with"
+     is a weaker claim than "our partners", and it is not ours to upgrade. */
+  brandsImage: "/partners/partner-wall.png",
+  brands: [
+    "AWS",
+    "ArangoDB",
+    "CycloneDX",
+    "GitHub",
+    "OpenAI",
+    "OpenSSF",
+    "RunSafe Security",
+    "ScanOSS",
+    "Semgrep",
+    "ServiceNow",
+    "SonarQube",
+    "Visual Studio",
+  ],
   ctaTitle: "Ready to Partner with SettleTop?",
   ctaBody: "Tell us a bit about yourself and how you’d like to work with us.",
   ctaLabel: "Apply to Become a Partner",

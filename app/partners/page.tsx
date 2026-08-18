@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
 import { PARTNERS } from "@/lib/site-content";
@@ -44,6 +45,25 @@ export default function PartnersPage() {
             </ol>
 
             <p className="st-lede pg-neutral">{PARTNERS.neutral}</p>
+
+            <h3 className="st-display pg-subhead">{PARTNERS.brandsTitle}</h3>
+            {/* A white card in both themes: these are third-party marks drawn
+                for a light ground, and tinting or inverting someone else's
+                logo is not ours to do. */}
+            <div className="pg-brands">
+              <Image
+                src={PARTNERS.brandsImage}
+                alt={`Logos of ${PARTNERS.brands.join(", ")}`}
+                width={1224}
+                height={864}
+                sizes="(max-width: 900px) 100vw, 900px"
+              />
+            </div>
+            <ul className="pg-brand-names">
+              {PARTNERS.brands.map((b) => (
+                <li key={b}>{b}</li>
+              ))}
+            </ul>
           </div>
         </section>
 
