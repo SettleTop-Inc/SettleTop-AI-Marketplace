@@ -1379,17 +1379,15 @@ details[open] > .st-disclosure::before { content: "− "; }
    token, and the gradient cools at the abstract end of the chain and warms
    into the accent where it lands. */
 .kg { margin: 0; }
+/* The card is a <rect> inside the drawing, not a background on this element:
+   that way the surface and its border survive anywhere the stylesheet does
+   not, exactly like the shapes it sits behind. */
 .kg__svg {
   width: 100%;
   height: auto;
   display: block;
-  background:
-    radial-gradient(ellipse 70% 60% at 50% 42%, var(--c-paper), transparent 70%),
-    var(--c-surface);
-  border: 1px solid var(--c-line);
-  border-radius: var(--radius-lg);
-  padding: var(--s6) var(--s5);
 }
+.kg__card { fill: var(--c-surface); stroke: var(--c-line); stroke-width: 1; }
 
 .kg__stop-a { stop-color: var(--c-verified); }
 .kg__stop-b { stop-color: var(--c-accent); }
