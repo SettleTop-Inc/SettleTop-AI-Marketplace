@@ -30,6 +30,7 @@ const get = async (url) => {
 
 const OUT = dataPath(ID, "tiles.jsonl");
 const SOON_OUT = dataPath(ID, "announced.jsonl");
+const UNLISTED_OUT = dataPath(ID, "unlisted-posts.jsonl");
 
 console.log("enumerating the DRAI Agentic-AI Marketplace\n");
 
@@ -59,25 +60,23 @@ console.log(`  announced: ${announced.length} "coming soon" sentence(s), kept ve
 await sleep(600);
 const known = new Set(agents.map((a) => a.post_url).filter(Boolean));
 let extra = 0;
+const unlisted = [];
 try {
   for (const url of parsePressRoom(await get(PRESS_URL))) {
     if (known.has(url)) continue;
-    // Enumerated, not invented: it has a post but no catalog row, so it has no
-    // module and no description until the detail pass reads it.
-    agents.push({
-      slug: url.split("/post/")[1].replace(/^data-room-ai-launches-/, ""),
-      name: null,
-      modules: [],
-      description: null,
-      post_url: url,
-      status: "posted",
-      also_known_as: [],
-      from_press_room: true,
-    });
+    // Recorded for review, NOT registered as an asset.
+    //
+    // Not every post is a product. The press room carries pricing
+    // announcements (Tier 3 – Hyperscaler Offering) and marketing pieces
+    // (Accelerate Your GWAC/IDIQ Success), and auto-registering them put them
+    // in the catalogue as agents. The platform page is the catalogue; a post
+    // outside it is a candidate a person should look at, which is the same
+    // rule the coming-soon sentences get.
+    unlisted.push({ url, slug: url.split("/post/")[1], status: "unlisted_post" });
     known.add(url);
     extra++;
   }
-  console.log(`  press    : ${extra} post(s) the platform page does not link`);
+  console.log(`  press    : ${extra} post(s) outside the catalogue, recorded for review`);
 } catch (e) {
   // The press room is a supplement, not the catalogue. Losing it degrades
   // coverage; it must not fail the pass.
@@ -87,7 +86,9 @@ try {
 const before = (await readJsonl(OUT)).length;
 await writeJsonl(OUT, agents);
 await writeJsonl(SOON_OUT, announced);
+await writeJsonl(UNLISTED_OUT, unlisted);
 
 console.log(`\n${agents.length} agents -> ${OUT}${before ? `  (was ${before})` : ""}`);
 console.log(`${announced.length} announced -> ${SOON_OUT}`);
+console.log(`${unlisted.length} unlisted posts -> ${UNLISTED_OUT}`);
 if (!agents.length) process.exit(1);

@@ -151,6 +151,12 @@ export function parsePlatform(html) {
       const name = strip(bold[1]);
       if (!name || name.length < 3) continue;
 
+      // The coming-soon row is a sentence, not an agent, and it carries both a
+      // bold span and a link — so it parses as a perfectly plausible agent
+      // called "And many more Solution Architect Specialty Agents Coming Soon".
+      // Those names are handled as a verbatim watch list by parseComingSoon.
+      if (/^And many more/i.test(name)) continue;
+
       const href = li.match(/href="([^"]*\/post\/[^"]*)"/i)?.[1] ?? null;
       // The module tagline links to the platform's own launch post. Treating
       // every /post/ link in a section as an agent invents a phantom.
