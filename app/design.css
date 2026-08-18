@@ -1039,13 +1039,24 @@ details[open] > .st-disclosure::before { content: "− "; }
 }
 .hm-hero__actions { display: flex; flex-wrap: wrap; gap: var(--s3); }
 
+/* Two rows of figures: the registry, then the vulnerability database. The
+   rule sits on the strip and between the rows, so the pair reads as one
+   block with an internal division rather than as two unrelated strips. */
 .hm-proof {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--s7);
   margin: var(--s10) 0 0;
   padding-top: var(--s7);
   border-top: 1px solid var(--c-line);
+}
+.hm-proof__row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s7);
+  margin: 0;
+}
+.hm-proof__row + .hm-proof__row {
+  margin-top: var(--s7);
+  padding-top: var(--s7);
+  border-top: 1px solid var(--c-line-soft);
 }
 .hm-proof div { min-width: 0; }
 .hm-proof dt {
@@ -1686,9 +1697,20 @@ details[open] > .st-disclosure::before { content: "− "; }
 @media (max-width: 860px) {
   .hm-hero { padding: var(--s9) 0 var(--s8); }
   .hm-hero__title { font-size: var(--t-2xl); }
-  .hm-proof { grid-template-columns: 1fr; gap: var(--s6); }
+  /* Two columns rather than one: eight figures in a single stack turns the
+     hero into a scroll, and each tile is only a number and two or three
+     words, so it survives half the width comfortably. */
+  .hm-proof__row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s6); }
+  .hm-proof__row + .hm-proof__row { margin-top: var(--s6); padding-top: var(--s6); }
   .hm-section { padding: var(--s9) 0; }
   .hm-section__head { margin-bottom: var(--s7); }
+}
+
+@media (max-width: 520px) {
+  /* Two columns of a phone's width leave roughly 150px per figure, and
+     "379,000+" set at 34px does not fit in it. Step the figures down rather
+     than dropping to one column, which would stack eight of them. */
+  .hm-proof dt { font-size: var(--t-xl); }
 }
 
 /* =========================================================================

@@ -97,7 +97,7 @@ export default function LandingApp({
       />
 
       <main id="top">
-        <HomeHero agentCount={stats?.agents ?? null} />
+        <HomeHero stats={stats} />
 
         <ProductGrid />
 

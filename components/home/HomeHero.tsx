@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { RegistryStats } from "@/lib/types";
 
 /**
  * The company hero.
@@ -12,13 +13,47 @@ import Link from "next/link";
  * registry section's own search further down the page, and an agent query
  * box in a company hero over-weights one product out of three.
  */
+
+/**
+ * What the vulnerability database holds.
+ *
+ * These are not live. The database is a customer deployable — it runs in the
+ * customer's own cluster and by design never reports back to us, so there is
+ * no instance this page could read. The figures below were measured against a
+ * populated v1.11.0 deployment on 2026-08-18:
+ *
+ *   cve              379,080      github_advisory  359,381
+ *   kev                1,670      nvd_cpe        1,809,662
+ *   epss (cve)       360,497      cwe                1,450
+ *
+ * They are rounded down and carry a "+" because every one of these corpora
+ * only grows: a rounded figure stays true as it ages, where an exact one is
+ * wrong within a day. KEV is stated exactly — it is small, it moves weekly,
+ * and rounding it would throw away the precision that makes it credible.
+ *
+ * Re-measure with:
+ *   docker exec <vuln-db-container> psql -U vulnerability_admin \
+ *     -d vulnerability_intelligence -c "select count(*) from vulns.cve"
+ *
+ * Note that vulns.epss holds one row per CVE per scoring day, so its raw row
+ * count (1.8M) is score-days and not vulnerabilities. The figure below is
+ * count(distinct cve_id) — the number of vulnerabilities carrying a score.
+ */
+const VULN_PROOF = [
+  { figure: "9", label: "live data sources" },
+  { figure: "379,000+", label: "vulnerabilities" },
+  { figure: "1,670", label: "known exploited (KEV)" },
+  { figure: "360,000+", label: "scored by EPSS" },
+] as const;
+
 export default function HomeHero({
-  agentCount,
+  stats,
 }: {
-  /** Live count from the registry, so the proof strip states a fact rather
-      than a marketing round number. null means the stats read failed — it is
-      never rendered as zero, which would claim an empty registry. */
-  agentCount: number | null;
+  /** Live counts from the registry, so the proof strip states facts rather
+      than marketing round numbers. null means the stats read failed — the
+      registry row is then dropped entirely rather than rendered as zeroes,
+      which would claim an empty registry. */
+  stats: RegistryStats | null;
 }) {
   return (
     <section className="hm-hero">
@@ -48,29 +83,45 @@ export default function HomeHero({
           </Link>
         </div>
 
-        <dl className="hm-proof">
-          <div>
-            <dt>Nine</dt>
-            <dd>ingest sources feeding the vulnerability database, unattended</dd>
-          </div>
-          {/* null is "we could not read the count", not "the count is zero".
-              Rendering 0 here told visitors the registry was empty whenever a
-              stats read failed, which is the one claim this page must never
-              make by accident. The figure is dropped and the sentence stands
-              on its own rather than asserting a number we do not have. */}
-          <div>
-            <dt>{agentCount === null ? "Every" : agentCount.toLocaleString()}</dt>
-            <dd>
-              {agentCount === null
-                ? "AI agent indexed carries a provenance passport"
-                : "AI agents indexed, each with a provenance passport"}
-            </dd>
-          </div>
-          <div>
-            <dt>Zero</dt>
-            <dd>egress — bring your own model, nothing leaves your network</dd>
-          </div>
-        </dl>
+        {/* Two rows, deliberately unlabelled. The first is the registry, the
+            second is the vulnerability database. Grouping them separates two
+            products whose numbers used to sit in one undifferentiated row,
+            where "nine ingest sources" and "6,820 agents indexed" read as
+            though they measured the same thing. */}
+        <div className="hm-proof">
+          {/* Dropped rather than zeroed when the read fails. An absent row
+              makes no claim; a row of zeroes claims an empty registry, which
+              is the one thing this page must never say by accident. */}
+          {stats && (
+            <dl className="hm-proof__row">
+              <div>
+                <dt>{stats.marketplaces.toLocaleString()}</dt>
+                <dd>marketplaces indexed</dd>
+              </div>
+              <div>
+                <dt>{stats.agents.toLocaleString()}</dt>
+                <dd>agents &amp; AI apps</dd>
+              </div>
+              <div>
+                <dt>{stats.publishers.toLocaleString()}</dt>
+                <dd>publishers</dd>
+              </div>
+              <div>
+                <dt>{stats.changes.toLocaleString()}</dt>
+                <dd>changes tracked</dd>
+              </div>
+            </dl>
+          )}
+
+          <dl className="hm-proof__row">
+            {VULN_PROOF.map((p) => (
+              <div key={p.label}>
+                <dt>{p.figure}</dt>
+                <dd>{p.label}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
       </div>
     </section>
   );

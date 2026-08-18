@@ -122,6 +122,7 @@ export interface RegistryStats {
   captures: number;
   changes: number;
   last_captured_at: string | null;
+  publishers: number;
 }
 
 export interface ChangeRow {
