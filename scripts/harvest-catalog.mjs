@@ -4,34 +4,47 @@
  *
  *   node scripts/harvest-catalog.mjs
  *
- * The storefront does not paginate deterministically, and this script is built
- * around that fact rather than against it.
+ * The storefront will not simply hand you its catalogue, for two separate
+ * reasons that look identical from the outside.
  *
- * One full walk of the ~114 pages returns about 6,800 tile slots but only
- * ~5,100 distinct products: roughly a quarter of every result set repeats a
- * product already returned by another page, and *which* quarter changes over
- * time. Re-fetching a single page is stable, so the loss happens across page
- * boundaries, not within them. Partitioning by subcategory does not rescue it
- * — every slice sheds the same ~25% internally, and the four slices together
- * came back with fewer distinct products than the flat walk did.
+ * The first is that it does not paginate deterministically. Each request is
+ * served from a rotating shard, so one full walk returns ~6,800 tile slots but
+ * only ~5,100 distinct products, and a sweep re-observes only about 91% of the
+ * products we already know exist. Nothing fixes this from the query side:
+ * pageSize/$top/skip/offset are all silently ignored (every variant returns the
+ * same 60 tiles as the plain page), no sort parameter is honoured, and
+ * productType/pricingModel/publisher are client-side filters that come back
+ * unfiltered. Partitioning by subcategory is worse than the flat walk.
  *
- * What works is accumulation. Measured over consecutive passes:
+ * The second is HTTP caching, and it is what made this look hopeless. Responses
+ * carry max-age=3600, so repeating a walk inside the hour replays the identical
+ * shard and adds nothing — which reads exactly like a catalogue that has been
+ * exhausted. It is not. Measured on one page:
  *
- *     pass 1  flat        +836 ->  836
- *     pass 2  flat (now)    +0 ->  836   identical: the pages are cached
- *     pass 3  subcats    +1140 -> 1976
- *     pass 4  flat       +3585 -> 5561   cache rotated, different slice
- *     pass 5  subcats     +848 -> 6409   against a reported total of ~6812
+ *     page 100, fetched 4x plain          ->  60 distinct ids   (4x TCP_HIT)
+ *     page 100, fetched 4x cache-busted   -> 180 distinct ids   (4x TCP_MISS)
  *
- * So the enumeration unions instead of replacing. It seeds from whatever
- * data/tiles.jsonl already holds, sweeps repeatedly with a pause between
- * passes so the cache turns over, alternates the flat walk with the
- * subcategory walks because they duplicate differently, and stops once passes
- * stop finding anything new. Re-running it tomorrow keeps closing the gap
- * rather than starting over — and, critically, can no longer *lose* products
- * a previous run had already found.
+ * So every request here carries a cache-buster, and coverage becomes a
+ * coupon-collector problem: keep drawing fresh samples and union them.
  *
- * Touches no database. Enumeration is cheap and re-runnable, and keeping it
+ * Two angles are drawn from, because they duplicate differently:
+ *
+ *   flat    — the plain category walk, cache-busted. ~25% internal duplication.
+ *   search  — `search=<term>` is the one genuinely server-honoured filter
+ *             (search=copilot returns 887, not the unfiltered ~6,810). Slices
+ *             duplicate internally at 0.2-1%, so they are far denser per
+ *             request than the flat walk, and they reach products a given shard
+ *             sample happens to omit.
+ *
+ * Deliberately NOT used: catalogapi.azure.com. It is deterministic and would
+ * retire all of the above, but it requires an API key lifted from the page's
+ * client config, and this repository is public. A reverse-engineered credential
+ * does not go in it.
+ *
+ * The file is only ever added to, never replaced. A run that samples badly can
+ * no longer destroy what a previous run found.
+ *
+ * Touches no database — enumeration is cheap and re-runnable, and keeping it
  * separate means a bad ingest never costs a re-crawl.
  */
 import {
@@ -42,55 +55,97 @@ import {
   pool,
   readJsonl,
   writeJsonl,
-  sleep,
 } from "./lib/marketplace.mjs";
 
 const OUT = "data/tiles.jsonl";
-const CONCURRENCY = 8;
 const TILE_PAGE = 60; // tiles per storefront page
-const MAX_PASSES = Number(process.env.HARVEST_PASSES ?? 10);
-const COOL_MS = Number(process.env.HARVEST_COOL_MS ?? 20_000);
-const DRY_LIMIT = 2; // consecutive passes finding nothing new before we stop
+const FLAT_CONCURRENCY = 5;
+const SEARCH_CONCURRENCY = 3; // 4+ draws sustained 403s on search slices
+const SEARCH_MAX_PAGES = 20; // broad terms are capped; narrow ones pay better
+const MAX_ROUNDS = Number(process.env.HARVEST_ROUNDS ?? 6);
+const MIN_GAIN = Number(process.env.HARVEST_MIN_GAIN ?? 5); // stop below this
 
-// Hardcoded because the payload does not carry a facet list to read them from
-// — window.__INITIAL_STATE__.apps has no facets/filters key. subcategories is
-// also the *only* query parameter the server actually honours: productType,
-// pricingModel and publisher are applied client-side after hydration and come
-// back unfiltered, and no sort parameter is honoured at all.
-const SUBCATEGORIES = [
-  "bot-services",
-  "ai-for-business",
-  "cognitive-services",
-  "business-robotic-process-automation",
+/**
+ * Defeat the CDN cache. Without this, every repeat of a URL inside the hour
+ * replays one shard and the crawl looks finished while most of the catalogue
+ * has never been served. The parameter is ignored by the application and
+ * changes nothing but the cache key.
+ */
+const bust = (url) =>
+  `${url}${url.includes("?") ? "&" : "?"}cb=${Math.random().toString(36).slice(2, 10)}`;
+
+const SEARCH_URL = (term) => (p) =>
+  `${ORIGIN}/en-us/search/products?category=${CATEGORY}&search=${encodeURIComponent(term)}&page=${p}`;
+
+const tilesOf = (r) => (r.ok ? r.state?.apps?.galleryTiles ?? [] : []);
+
+/**
+ * Walk one query to exhaustion. Pages that come back empty are retried once: a
+ * dropped page is 60 tiles of real coverage lost, not an end-of-results signal,
+ * and under concurrency the storefront sheds load fairly often.
+ */
+async function sweep(urlFor, { concurrency, maxPages = Infinity }) {
+  const head = await fetchState(bust(urlFor(1)));
+  const count = head.ok ? head.state?.apps?.count ?? null : null;
+  if (!count) return { count: null, tiles: tilesOf(head) };
+
+  // Page from the reported count rather than probing for an empty page. The
+  // count is not trustworthy as a target — it jitters (6801-6818 observed
+  // between identical requests) — but it is a fine upper bound.
+  const pages = Math.min(Math.ceil(count / TILE_PAGE) + 1, maxPages);
+  const rest = Array.from({ length: Math.max(pages - 1, 0) }, (_, i) => i + 2);
+
+  const got = await pool(rest, concurrency, async (p) => tilesOf(await fetchState(bust(urlFor(p)))));
+  const empties = rest.filter((_, i) => got[i]?.length === 0);
+  const retried = empties.length
+    ? await pool(empties, concurrency, async (p) => tilesOf(await fetchState(bust(urlFor(p)))))
+    : [];
+
+  return { count, tiles: [tilesOf(head), ...got, ...retried].flat() };
+}
+
+/**
+ * Search terms, richest first. The static list is the vocabulary that actually
+ * paid during probing — vertical and AI-product nouns. It is then extended with
+ * the commonest words in the titles we already hold, so the term list grows
+ * with the catalogue instead of staying frozen at whatever seemed sensible when
+ * this was written. Terms of one character are useless: they return the
+ * unfiltered set and cost a full walk each.
+ */
+const BASE_TERMS = [
+  "assistant", "chatbot", "analytics", "automation", "customer", "generative",
+  "llm", "dashboard", "network", "risk", "sentiment", "recommendation",
+  "government", "manufacturing", "insurance", "banking", "education",
+  "marketing", "legal", "retail", "voice", "security", "monitoring",
+  "quality", "audit", "finance", "copilot", "agent", "document", "healthcare",
 ];
 
-const SUB_URL = (slug) => (p) =>
-  `${ORIGIN}/en-us/search/products?category=${CATEGORY}&subcategories=${slug}&page=${p}`;
+const STOP = new Set([
+  "with", "from", "your", "that", "this", "have", "will", "into", "more",
+  "using", "used", "based", "solution", "solutions", "platform", "service",
+  "services", "microsoft", "azure", "cloud", "data", "management", "system",
+  "systems", "software", "business", "enterprise", "powered", "intelligent",
+]);
 
-/** Walk one query to exhaustion, returning every tile slot it hands back. */
-async function sweep(urlFor) {
-  const head = await fetchState(urlFor(1));
-  const count = head.ok ? head.state?.apps?.count ?? null : null;
-  // Page from the reported count with a margin rather than probing for an
-  // empty page: the total drifts upward while you crawl (6788 -> 6801 within
-  // 90 minutes observed), and a short read is cheaper than a missed tail.
-  const pages = count ? Math.ceil(count / TILE_PAGE) + 2 : 120;
-
-  const got = await pool(
-    Array.from({ length: pages }, (_, i) => i + 1),
-    CONCURRENCY,
-    async (p) => {
-      const { ok, state } = await fetchState(urlFor(p));
-      return ok ? state.apps?.galleryTiles ?? [] : [];
+function seedTerms(tiles, want) {
+  const freq = new Map();
+  for (const t of tiles) {
+    const text = `${t.title ?? ""} ${t.displayName ?? ""} ${t.name ?? ""}`.toLowerCase();
+    for (const w of text.match(/[a-z]{5,}/g) ?? []) {
+      if (STOP.has(w) || BASE_TERMS.includes(w)) continue;
+      freq.set(w, (freq.get(w) ?? 0) + 1);
     }
-  );
-  return { count, tiles: got.flat() };
+  }
+  return [...freq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, want)
+    .map(([w]) => w);
 }
+
+// ------------------------------------------------------------------ run ----
 
 const seen = new Map();
-for (const t of await readJsonl(OUT)) {
-  if (t?.entityId) seen.set(t.entityId, t);
-}
+for (const t of await readJsonl(OUT)) if (t?.entityId) seen.set(t.entityId, t);
 
 const resume = seen.size;
 console.log(
@@ -99,42 +154,59 @@ console.log(
     : "enumerating AI Apps and Agents\n"
 );
 
-let reportedTotal = null;
-let dry = 0;
-
-for (let pass = 1; pass <= MAX_PASSES && dry < DRY_LIMIT; pass++) {
-  // Alternate: the flat walk and the subcategory walks duplicate differently,
-  // so each is a fresh angle on the same catalogue rather than a repeat.
-  const useSubs = pass % 2 === 0;
-  const before = seen.size;
-  let slots = 0;
-
-  if (useSubs) {
-    for (const slug of SUBCATEGORIES) {
-      const { tiles } = await sweep(SUB_URL(slug));
-      slots += tiles.length;
-      for (const t of tiles) if (t?.entityId && !seen.has(t.entityId)) seen.set(t.entityId, t);
+const absorb = (tiles) => {
+  let added = 0;
+  for (const t of tiles) {
+    if (t?.entityId && !seen.has(t.entityId)) {
+      seen.set(t.entityId, t);
+      added++;
     }
-  } else {
-    const { count, tiles } = await sweep(PAGE_URL);
-    if (count) reportedTotal = count;
-    slots += tiles.length;
-    for (const t of tiles) if (t?.entityId && !seen.has(t.entityId)) seen.set(t.entityId, t);
   }
+  return added;
+};
 
-  const added = seen.size - before;
-  dry = added === 0 ? dry + 1 : 0;
-  const of = reportedTotal ? ` of ~${reportedTotal}` : "";
+let reportedTotal = null;
+
+// Flat walks are cheap and dense; search slices cost roughly eight times as
+// much per product found. Measured on one run against a 6,627-id file: flat
+// +114 from 6,810 slots, search +77 from 38,824, and a second search pass +0
+// from 38,840. So keep drawing cheap flat samples while they pay, and bring in
+// the search angle only once the flat walk dries up. Search does reach products
+// no shard sample happened to include — it is worth having, just not worth
+// paying for while the cheap draw is still finding things.
+for (let round = 1; round <= MAX_ROUNDS; round++) {
+  const flat = await sweep(PAGE_URL, { concurrency: FLAT_CONCURRENCY });
+  if (flat.count) reportedTotal = flat.count;
+  const flatAdded = absorb(flat.tiles);
   console.log(
-    `  pass ${pass} ${useSubs ? "subcats" : "flat   "}: ${slots} slots, +${added} new, ${seen.size}${of} unique`
+    `  round ${round} flat  : ${flat.tiles.length} slots, +${flatAdded} new, ${seen.size} unique`
   );
+  await writeJsonl(OUT, [...seen.values()]);
+  if (flatAdded >= MIN_GAIN) continue;
 
-  // Written every pass, not just at the end: a run interrupted half way
-  // through still leaves the catalogue further along than it found it.
+  const terms = [...BASE_TERMS, ...seedTerms([...seen.values()], 30)];
+  let searchSlots = 0;
+  let searchAdded = 0;
+  for (const term of terms) {
+    const { tiles } = await sweep(SEARCH_URL(term), {
+      concurrency: SEARCH_CONCURRENCY,
+      maxPages: SEARCH_MAX_PAGES,
+    });
+    searchSlots += tiles.length;
+    searchAdded += absorb(tiles);
+  }
+  console.log(
+    `  round ${round} search: ${searchSlots} slots over ${terms.length} terms, +${searchAdded} new, ${seen.size} unique`
+  );
   await writeJsonl(OUT, [...seen.values()]);
 
-  const done = dry >= DRY_LIMIT || pass >= MAX_PASSES;
-  if (!done) await sleep(COOL_MS); // let the page cache rotate
+  // Both angles below the threshold in the same round: the flat draw has
+  // stopped paying and the slices agree. Stopping on the flat walk alone would
+  // quit while search still had products to give.
+  if (searchAdded < MIN_GAIN) {
+    console.log(`  both angles below ${MIN_GAIN} new — stopping`);
+    break;
+  }
 }
 
 const tiles = [...seen.values()];
@@ -147,11 +219,14 @@ const certs = tiles.reduce((a, t) => {
 }, {});
 
 console.log(`\n${tiles.length} unique products -> ${OUT}  (+${tiles.length - resume} this run)`);
-if (reportedTotal && tiles.length < reportedTotal) {
-  console.log(
-    `marketplace reports ${reportedTotal}; ${reportedTotal - tiles.length} still unseen — ` +
-      `re-run to keep closing the gap (this file is never overwritten, only added to)`
-  );
+if (reportedTotal) {
+  // Never presented as a shortfall against a fixed denominator: the storefront's
+  // own count jitters by ~15 between identical requests, so "N still missing" is
+  // precision the number does not have.
+  console.log(`storefront reports ~${reportedTotal} (jitters by ~15 between requests)`);
+  if (tiles.length < reportedTotal - 20) {
+    console.log("re-run to keep closing the gap — this file is only ever added to, never replaced");
+  }
 }
 console.log(`with logo: ${withIcon}   with pricing: ${priced}   certification: ${JSON.stringify(certs)}`);
 if (tiles.length === 0) process.exit(1);
