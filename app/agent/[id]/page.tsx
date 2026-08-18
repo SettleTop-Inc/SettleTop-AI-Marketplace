@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import PassportView from "@/components/PassportView";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
-import { getPassport } from "@/lib/registry";
+import { getLogos, getPassport } from "@/lib/registry";
+import { withLogo } from "@/lib/logos";
 
 export const revalidate = 300;
 
@@ -40,8 +41,14 @@ export default async function AgentPage({
   // string (e.g. "risk=Low&q=agent"). Do NOT decodeURIComponent it again —
   // a second decode would corrupt any literal `%` inside it and throw.
   const { from, back: backQS } = await searchParams;
-  const a = await getPassport(decodeURIComponent(id));
-  if (!a) notFound();
+  const passport = await getPassport(decodeURIComponent(id));
+  if (!passport) notFound();
+
+  // v_asset_passport carries no logo column — logos have their own archival
+  // lifecycle and are deliberately kept out of the capture views. Nothing here
+  // merged them, so every passport rendered initials no matter how many logos
+  // the registry held. One lookup for one product.
+  const a = withLogo(passport, await getLogos([passport.source_product_id]));
 
   // The destination path is always one of these two literals — never built
   // from `from` or `back` — so neither an attacker-supplied `?from=` nor a

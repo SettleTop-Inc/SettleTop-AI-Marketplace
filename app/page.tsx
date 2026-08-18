@@ -17,13 +17,20 @@ export const revalidate = 300;
  * is three reads of six rows. Browsing itself lives on /marketplace.
  */
 export default async function HomePage() {
-  const [facets, top, stats, featured, logos] = await Promise.all([
+  const [facets, top, stats, featured] = await Promise.all([
     getFacetCounts(),
     getTopAgents(),
     getStats(),
     getFeatured(),
-    getLogos(),
   ]);
+
+  // Only the handful of agents this page actually renders — three lists of six
+  // plus the featured record — not every archived logo in the registry.
+  const logos = await getLogos(
+    [...top.All, ...top.Verified, ...top.Free, ...(featured ? [featured] : [])].map(
+      (a) => a.source_product_id
+    )
+  );
 
   // The use-case tiles are keyed by function category, and registry_search
   // normalises a null category to "Unknown" — the same bucket /marketplace
