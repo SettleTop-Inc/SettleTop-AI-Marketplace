@@ -6,6 +6,7 @@ import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
 import ProductLogo from "@/components/ProductLogo";
 import MitreChain from "@/components/products/MitreChain";
+import SbomFlow from "@/components/products/SbomFlow";
 import { PRODUCTS, byslug } from "@/lib/products";
 
 type Params = Promise<{ slug: string }>;
@@ -60,6 +61,22 @@ export default async function ProductPage({ params }: { params: Params }) {
             )}
           </div>
         </section>
+
+        {p.visual === "sbom-flow" && (
+          <section className="hm-section">
+            <div className="st-shell st-shell--wide">
+              <header className="hm-section__head">
+                <p className="st-eyebrow">The shape of it</p>
+                <h2 className="st-display">From a bill of materials to intelligence</h2>
+                <p className="st-lede">
+                  What happens to an SBOM between upload and a dossier you can
+                  cite.
+                </p>
+              </header>
+              <SbomFlow />
+            </div>
+          </section>
+        )}
 
         {p.visual === "mitre-chain" && (
           <section className="hm-section">

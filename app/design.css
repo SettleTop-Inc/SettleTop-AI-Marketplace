@@ -1404,8 +1404,12 @@ details[open] > .st-disclosure::before { content: "− "; }
 }
 /* Where the chain lands and the four feeds attach — the one node the eye
    should find first. */
+/* Solid by default so the class is safe in any diagram: a url() stroke only
+   resolves against a gradient defined in that same SVG's defs, and pointing
+   at another component's id fails silently to no stroke at all. MitreChain
+   opts into its gradient inline. */
 .kg__node--focus {
-  stroke: url(#kgDown);
+  stroke: var(--c-accent);
   stroke-width: 2.5;
   filter: drop-shadow(0 6px 20px rgba(16, 35, 61, .16));
 }
@@ -1469,6 +1473,19 @@ details[open] > .st-disclosure::before { content: "− "; }
 @media (max-width: 760px) {
   .kg { overflow-x: auto; }
   .kg__svg { min-width: 760px; }
+}
+
+/* ---- SBOM flow ----------------------------------------------------------
+   Shares the knowledge-graph shell; only the pieces unique to a process
+   diagram live here. */
+.fl-link--muted { opacity: .35; stroke-dasharray: 5 5; }
+.fl-panel--muted { stroke-dasharray: 5 5; fill: transparent; }
+.fl-panel__title {
+  font-family: var(--font-data);
+  font-size: 12px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  fill: var(--c-accent);
 }
 
 /* ---- Product detail ----------------------------------------------------- */

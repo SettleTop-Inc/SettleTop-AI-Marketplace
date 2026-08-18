@@ -30,7 +30,7 @@ export type Product = {
   sections?: { title: string; body: string; items?: string[] }[];
   shots?: Shot[];
   /** A drawn diagram instead of screenshots, for products with no UI. */
-  visual?: "mitre-chain";
+  visual?: "mitre-chain" | "sbom-flow";
   audience?: string[];
   deploy?: { k: string; v: string }[];
   cta?: { label: string; href: string; external?: boolean };
@@ -85,6 +85,7 @@ export const PRODUCTS: Product[] = [
     summary:
       "Upload a bill of materials and every component resolves to its real source repository, enriched with maintenance, contributor, release, dependency and advisory signals — then assessed for where in the world it is actually maintained.",
     tags: ["Self-hosted", "Helm or Compose", "Runs locally"],
+    visual: "sbom-flow",
     points: [
       "Citeable dossiers, versioned and time-stamped",
       "Verified facts kept separate from assessed judgments",
