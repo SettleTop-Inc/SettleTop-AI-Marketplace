@@ -175,7 +175,7 @@ export default function LandingApp({
               <span className="overline">PROVENANCE REACH</span>
               <h2>See how far the trust trail reaches.</h2>
               <p>
-                SettleTop traces the components behind an agent—from who built it to the
+                SettleTop traces the components behind an agent, from who built it to the
                 models, frameworks, tools, data, dependencies and deployment
                 environment. If evidence is unavailable, the registry says{" "}
                 <b>Unknown</b>.

@@ -20,8 +20,8 @@ export const COMPANY = {
   title: "About SettleTop",
   lede: "Your partner for trusted AI-assisted development.",
   body: [
-    "SettleTop is an AI data provenance and intelligence company focused on giving organizations clarity and confidence in their AI development. Our CodeRoot Platform maps every contribution—whether human-written, AI-assisted, or both—providing full traceability that restores confidence and trust across the modern AI supply chain. Our system-level graph connects provenance data with risk, compliance, and governance insights, enabling teams to accelerate development while strengthening trust, security, and value.",
-    "With SettleTop, enterprises and defense organizations alike can move beyond code visibility to actionable intelligence—transforming how AI is created, managed, and trusted in today’s ever-changing world.",
+    "SettleTop is an AI data provenance and intelligence company focused on giving organizations clarity and confidence in their AI development. Our CodeRoot Platform maps every contribution (whether human-written, AI-assisted, or both), providing full traceability that restores confidence and trust across the modern AI supply chain. Our system-level graph connects provenance data with risk, compliance, and governance insights, enabling teams to accelerate development while strengthening trust, security, and value.",
+    "With SettleTop, enterprises and defense organizations alike can move beyond code visibility to actionable intelligence, transforming how AI is created, managed, and trusted in today’s ever-changing world.",
   ],
   teamIntro:
     "SettleTop is led by a team of experienced innovators, technologists, and strategists who bring decades of expertise across AI, software, cybersecurity, and enterprise transformation. Our leaders combine deep technical knowledge with a clear vision for the future of AI data provenance and intelligence, software risk and data analytics. Together, the team is united by a shared mission: to deliver clarity, confidence, and measurable value in today’s AI development lifecycle.",
@@ -49,7 +49,7 @@ export const COMPANY = {
   ],
   joinTitle: "Join the team",
   joinBody:
-    "At SettleTop, we believe innovation thrives where trust, collaboration, and purpose intersect. We foster a culture that values curiosity, accountability, and impact—encouraging our team to challenge assumptions, build with integrity, and deliver solutions that matter. Guided by transparency and a systems-level mindset, we empower people to grow, share ideas openly, and take ownership of outcomes. Above all, we are united by a commitment to helping organizations navigate the complexity of AI with clarity and confidence.",
+    "At SettleTop, we believe innovation thrives where trust, collaboration, and purpose intersect. We foster a culture that values curiosity, accountability, and impact, encouraging our team to challenge assumptions, build with integrity, and deliver solutions that matter. Guided by transparency and a systems-level mindset, we empower people to grow, share ideas openly, and take ownership of outcomes. Above all, we are united by a commitment to helping organizations navigate the complexity of AI with clarity and confidence.",
   joinHref: "https://www.settletop.com/careers",
 } as const;
 
@@ -58,10 +58,10 @@ export const PARTNERS = {
   lede: "Let’s make AI development more transparent, secure and trusted.",
   eraTitle: "Join the New Era in AI Development",
   eraBody:
-    "We believe that the future of AI (and software) is collaborative—humans, AI, and open source all contributing together. Our partner ecosystem includes the world’s most innovative AI-assisted development tools, spanning the entire AI development lifecycle. By working together, we bring traceability, provenance, and governance to AI.",
+    "We believe that the future of AI (and software) is collaborative: humans, AI, and open source all contributing together. Our partner ecosystem includes the world’s most innovative AI-assisted development tools, spanning the entire AI development lifecycle. By working together, we bring traceability, provenance, and governance to AI.",
   whyTitle: "Why Partner with Us?",
   whyBody:
-    "At SettleTop (CodeRoot.ai), we don’t replace your tools — we make them stronger. We partner with the leading AI-assisted platforms to bring provenance, trust, and governance to every stage of AI development.",
+    "At SettleTop (CodeRoot.ai), we don’t replace your tools. We make them stronger. We partner with the leading AI-assisted platforms to bring provenance, trust, and governance to every stage of AI development.",
   pathTitle: "Choose Your AI Path",
   paths: [
     { name: "Create", body: "Audit trail for AI-assisted development, creation and modification." },
@@ -70,7 +70,7 @@ export const PARTNERS = {
     { name: "Govern", body: "Automated proof of compliance and governance." },
   ],
   neutral:
-    "SettleTop provides a neutral provenance platform focused on empowering your AI tools, solutions and services — we give you more transparency, context and trust.",
+    "SettleTop provides a neutral provenance platform focused on empowering your AI tools, solutions and services. We give you more transparency, context and trust.",
   brandsTitle: "Working With Leading Brands",
   /* The live site publishes this as one composite PNG rather than as separate
      logo files. It is reproduced as published; the names are transcribed from

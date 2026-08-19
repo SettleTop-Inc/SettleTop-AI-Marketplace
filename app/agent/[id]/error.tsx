@@ -28,7 +28,7 @@ export default function PassportError({
           <b>This passport could not be loaded</b>
           <p>
             This is a fault on our side. The agent has not been removed, and its
-            record has not been withdrawn — we simply could not read it just now.
+            record has not been withdrawn. We simply could not read it just now.
           </p>
           <p style={{ display: "flex", gap: 12, marginTop: 16 }}>
             <button className="reg-control" onClick={reset}>

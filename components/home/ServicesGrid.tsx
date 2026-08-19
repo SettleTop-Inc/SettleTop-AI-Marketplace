@@ -13,7 +13,7 @@ const SERVICES = [
   {
     name: "Enterprise Software Intelligence data pipelines",
     body:
-      "Design and run the pipelines that turn a software estate into intelligence you can query — ingestion, resolution, enrichment and the store underneath it.",
+      "Design and run the pipelines that turn a software estate into intelligence you can query: ingestion, resolution, enrichment and the store underneath it.",
     shape: "Build and deploy",
   },
   {
@@ -69,7 +69,7 @@ export default function ServicesGrid({ headless }: { headless?: boolean }) {
             <h2 className="st-display">Work we do alongside the products</h2>
             <p className="st-lede">
               Engagements that stand up the pipelines, produce the assessments and
-              run the registries — using the same evidence standard the products
+              run the registries, using the same evidence standard the products
               hold themselves to.
             </p>
           </header>

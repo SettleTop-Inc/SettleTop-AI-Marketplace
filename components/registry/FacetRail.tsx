@@ -7,7 +7,7 @@ import type { FacetGroup, FacetKey } from "@/lib/registry-query";
  * that footnote, so this route must carry it too rather than showing a bare band.
  */
 const RISK_NOTE =
-  "How much of the build you cannot see before you deploy — not a security rating.";
+  "How much of the build you cannot see before you deploy. Not a security rating.";
 
 export default function FacetRail({
   facets,

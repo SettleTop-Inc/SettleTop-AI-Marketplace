@@ -22,7 +22,7 @@ export default function CompareTray({
         <span>{selected.length} selected</span>
         {selected.length >= MAX_COMPARE && (
           <span style={{ opacity: 0.7, fontWeight: 400 }}>
-            Capped at {MAX_COMPARE} — remove one to swap
+            Capped at {MAX_COMPARE}. Remove one to swap
           </span>
         )}
         <div className="reg-tray-list">

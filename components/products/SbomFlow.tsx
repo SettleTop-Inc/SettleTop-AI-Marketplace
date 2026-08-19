@@ -203,8 +203,8 @@ export default function SbomFlow() {
 
       <figcaption>
         The fork is the point. A component that cannot be matched to one
-        repository with confidence goes to triage rather than being guessed at —
-        the same rule the dossiers run on, where an unstated value reads Unknown
+        repository with confidence goes to triage rather than being guessed at.
+        It is the same rule the dossiers run on, where an unstated value reads Unknown
         instead of being inferred from a neighbour.
       </figcaption>
     </figure>
