@@ -54,7 +54,8 @@ timestamps already recorded in `supabase_migrations.schema_migrations`, so they
 are skipped rather than re-run.
 
 Never change the schema from the Supabase dashboard — the repo stops being the
-truth the moment you do.
+truth the moment you do. See `docs/schema-divergence-2026-08-19.md` for what
+happened the one time that rule was not followed and how it was reconciled.
 
 ## Ingest a batch of capture files
 
