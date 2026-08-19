@@ -80,8 +80,8 @@ Microsoft Marketplace
 
 | Path | What lives there |
 |---|---|
-| `app/` | App Router pages. `page.tsx` is the marketing landing page, `marketplace/` is the browsing tool with facets, sort, pagination and compare, `agent/[id]` is a shareable passport |
-| `components/` | `LandingApp` is the marketing page at `/`, `marketplace/MarketplaceApp` is the browsing tool at `/marketplace`, `AgentCard` is shared by both, `PassportView` is the passport body shared by modal and page |
+| `app/` | App Router pages. `page.tsx` is the marketing landing page, `registry/` is the browsing tool with facets, sort, pagination and compare, `agent/[id]` is a shareable passport |
+| `components/` | `LandingApp` is the marketing page at `/`, `marketplace/MarketplaceApp` is the browsing tool at `/registry`, `AgentCard` is shared by both, `PassportView` is the passport body shared by modal and page |
 | `lib/` | `registry.ts` every read, `present.ts` display rules, `types.ts` view row shapes |
 | `scripts/ingest.mjs` | Reconcile ingest, the safety net behind dual write |
 | `supabase/migrations/` | Applied schema, byte-identical to the live database |

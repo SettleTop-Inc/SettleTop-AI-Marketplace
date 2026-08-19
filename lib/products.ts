@@ -72,7 +72,7 @@ export const PRODUCTS: Product[] = [
           "Filter by function, source, deployment, evidence tier, provenance, pricing and evidence risk; put candidates side by side; and share the exact result set as a link. Facet counts exclude their own selection, so the numbers beside a filter tell you what would happen if you applied it.",
       },
     ],
-    cta: { label: "Browse the registry", href: "/marketplace" },
+    cta: { label: "Browse the registry", href: "/registry" },
   },
   {
     slug: "coderoot-open-source",

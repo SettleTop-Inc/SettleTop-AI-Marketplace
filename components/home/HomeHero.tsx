@@ -91,7 +91,7 @@ export default function HomeHero({
         <div className="hm-hero__actions">
           {/* The registry leads: it is the one product a visitor can use
               without installing anything. */}
-          <Link className="st-btn st-btn--primary" href="/marketplace">
+          <Link className="st-btn st-btn--primary" href="/registry">
             Browse AI &amp; Agents
           </Link>
           <Link className="st-btn st-btn--secondary" href="#products">

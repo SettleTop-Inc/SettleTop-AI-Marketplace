@@ -74,7 +74,7 @@ export default function SiteHeader({
               Browsing AI &amp; Agents
             </span>
           ) : (
-            <Link className="st-btn st-btn--primary" href="/marketplace">
+            <Link className="st-btn st-btn--primary" href="/registry">
               Browse AI &amp; Agents
             </Link>
           )}
