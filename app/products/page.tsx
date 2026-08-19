@@ -8,7 +8,7 @@ import { PRODUCTS } from "@/lib/products";
 export const metadata: Metadata = {
   title: "Products — SettleTop",
   description:
-    "Three records, one method: the AI Marketplace, CodeRoot Open Source and CodeRoot Vulnerability Intelligence.",
+    "Three records, one method: the AI Registry, CodeRoot Open Source and CodeRoot Vulnerability Intelligence.",
 };
 
 export default function ProductsPage() {

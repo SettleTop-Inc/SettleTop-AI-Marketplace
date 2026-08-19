@@ -7,6 +7,18 @@ const nextConfig: NextConfig = {
   // package-lock.json, so Next infers that parent as the workspace root and
   // traces every sibling project into the build. Pin the root to this project.
   outputFileTracingRoot: path.join(__dirname),
+  // The product was renamed from AI Marketplace to AI Registry, and its
+  // /products slug moved with it. The old URL is published, so it redirects
+  // rather than 404ing.
+  async redirects() {
+    return [
+      {
+        source: "/products/ai-marketplace",
+        destination: "/products/ai-registry",
+        permanent: true,
+      },
+    ];
+  },
   // Listing imagery is served from Microsoft's CDNs. Only hosts we have
   // actually seen in captured data are allowed.
   images: {

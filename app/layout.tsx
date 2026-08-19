@@ -4,9 +4,9 @@ import "./globals.css";
 import "./design.css";
 
 export const metadata: Metadata = {
-  title: "SettleTop — Intelligence your AI can cite",
+  title: "SettleTop — Know what you build, buy and borrow",
   description:
-    "Verified, timestamped intelligence about the software and AI you didn't write. Installs in your cluster, runs offline, answers your own model's questions with sources.",
+    "Understanding your software starts with knowing where it came from. SettleTop traces the provenance of every part of it: your code and the open source beneath it, the vendors behind it, the agents and AI apps you adopt, and the data they run on.",
   // Derived from the logo's alpha channel. The favicon published on
   // settletop.com is a 300x300 JPEG named .ico, which is not a format
   // browsers reliably accept.

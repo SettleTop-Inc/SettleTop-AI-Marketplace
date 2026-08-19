@@ -1,4 +1,4 @@
-# SettleTop AI Marketplace
+# SettleTop AI Registry
 
 A provenance registry for AI agents. It answers two questions a marketplace
 listing will not: **what is this agent actually built from**, and **what changed

@@ -30,7 +30,7 @@ export default function SiteFooter({
             className="st-footer__logo"
           />
           <p className="st-footer__line">
-            Intelligence your AI can cite. Inside your perimeter.
+            Know what you build, buy and borrow.
           </p>
         </div>
 

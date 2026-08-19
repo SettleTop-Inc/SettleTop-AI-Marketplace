@@ -35,7 +35,7 @@ export default function PassportError({
               Try again
             </button>
             <a className="mkt-control" href="/marketplace">
-              Back to the marketplace
+              Back to the registry
             </a>
           </p>
         </div>

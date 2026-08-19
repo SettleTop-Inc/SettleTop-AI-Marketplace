@@ -17,7 +17,6 @@ export default function SiteHeader({
   current,
   wide,
   sections,
-  onVendor,
 }: {
   current?: "overview" | "marketplace";
   /** Match the page's own shell so the lockup aligns with the content
@@ -26,8 +25,6 @@ export default function SiteHeader({
   /** In-page anchors. Supplied by the landing page, which is the only
       surface with sections to jump to. */
   sections?: { href: string; label: string }[];
-  /** Opens the vendor modal. Landing page only. */
-  onVendor?: () => void;
 }) {
   const home = current === "overview" ? "#top" : "/";
   return (
@@ -72,11 +69,6 @@ export default function SiteHeader({
 
         <div className="st-header__actions">
           <ThemeToggle />
-          {onVendor && (
-            <button className="st-btn st-btn--quiet" onClick={onVendor}>
-              For vendors
-            </button>
-          )}
           {current === "marketplace" ? (
             <span className="st-header__here" aria-current="page">
               Browsing AI &amp; Agents

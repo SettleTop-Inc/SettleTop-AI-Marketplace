@@ -38,8 +38,8 @@ export type Product = {
 
 export const PRODUCTS: Product[] = [
   {
-    slug: "ai-marketplace",
-    name: "AI Marketplace",
+    slug: "ai-registry",
+    name: "AI Registry",
     line: "Provenance for the agents you are about to adopt",
     summary:
       "Every agent carries a passport recording what its build actually discloses — model, framework, tools, data sources, hosting, residency and permission scope — and who said so.",
@@ -72,7 +72,7 @@ export const PRODUCTS: Product[] = [
           "Filter by function, source, deployment, evidence tier, provenance, pricing and evidence risk; put candidates side by side; and share the exact result set as a link. Facet counts exclude their own selection, so the numbers beside a filter tell you what would happen if you applied it.",
       },
     ],
-    cta: { label: "Browse the marketplace", href: "/marketplace" },
+    cta: { label: "Browse the registry", href: "/marketplace" },
   },
   {
     slug: "coderoot-open-source",
