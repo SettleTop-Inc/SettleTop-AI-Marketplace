@@ -8,7 +8,7 @@ import {
   runQuery,
   searchBlob,
   serializeCriteria,
-} from "./marketplace-query.ts";
+} from "./registry-query.ts";
 
 function card(over: Partial<RegistryCard> = {}): RegistryCard {
   return {

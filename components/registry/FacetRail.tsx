@@ -1,6 +1,6 @@
 "use client";
 
-import type { FacetGroup, FacetKey } from "@/lib/marketplace-query";
+import type { FacetGroup, FacetKey } from "@/lib/registry-query";
 
 /**
  * CLAUDE.md rule 5: evidence risk is not a safety score. The passport carries

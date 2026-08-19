@@ -13,7 +13,7 @@
  * not cache a thrown error the way it caches a 404 or a successful render. The
  * page therefore recovers as soon as the read does.
  *
- * Wording follows /marketplace/compare, which already handles this correctly.
+ * Wording follows /registry/compare, which already handles this correctly.
  */
 export default function PassportError({
   reset,

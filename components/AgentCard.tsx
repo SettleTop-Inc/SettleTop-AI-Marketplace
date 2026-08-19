@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import AgentLogo from "@/components/AgentLogo";
-import { MAX_COMPARE } from "@/lib/marketplace-query";
+import { MAX_COMPARE } from "@/lib/registry-query";
 import { UNKNOWN, statusClass } from "@/lib/present";
 import type { RegistryCard } from "@/lib/types";
 
 /**
- * One agent, as a card. Shared by the landing page and the marketplace.
+ * One agent, as a card. Shared by the landing page and the registry.
  *
  * Laid out in four zones — identity, what it does, what is proven, what it
  * costs — so the eye can skip to the one it wants. The previous version

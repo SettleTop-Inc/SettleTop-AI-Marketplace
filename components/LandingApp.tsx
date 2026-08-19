@@ -27,12 +27,12 @@ import {
   listed,
   permissionValue,
 } from "@/lib/present";
-import { defaultCriteria, serializeCriteria } from "@/lib/marketplace-query";
+import { defaultCriteria, serializeCriteria } from "@/lib/registry-query";
 
 /**
  * The registry site's front page.
  *
- * It carries no card corpus. Browsing lives on /marketplace, which queries
+ * It carries no card corpus. Browsing lives on /registry, which queries
  * Postgres; this page receives only the eight use-case counts and the short
  * ranked lists it actually renders. Passport detail is still fetched on demand
  * when a modal opens — the card shape deliberately does not carry overview

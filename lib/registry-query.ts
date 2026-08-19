@@ -13,7 +13,7 @@ export const PAGE_SIZE = 24;
 export const PAGE_SIZES = [12, 24, 48, 96] as const;
 
 /**
- * Shared by the marketplace's selection UI and the compare page's own cap, so
+ * Shared by the registry's selection UI and the compare page's own cap, so
  * the two cannot drift apart. Selecting a fourth agent must refuse visibly
  * (disabled checkbox, capped notice) rather than silently do nothing, and a
  * hand-edited `?ids=` URL that exceeds it must be told the same number.

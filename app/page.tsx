@@ -13,8 +13,8 @@ export const revalidate = 300;
 /**
  * This page used to fetch every card in the registry so the browser could
  * count function categories and rank six agents. It needs neither: the counts
- * come from the same aggregation the marketplace facets use, and the ranking
- * is three reads of six rows. Browsing itself lives on /marketplace.
+ * come from the same aggregation the registry facets use, and the ranking
+ * is three reads of six rows. Browsing itself lives on /registry.
  */
 export default async function HomePage() {
   const [facets, top, stats, featured] = await Promise.all([
@@ -33,7 +33,7 @@ export default async function HomePage() {
   );
 
   // The use-case tiles are keyed by function category, and registry_search
-  // normalises a null category to "Unknown" — the same bucket /marketplace
+  // normalises a null category to "Unknown" — the same bucket /registry
   // filters on, so a tile's count always matches what clicking it shows.
   const useCaseCounts: Record<string, number> = {};
   for (const v of facets.function ?? []) useCaseCounts[v.value] = v.count;

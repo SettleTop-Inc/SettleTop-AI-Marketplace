@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import MarketplaceApp from "@/components/marketplace/MarketplaceApp";
+import RegistryApp from "@/components/registry/RegistryApp";
 import { withLogos } from "@/lib/logos";
 import { getLogos, getStats, searchRegistry } from "@/lib/registry";
-import { parseCriteria } from "@/lib/marketplace-query";
+import { parseCriteria } from "@/lib/registry-query";
 import "@/app/registry.css";
 
 export const metadata: Metadata = {
@@ -16,7 +16,7 @@ type Search = Promise<Record<string, string | string[] | undefined>>;
 /**
  * The query runs in Postgres, not the browser.
  *
- * This page used to hand MarketplaceApp every card in the registry and let it
+ * This page used to hand RegistryApp every card in the registry and let it
  * filter locally. That was ~5,000 cards of JSON to render 24 of them, and it
  * grew with every capture sweep. Now the URL is read here, the work happens in
  * registry_search(), and only the page being shown crosses the wire.
@@ -27,7 +27,7 @@ type Search = Promise<Record<string, string | string[] | undefined>>;
  * to set — every distinct filter combination is its own render. The reads are
  * a single RPC plus a small logo map.
  *
- * MarketplaceApp no longer calls useSearchParams(), which is why the Suspense
+ * RegistryApp no longer calls useSearchParams(), which is why the Suspense
  * boundary that used to wrap it is gone. That boundary was working around a
  * `next dev` hazard: dev renders both the fallback and the resolved content
  * for a useSearchParams() boundary and hands the swap to a
@@ -37,7 +37,7 @@ type Search = Promise<Record<string, string | string[] | undefined>>;
  * failure is gone. Do not reintroduce useSearchParams() here without bringing
  * the boundary back with it.
  */
-export default async function MarketplacePage({
+export default async function RegistryPage({
   searchParams,
 }: {
   searchParams: Search;
@@ -66,7 +66,7 @@ export default async function MarketplacePage({
     : {};
 
   return (
-    <MarketplaceApp
+    <RegistryApp
       criteria={criteria}
       result={
         result.ok ? { ...result.data, rows: withLogos(result.data.rows, logos) } : null

@@ -6,7 +6,7 @@ import {
   type FacetKey,
   defaultCriteria,
   runQuery,
-} from "./marketplace-query.ts";
+} from "./registry-query.ts";
 import type { RegistryCard } from "./types.ts";
 
 /**
@@ -15,8 +15,8 @@ import type { RegistryCard } from "./types.ts";
  *
  * Filtering moved into the database so the browser stops receiving the whole
  * registry, but runQuery stays: it is the readable statement of what the
- * marketplace means by a match, a count and an order, and it is what the unit
- * tests in marketplace-query.test.ts pin down. This file is the join between
+ * registry means by a match, a count and an order, and it is what the unit
+ * tests in registry-query.test.ts pin down. This file is the join between
  * them — it runs both over the live registry and asserts they agree on rows,
  * order, totals and every facet count.
  *
