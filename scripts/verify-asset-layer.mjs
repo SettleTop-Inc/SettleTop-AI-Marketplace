@@ -150,8 +150,12 @@ await check("asset is the new asset table, not the pre-rename listings table", a
 
 // 2. Counts and the 1:1 invariant. Each check fetches what it needs on its
 // own, so one missing table fails only the checks that depend on it.
+// listings is sourced from the listing table itself, not v_registry_card:
+// that view inner-joins capture_extract on current_capture_id, so it counts
+// listings with a current capture, not listings. A listing without one still
+// needs an asset, and comparing against the card view would hide that case.
 await check("one asset per listing", async () => {
-  const listings = await count("v_registry_card?select=asset_id");
+  const listings = await count("listing?select=id&order=id");
   const assets = await count("asset?select=id");
   return { ok: assets === listings, detail: `${assets} assets, ${listings} listings` };
 });
