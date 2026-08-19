@@ -20,7 +20,7 @@ export default function ServicesPage() {
             <h1 className="pg-hero__title">Work we do alongside the products</h1>
             <p className="pg-hero__lede">
               Engagements that stand up the pipelines, produce the assessments and
-              run the registries — held to the same evidence standard as
+              run the registries, held to the same evidence standard as
               everything we ship.
             </p>
           </div>

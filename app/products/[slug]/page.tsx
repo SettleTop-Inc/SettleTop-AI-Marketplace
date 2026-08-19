@@ -85,8 +85,8 @@ export default async function ProductPage({ params }: { params: Params }) {
                 <p className="st-eyebrow">The shape of it</p>
                 <h2 className="st-display">One graph, joined up</h2>
                 <p className="st-lede">
-                  There is no dashboard to show you — the product is the graph and
-                  the endpoint your model asks. So here is the graph.
+                  There is no dashboard to show you. The product is the graph and
+                  the endpoint your model asks, so here is the graph.
                 </p>
               </header>
               <MitreChain />

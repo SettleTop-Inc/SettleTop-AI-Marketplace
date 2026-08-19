@@ -189,7 +189,7 @@ export default function CompareTable({ agents }: { agents: AssetPassport[] }) {
                     // column says the row is not comparable, once, instead of
                     // asserting anything per agent.
                     <td className="reg-none" colSpan={agents.length}>
-                      No evidence to compare — every agent is Unknown here.
+                      No evidence to compare: every agent is Unknown here.
                     </td>
                   ) : (
                     displayValues.map((v, i) => (
@@ -206,7 +206,7 @@ export default function CompareTable({ agents }: { agents: AssetPassport[] }) {
       </div>
       <div className="reg-cmp-legend">
         <span>Highlighted rows (marked “differs”) have different stated values</span>
-        <span className="reg-none">Unknown — the source is silent</span>
+        <span className="reg-none">Unknown: the source is silent</span>
       </div>
     </>
   );

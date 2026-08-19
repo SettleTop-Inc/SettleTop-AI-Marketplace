@@ -418,8 +418,8 @@ export default function PassportView({
           Evidence risk is the share of the build you cannot see before you deploy,
           not a security rating. It starts at the attestation level, then moves one
           band on how much of the build this source can disclose that it actually
-          does. Three of the {a.layers_tracked} layers — hosting, data residency
-          and permission scope — are only ever stated on an app certification page,
+          does. Three of the {a.layers_tracked} layers (hosting, data residency
+          and permission scope) are only ever stated on an app certification page,
           so a listing without one is scored against the nine it can state. Every
           value above is copied from this listing or its certification page.
           Unknown means the source does not state it.

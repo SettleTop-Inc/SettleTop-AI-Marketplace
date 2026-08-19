@@ -42,7 +42,7 @@ export const PRODUCTS: Product[] = [
     name: "AI Registry",
     line: "Provenance for the agents you are about to adopt",
     summary:
-      "Every agent carries a passport recording what its build actually discloses — model, framework, tools, data sources, hosting, residency and permission scope — and who said so.",
+      "Every agent carries a passport recording what its build actually discloses (model, framework, tools, data sources, hosting, residency and permission scope) and who said so.",
     tags: ["Live registry"],
     points: [
       "Verified, Disclosed and Unknown are recorded separately",
@@ -64,7 +64,7 @@ export const PRODUCTS: Product[] = [
       {
         title: "Evidence risk is not a security rating",
         body:
-          "The risk band measures how much of the build you cannot see before you deploy — not how dangerous the agent is. It starts at the attestation level and moves on how much of the build the source can disclose but does not. An agent with a thin record scores badly even if it is perfectly safe, because the point is what you can check.",
+          "The risk band measures how much of the build you cannot see before you deploy, not how dangerous the agent is. It starts at the attestation level and moves on how much of the build the source can disclose but does not. An agent with a thin record scores badly even if it is perfectly safe, because the point is what you can check.",
       },
       {
         title: "Comparison and hand-off",
@@ -83,7 +83,7 @@ export const PRODUCTS: Product[] = [
     name: "CodeRoot Open Source",
     line: "Component intelligence, from an SBOM",
     summary:
-      "Upload a bill of materials and every component resolves to its real source repository, enriched with maintenance, contributor, release, dependency and advisory signals — then assessed for where in the world it is actually maintained.",
+      "Upload a bill of materials and every component resolves to its real source repository, enriched with maintenance, contributor, release, dependency and advisory signals, then assessed for where in the world it is actually maintained.",
     tags: ["Self-hostable", "Helm or Compose", "Runs locally"],
     visual: "sbom-flow",
     points: [
@@ -109,12 +109,12 @@ export const PRODUCTS: Product[] = [
         body:
           "A stable, citeable record for each component, maintained as a living baseline. Every major claim is evidence-backed and time-stamped, with confidence levels distinguishing verified fact from analytic judgment.",
         items: [
-          "Identification — canonical naming, aliases, forks, registry mappings and version lines",
-          "Stewardship — maintainer structure, bus-factor signals, governance model, workflow maturity",
-          "Operational readiness — release cadence, backlog aging, maintainer churn and continuity",
-          "Security posture — vulnerability history, recurrence patterns, patch latency, signing and attestations",
-          "Supply chain exposure — transitive footprint, publish pathways, shared-maintainer concentration",
-          "Legal baseline — licensing, obligations, drift and notable exceptions",
+          "Identification: canonical naming, aliases, forks, registry mappings and version lines",
+          "Stewardship: maintainer structure, bus-factor signals, governance model, workflow maturity",
+          "Operational readiness: release cadence, backlog aging, maintainer churn and continuity",
+          "Security posture: vulnerability history, recurrence patterns, patch latency, signing and attestations",
+          "Supply chain exposure: transitive footprint, publish pathways, shared-maintainer concentration",
+          "Legal baseline: licensing, obligations, drift and notable exceptions",
         ],
       },
       {
@@ -158,7 +158,7 @@ export const PRODUCTS: Product[] = [
       "Government agencies with mission systems and regulated environments",
       "Defense and intelligence organizations, commands and program offices",
       "Defense primes, integrators and major suppliers",
-      "Critical infrastructure — energy, utilities, telecom, transportation",
+      "Critical infrastructure: energy, utilities, telecom, transportation",
       "Financial services, healthcare and life sciences with high-assurance programs",
       "Enterprises with formal governance, GRC and third-party risk processes",
     ],
@@ -191,7 +191,7 @@ export const PRODUCTS: Product[] = [
       {
         title: "One chain, joined up",
         body:
-          "Defensive techniques through adversary techniques, attack patterns, weakness classes and specific vulnerabilities — held as one traversable graph rather than as separate downloads you join by hand. Exploitation signal comes from the KEV catalog and EPSS, and product matching from the CPE dictionary.",
+          "Defensive techniques through adversary techniques, attack patterns, weakness classes and specific vulnerabilities, held as one traversable graph rather than as separate downloads you join by hand. Exploitation signal comes from the KEV catalog and EPSS, and product matching from the CPE dictionary.",
       },
       {
         title: "Built for your model, not ours",
@@ -203,12 +203,12 @@ export const PRODUCTS: Product[] = [
         body:
           "The pipeline order is not incidental. Taxonomy first, then the product dictionary, then the known-exploited catalogue, then CVE records, then the operational enrichment that hangs off them, then a data-quality report. KEV deliberately loads before CVE: it keys on a CVE id as text with no foreign key into the CVE table, so a CVE outage still fails loudly while KEV, EPSS and the rest survive it.",
         items: [
-          "Phase 1 — MITRE taxonomy: cwe, capec, attack, d3fend",
-          "Phase 2 — product dictionary: nvd_cpe, roughly 1.3 million entries",
-          "Phase 3 — known-exploited catalogue: kev",
-          "Phase 4 — CVE records: cve",
-          "Phase 5 — operational enrichment: epss, ghsa",
-          "Phase 6 — data-quality report",
+          "Phase 1 (MITRE taxonomy): cwe, capec, attack, d3fend",
+          "Phase 2 (product dictionary): nvd_cpe, roughly 1.3 million entries",
+          "Phase 3 (known-exploited catalogue): kev",
+          "Phase 4 (CVE records): cve",
+          "Phase 5 (operational enrichment): epss, ghsa",
+          "Phase 6: data-quality report",
         ],
       },
       {
