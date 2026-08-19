@@ -25,12 +25,13 @@
 -- text bodied SQL function, which Postgres does not dependency track.)
 --
 -- Grants sit immediately after each view. A column compatible create or
--- replace preserves them; what loses them is a drop view, which a column shape
--- change forces. That is what took all 6,820 logos off the site: getLogos
--- returns {} on error, so anon losing SELECT on v_logo_status surfaced as
--- initials everywhere rather than as an error. Nothing in this file needs a
--- drop, so nothing here should lose a grant. The assertion at the end of the
--- file is what proves that, rather than the reasoning above.
+-- replace preserves them; what loses them is a drop view, which is what anyone
+-- wanting a column shape change has to write for themselves, since create or
+-- replace refuses one outright. That is what took all 6,820 logos off the site:
+-- getLogos returns {} on error, so anon losing SELECT on v_logo_status surfaced
+-- as initials everywhere rather than as an error. Nothing in this file needs a
+-- drop, so nothing here should lose a grant. The block at the end of the file
+-- checks the outcome anyway, rather than trusting the reasoning above.
 --
 -- Every view is recreated with (security_invoker = true). v_logo_status in
 -- production is currently SECURITY DEFINER, because the unrecorded migration
@@ -251,13 +252,41 @@ comment on view v_logo_status is
 grant select on public.v_logo_status to anon, authenticated, service_role;
 
 
--- The proof ------------------------------------------------------------------
+-- The tripwire ----------------------------------------------------------------
 --
--- Not a belt and braces gesture. The reasoning above says these grants survive
--- because every replacement is column compatible; this is the part that checks
--- it instead of asserting it. If a future edit to this file changes a column
--- shape, Postgres drops and recreates the view, the grants go with it, and the
--- migration aborts here rather than shipping a registry that renders initials.
+-- First, what the five grant statements above are not. They are inert on any
+-- database that has run the earlier migrations. Every view in this file is a
+-- column compatible create or replace, which preserves the grants the view
+-- already had, so not one of those lines changes a single privilege today. They
+-- are there so the grant is never further away than the view it belongs to, and
+-- for the day someone genuinely does need a drop. Nobody should read them as
+-- the line that kept the logos on the page.
+--
+-- Second, what this block is for. It catches one specific human mistake: an
+-- explicit drop view plus create view with no re-grant after it. That is the
+-- true shape of the outage that took all 6,820 logos off the site. Postgres
+-- gives no warning about it, because dropping a view and creating another with
+-- the same name is an ordinary thing to do, and getLogos returns {} on error,
+-- so the site renders initials instead of failing.
+--
+-- Third, what this block is NOT for, because getting this backwards is exactly
+-- the error the rest of this plan set out to correct. A column shape change is
+-- caught earlier, and by Postgres itself, which refuses the statement:
+--
+--   ERROR:  cannot change name of view column "x" to "y"
+--
+-- Nothing is dropped, no grant is lost, and execution never reaches this block.
+-- create or replace does not silently drop and recreate a view. It is the
+-- explicit drop, whether a person writes it or a column shape change forces
+-- them to, that takes the grants.
+--
+-- Verified by making it fail rather than by assuming it works. Rewriting the
+-- v_logo_status replacement above as a drop and create with its grant line
+-- deleted, then replaying against postgres:17-alpine, aborted the migration
+-- here:
+--
+--   ERROR:  grants missing after view replacement:
+--           v_logo_status -> anon, v_logo_status -> authenticated
 
 do $$
 declare missing text;
