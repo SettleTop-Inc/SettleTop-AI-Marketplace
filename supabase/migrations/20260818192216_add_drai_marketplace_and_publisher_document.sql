@@ -22,9 +22,12 @@ on conflict (id) do nothing;
 
 create table publisher_document (
   id             bigserial primary key,
-  marketplace_id text not null,
+  marketplace_id text not null references marketplace(id),
   publisher      text not null,
-  doc_type       text not null,
+  doc_type       text not null
+                   check (doc_type in ('security_compliance','privacy_policy',
+                     'enterprise_privacy_policy','ai_ethics','terms_of_service',
+                     'dpa','sla','other')),
   title          text not null,
   url            text not null,
   effective_date date,
