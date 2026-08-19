@@ -275,7 +275,7 @@ export function parsePost(html) {
   return {
     text: text.trim(),
     updated: updated ? isoDate(updated) : null,
-    tiers: tiersStatedIn(text),
+    plans: plansStatedIn(text),
     images: [...new Set((article.match(/src="(https:\/\/static\.wixstatic\.com\/[^"]+)"/g) ?? [])
       .map((s) => s.slice(5, -1)))],
   };
@@ -287,31 +287,44 @@ function isoDate(s) {
 }
 
 /**
- * Which tiers THIS post says the agent belongs to.
+ * The subscription plans THIS listing publishes, parsed from its own text.
  *
- * The capture skill puts the same four tiers on every DRAI agent. The site
- * contradicts that: Opp Shredder's post states Tier 1, 2 and 3 — not Tier 0 —
- * and GovEntity Dossier's states no tier at all. A price the listing does not
- * carry is exactly the inference this registry refuses, so plans are populated
- * only from what the post actually says.
+ * A price only enters the registry from the listing that states it. That rule
+ * is why this parses the published table rather than reading a tier number off
+ * a post and looking its price up elsewhere: the two look alike and are not.
+ *
+ * DRAI states the table one row per line, in the Secure Workspace launch post:
+ *
+ *   Tier 0 – Essentials ($1,499/mo): Entry-level pipeline clarity with ...
+ *
+ * Agent posts name tiers too, but as bundles rather than as prices. Opp
+ * Shredder's reads "can be deployed as a standalone agent or integrated into
+ * Tier 1 (Pipeline Edge), Tier 2 (Growth Accelerator), and Tier 3
+ * (Hyperscaler) capture intelligence suites" - the cost of a suite holding many
+ * agents, next to a standalone option DRAI does not price at all. Charging that
+ * range to the agent published a price DRAI never set for it. The shape of the
+ * sentence is what separates the two: a dash and a parenthesised /mo figure is
+ * a price, a parenthesised suite name is not.
+ *
+ * The dash class is written as escapes rather than literal characters. The en
+ * dashes are the publisher's, and a regex in this file has been mangled by
+ * shell escaping once already.
  */
-export function tiersStatedIn(text) {
-  const named = new Set();
-  for (const m of text.matchAll(/\bTier\s*([0-3])\b/g)) named.add(Number(m[1]));
-  return [...named].sort();
+const TIER_ROW =
+  /\bTier\s*([0-3])\s*[-\u2010-\u2015]\s*([^(\n]+?)\s*\(\s*(\$[\d,]+(?:\.\d\d)?\s*\/\s*mo)\s*\)/g;
+
+export function plansStatedIn(text) {
+  const byTier = new Map();
+  for (const [, n, name, price] of text.matchAll(TIER_ROW)) {
+    byTier.set(Number(n), {
+      name: `Tier ${n} – ${name.trim()}`,
+      price: price.replace(/\s+/g, ""),
+      unit: "subscription",
+      billing: "monthly",
+    });
+  }
+  return [...byTier.keys()].sort().map((n) => byTier.get(n));
 }
-
-/** Published tier table, from the Secure Workspace launch post. En dashes are
- *  the publisher's; the ASCII hyphen in the capture skill is not what the page
- *  says. */
-export const TIERS = [
-  { n: 0, name: "Tier 0 – Essentials", price: "$1,499/mo" },
-  { n: 1, name: "Tier 1 – Pipeline Edge", price: "$3,999/mo" },
-  { n: 2, name: "Tier 2 – Growth Accelerator", price: "$9,999/mo" },
-  { n: 3, name: "Tier 3 – Hyperscaler", price: "$29,999/mo" },
-];
-
-const planFor = (t) => ({ name: t.name, price: t.price, unit: "subscription", billing: "monthly" });
 
 // ------------------------------------------------------------------ cert ----
 
@@ -384,12 +397,14 @@ export function parseSecurityStatement(html) {
 
 export function toPayload({ agent, post, cert, capturedAt }) {
   const posted = agent.status === "posted" && post;
-  const tiers = posted ? post.tiers : [];
+  // `?? []` covers a details.jsonl written by an older parser: no price is the
+  // safe direction to fail in, and the detail pass re-reads such records anyway.
+  const plans = posted ? post.plans ?? [] : [];
   const overview = posted ? post.text.slice(0, 6000) : null;
 
   const missing = [];
   if (!posted) missing.push("listing body: no launch post published");
-  if (posted && !post.tiers.length) missing.push("tier membership not stated in the listing");
+  if (posted && !plans.length) missing.push("price: the listing publishes none");
 
   return {
     capture_meta: {
@@ -420,15 +435,16 @@ export function toPayload({ agent, post, cert, capturedAt }) {
       categories: agent.modules,
       industries: [...new Set(agent.modules.flatMap((m) => INDUSTRY_BY_MODULE[m] ?? []))],
       works_with: [],
-      // Null unless the listing states tier membership. DRAI prices the
-      // platform, not the agent, and most posts name no tier at all.
-      // A range, not every tier chained together: joining three prices with
-      // "to" rendered as "$3,999/mo to $9,999/mo to $29,999/mo" on the card,
-      // which reads as gibberish rather than as a price.
-      pricing: tiers.length
-        ? tiers.length === 1
-          ? TIERS[tiers[0]].price
-          : `${TIERS[tiers[0]].price} to ${TIERS[tiers[tiers.length - 1]].price}`
+      // Null unless the listing itself publishes a price, which for DRAI means
+      // the Secure Workspace post and nothing else: DRAI prices the platform,
+      // not the agents inside it.
+      // A range, not every tier chained together: joining four prices with "to"
+      // rendered as "$1,499/mo to $3,999/mo to $9,999/mo to $29,999/mo" on the
+      // card, which reads as gibberish rather than as a price.
+      pricing: plans.length
+        ? plans.length === 1
+          ? plans[0].price
+          : `${plans[0].price} to ${plans[plans.length - 1].price}`
         : null,
       acquire_using: "DRAI subscription",
       version: null,
@@ -447,7 +463,7 @@ export function toPayload({ agent, post, cert, capturedAt }) {
       certification: "publisher_attestation",
       cert_url: DOCS.security_compliance,
       cert_detail: cert,
-      plans: tiers.map((n) => planFor(TIERS[n])),
+      plans,
       product_links: [
         ...(agent.post_url ? [{ label: "Announcement", url: agent.post_url }] : []),
         { label: "Platform", url: PLATFORM_URL },
