@@ -17,12 +17,14 @@
  * rows and pages without a total order overlap; both have silently truncated
  * this project's reads before.
  *
- * Every check runs through check(), below, which turns a thrown error into a
- * recorded FAIL instead of aborting the process. Tasks 3 to 7 leave the
- * database in intermediate states where several objects can be absent at
- * once, and a harness that stops at the first missing one tells us almost
- * nothing about the rest. The run always reaches the end and always prints
- * the full tally; the exit code is still non-zero if anything failed.
+ * Every check, including the baseline file's read and parse and the
+ * v_registry_stats snapshot used for comparison, runs through check() below,
+ * which turns a thrown error into a recorded FAIL instead of aborting the
+ * process. Tasks 3 to 7 leave the database in intermediate states where
+ * several objects can be absent at once, and a harness that stops at the
+ * first missing one, or the first unreadable file, tells us almost nothing
+ * about the rest. The run always reaches the end and always prints the full
+ * tally; the exit code is still non-zero if anything failed.
  *
  * --baseline validates the snapshot before writing it: every v_registry_stats
  * field present, listings a positive integer. Everything in phase 1 is
@@ -64,6 +66,10 @@ const check = async (name, fn) => {
 
 const head = (key) => ({ apikey: key, Authorization: `Bearer ${key}` });
 
+// count() never pages: Range: 0-0 fetches a single row and the total comes
+// off Content-Range, not off rows returned, so it needs no order key.
+// pageAll(), below, is the one place in this file that actually pages, and
+// it carries one for exactly that reason.
 async function count(path) {
   const r = await fetch(`${URL_BASE}/rest/v1/${path}`, {
     headers: { ...head(ANON), Prefer: "count=exact", Range: "0-0" },
@@ -80,6 +86,22 @@ async function rpc(key, fn, body) {
   });
   return { status: r.status, text: await r.text() };
 }
+
+// The only paged read in this file. PostgREST caps a response at 1000 rows and
+// pages without a total order overlap, so the order key is load-bearing here in
+// a way it is not for the count() calls above.
+const pageAll = async (path, size = 1000) => {
+  const out = [];
+  for (let from = 0; ; from += size) {
+    const r = await fetch(`${URL_BASE}/rest/v1/${path}`, {
+      headers: { ...head(ANON), Range: `${from}-${from + size - 1}` },
+    });
+    if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 90)}`);
+    const rows = await r.json();
+    out.push(...rows);
+    if (rows.length < size) return out;
+  }
+};
 
 /** anon must be able to SELECT from every public read surface. */
 const READ_SURFACES = [
@@ -155,9 +177,26 @@ await check("asset is the new asset table, not the pre-rename listings table", a
 // listings with a current capture, not listings. A listing without one still
 // needs an asset, and comparing against the card view would hide that case.
 await check("one asset per listing", async () => {
-  const listings = await count("listing?select=id&order=id");
+  const listings = await count("listing?select=id");
   const assets = await count("asset?select=id");
   return { ok: assets === listings, detail: `${assets} assets, ${listings} listings` };
+});
+
+// The count comparison above can pass while the invariant it names is
+// violated: two listings sharing one asset and a third with none nets to
+// equal totals. This reads every row and checks the actual mapping instead
+// of inferring it from totals. rows.length > 0 is deliberate: on an empty
+// database every set comparison passes vacuously, and a gate that goes
+// green on no data is worse than no gate, so this is expected to FAIL
+// against a branch database seeded without data, and that is correct.
+await check("every listing maps to a distinct asset", async () => {
+  const rows = await pageAll("listing?select=id,asset_id&order=id");
+  const assets = new Set(rows.map((r) => r.asset_id));
+  const nullish = rows.filter((r) => !r.asset_id).length;
+  return {
+    ok: rows.length > 0 && nullish === 0 && assets.size === rows.length,
+    detail: `${rows.length} listings, ${assets.size} distinct assets, ${nullish} null`,
+  };
 });
 
 await check("one canonical slug per asset", async () => {
@@ -178,12 +217,30 @@ await check("nothing retired yet in phase 1", async () => {
 });
 
 // 3. Baseline comparisons: listing count and v_registry_stats, field by
-// field. An incomplete baseline file is refused, not diffed against.
-const rawBase = fs.existsSync(BASELINE) ? JSON.parse(fs.readFileSync(BASELINE, "utf8")) : null;
-const base = isCompleteSnapshot(rawBase) ? rawBase : null;
+// field. An incomplete baseline file is refused, not diffed against. The
+// read and the parse are guarded here, not just isCompleteSnapshot: a
+// corrupted or partially written file (writeFileSync is not crash-atomic,
+// so an interrupted --baseline run can produce exactly that) throws a
+// SyntaxError that must become a recorded FAIL, not a crash.
+let rawBase = null;
+let baseReadError = null;
+if (fs.existsSync(BASELINE)) {
+  try {
+    rawBase = JSON.parse(fs.readFileSync(BASELINE, "utf8"));
+  } catch (e) {
+    baseReadError = e;
+  }
+}
+const base = !baseReadError && isCompleteSnapshot(rawBase) ? rawBase : null;
 
 await check("baseline exists and is complete", async () => {
   if (!fs.existsSync(BASELINE)) return { ok: false, detail: "run --baseline first" };
+  if (baseReadError) {
+    return {
+      ok: false,
+      detail: `data/asset-layer-baseline.json could not be parsed: ${String(baseReadError.message ?? baseReadError).slice(0, 100)}. Re-run --baseline.`,
+    };
+  }
   if (!base) {
     return {
       ok: false,
@@ -199,12 +256,25 @@ if (base) {
     return { ok: listings === base.listings, detail: `${listings} vs ${base.listings}` };
   });
 
-  const now = await snapshot();
-  for (const k of EXPECTED_STATS) {
-    await check(`v_registry_stats.${k} unchanged`, async () => ({
-      ok: String(now.stats?.[k]) === String(base.stats[k]),
-      detail: `${now.stats?.[k]} vs ${base.stats[k]}`,
-    }));
+  // snapshot() re-reads v_registry_stats and, inside it, counts
+  // v_registry_card. Section 1 already records a clean FAIL if the anon
+  // grant on v_registry_stats is broken; without this wrapper, a second,
+  // redundant failure of that same read would crash the process here
+  // instead, before the nine stats comparisons, the change-feed check, or
+  // either write-path RPC check ever run.
+  let now = null;
+  await check("v_registry_stats snapshot is readable for comparison", async () => {
+    now = await snapshot();
+    return { ok: true, detail: "" };
+  });
+
+  if (now) {
+    for (const k of EXPECTED_STATS) {
+      await check(`v_registry_stats.${k} unchanged`, async () => ({
+        ok: String(now.stats?.[k]) === String(base.stats[k]),
+        detail: `${now.stats?.[k]} vs ${base.stats[k]}`,
+      }));
+    }
   }
 }
 
