@@ -65,12 +65,12 @@ export default async function AgentPage({
 
   // The destination path is always one of these two literals — never built
   // from `from` or `back` — so neither an attacker-supplied `?from=` nor a
-  // malformed `?back=` can steer this link off `/marketplace` or `/`. An
+  // malformed `?back=` can steer this link off `/registry` or `/`. An
   // unrecognised `back` value is not a risk either: parseCriteria() ignores
   // anything it doesn't recognise rather than applying it.
   const back =
     from === "marketplace"
-      ? { href: `/marketplace${backQS ? `?${backQS}` : ""}`, label: "Back to the marketplace" }
+      ? { href: `/registry${backQS ? `?${backQS}` : ""}`, label: "Back to the registry" }
       : { href: "/", label: "Back to the overview" };
 
   return (

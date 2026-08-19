@@ -14,7 +14,7 @@ export default function CompareTray({
   onClear: () => void;
 }) {
   if (selected.length === 0) return null;
-  const href = `/marketplace/compare?ids=${selected.map((s) => s.asset_id).join(",")}`;
+  const href = `/registry/compare?ids=${selected.map((s) => s.asset_id).join(",")}`;
 
   return (
     <div className="mkt-tray st-invert" role="region" aria-label="Compare selection">

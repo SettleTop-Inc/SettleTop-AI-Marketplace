@@ -3,10 +3,10 @@ import MarketplaceApp from "@/components/marketplace/MarketplaceApp";
 import { withLogos } from "@/lib/logos";
 import { getLogos, getStats, searchRegistry } from "@/lib/registry";
 import { parseCriteria } from "@/lib/marketplace-query";
-import "@/app/marketplace.css";
+import "@/app/registry.css";
 
 export const metadata: Metadata = {
-  title: "Browse AI agents — SettleTop AI Marketplace",
+  title: "Browse AI agents — SettleTop AI Registry",
   description:
     "Filter AI agents by function, source marketplace, provenance, evidence tier, deployment, pricing and evidence risk.",
 };

@@ -143,7 +143,7 @@ export default function MarketplaceApp({
       <div className="st-shell st-shell--wide">
         <header className="mkt-head">
           <div className="mkt-head__text">
-            <span className="st-eyebrow">Full marketplace</span>
+            <span className="st-eyebrow">Full registry</span>
             <h1 className="st-display">Browse and compare AI agents</h1>
             <p className="st-lede">
               Filter by function, source, deployment, evidence tier, provenance,

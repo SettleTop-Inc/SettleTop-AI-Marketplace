@@ -270,7 +270,7 @@ export function parseCriteria(sp: URLSearchParams): Criteria {
   };
 }
 
-/** Defaults are never serialised, so the plain case stays `/marketplace`. */
+/** Defaults are never serialised, so the plain case stays `/registry`. */
 export function serializeCriteria(c: Criteria): string {
   const sp = new URLSearchParams();
   if (c.q.trim()) sp.set("q", c.q);

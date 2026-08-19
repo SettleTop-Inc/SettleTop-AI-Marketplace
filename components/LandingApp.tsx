@@ -84,7 +84,7 @@ export default function LandingApp({
   const pickUseCase = (name: string) => {
     const c = defaultCriteria();
     c.facets.function = [name];
-    router.push(`/marketplace?${serializeCriteria(c)}`);
+    router.push(`/registry?${serializeCriteria(c)}`);
   };
 
   return (
@@ -109,7 +109,7 @@ export default function LandingApp({
                   functions your organization actually performs.
                 </p>
               </div>
-              <button className="link-btn" onClick={() => router.push("/marketplace")}>
+              <button className="link-btn" onClick={() => router.push("/registry")}>
                 View all use cases →
               </button>
             </div>
@@ -162,7 +162,7 @@ export default function LandingApp({
               ))}
             </div>
             <div className="center-action">
-              <button className="secondary-btn" onClick={() => router.push("/marketplace")}>
+              <button className="secondary-btn" onClick={() => router.push("/registry")}>
                 Explore the full agent registry
               </button>
             </div>
@@ -220,7 +220,7 @@ export default function LandingApp({
 
         {/* The full registry, its filter panel and all of its cards used to
             render here — roughly 26,000px of page. Browsing belongs on
-            /marketplace, which is built for it; this is now a hand-off.
+            /registry, which is built for it; this is now a hand-off.
             "Top agents" above is the sample. */}
         <section className="section" id="registry">
           <div className="container">
@@ -239,7 +239,7 @@ export default function LandingApp({
                   source is silent, the value reads Unknown.
                 </p>
               </div>
-              <Link className="st-btn st-btn--primary" href="/marketplace">
+              <Link className="st-btn st-btn--primary" href="/registry">
                 Open the registry →
               </Link>
             </div>

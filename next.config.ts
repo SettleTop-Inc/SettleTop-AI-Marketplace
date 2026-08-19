@@ -17,6 +17,16 @@ const nextConfig: NextConfig = {
         destination: "/products/ai-registry",
         permanent: true,
       },
+      // The browsing tool moved from /marketplace to /registry. Both the
+      // index and its compare view are published and shared by link, and
+      // Next carries the query string across, so a saved result set or a
+      // compare selection survives the move.
+      { source: "/marketplace", destination: "/registry", permanent: true },
+      {
+        source: "/marketplace/:path*",
+        destination: "/registry/:path*",
+        permanent: true,
+      },
     ];
   },
   // Listing imagery is served from Microsoft's CDNs. Only hosts we have

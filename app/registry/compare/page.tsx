@@ -3,12 +3,12 @@ import type { Metadata } from "next";
 import CompareTable from "@/components/marketplace/CompareTable";
 import { getPassports } from "@/lib/registry";
 import { MAX_COMPARE } from "@/lib/marketplace-query";
-import "@/app/marketplace.css";
+import "@/app/registry.css";
 
 export const revalidate = 300;
 
 export const metadata: Metadata = {
-  title: "Compare agent provenance — SettleTop AI Marketplace",
+  title: "Compare agent provenance — SettleTop AI Registry",
 };
 
 type Search = Promise<{ ids?: string }>;
@@ -79,8 +79,8 @@ export default async function ComparePage({ searchParams }: { searchParams: Sear
     <div className="mkt-shell">
       <div className="container" style={{ paddingTop: 22, paddingBottom: 60 }}>
         <p style={{ marginBottom: 16 }}>
-          <Link className="mkt-back" href="/marketplace">
-            ← Back to the marketplace
+          <Link className="mkt-back" href="/registry">
+            ← Back to the registry
           </Link>
         </p>
 
@@ -94,7 +94,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Sear
             {wanted.length === 0 ? (
               <>
                 <b>Nothing selected to compare</b>
-                <p>Select 2 or 3 agents on the marketplace, then choose “Compare provenance.”</p>
+                <p>Select 2 or 3 agents in the registry, then choose “Compare provenance.”</p>
               </>
             ) : (
               <>
@@ -102,8 +102,8 @@ export default async function ComparePage({ searchParams }: { searchParams: Sear
                 <p>Not found in the registry: {missingIds.join(", ")}.</p>
               </>
             )}
-            <Link className="mkt-control" href="/marketplace">
-              Go to the marketplace
+            <Link className="mkt-control" href="/registry">
+              Go to the registry
             </Link>
           </div>
         ) : (
