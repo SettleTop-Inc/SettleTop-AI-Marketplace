@@ -107,14 +107,22 @@ select ingest_capture($stm${ ...the object... }$stm$::jsonb);
 ```json
 {
   "status": "created",         // or "updated" | "already_ingested"
-  "asset_id": "...", "capture_id": "...",
+  "listing_id": "...", "asset_id": "...", "capture_id": "...",
+  "slug_fallback": false,      // true when the canonical slug fell back to marketplace_id-source_product_id
   "content_hash": "...",
   "unchanged": false,          // true when nothing moved since the last capture
-  "changes": 3,                // rows written to asset_change
+  "changes": 3,                // rows written to listing_change
   "reach": 83, "risk": "Low", "layers_known": 10,
   "evidence_rejected": 0       // stated values that failed the verbatim check
 }
 ```
+
+`listing_id` identifies the marketplace page that was captured. `asset_id` now
+identifies the product, not the listing: one product can carry several
+listings, one per marketplace it appears on. `slug_fallback` is true only when
+a new listing's `source_product_id` was already taken as another asset's
+canonical slug, in which case this asset's canonical slug became
+`{marketplace_id}-{source_product_id}` instead.
 
 `evidence_rejected > 0` is a signal to inspect the capture, never a reason to
 relax the gate.

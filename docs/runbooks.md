@@ -1,5 +1,12 @@
 # Runbooks
 
+## Vocabulary
+
+An **asset** is the registry's unit: one real product. A **listing** is one
+marketplace's page for that product, one row per marketplace it appears on. A
+**capture** is one immutable observation of one listing. One product can hold
+several listings, so `asset` and `listing` are not interchangeable below.
+
 ## First run after cloning
 
 ```bash
@@ -78,20 +85,21 @@ select
 from v_registry_card;
 
 -- anything the honesty gate refused
-select a.source_product_id, e.kind, e.value
+select l.source_product_id, e.kind, e.value
   from capture_evidence e
   join capture c on c.id = e.capture_id
-  join asset a   on a.id = c.asset_id
+  join listing l on l.id = c.listing_id
  where not e.verified
  order by e.kind;
 
--- what moved recently, newest first
+-- what moved recently, newest first: v_asset_change_feed exposes both
+-- asset_id, the product, and listing_id, the marketplace page it moved on
 select name, field, old_value, new_value, observed_at
   from v_asset_change_feed limit 25;
 
--- assets captured more than once, i.e. where change tracking is live
+-- listings captured more than once, i.e. where change tracking is live
 select source_product_id, capture_count, last_captured_at
-  from asset where capture_count > 1 order by capture_count desc;
+  from listing where capture_count > 1 order by capture_count desc;
 ```
 
 ## Recomputing derived values after changing a rule
@@ -102,5 +110,9 @@ affected captures from `capture.raw`, or write a migration that updates
 `capture_extract` in place using the new function. Prefer the former: it keeps
 the stored value and the function that produced it in agreement.
 
-Note that `capture.raw` is NULL for the 140 backfilled rows, so those cannot be
-re-derived from source until each listing is captured again under template 2.0.
+Note that `capture.raw` is NULL for 187 of the registry's 30,900 captures: 140
+backfilled from a pre-Supabase index, and 47 captured as `dual_write` on
+template_version 2.0 during a two hour window on 2026-08-17, the manual
+capture era. No listing's current capture is among those 187, so every
+listing's newest observation is fully backed by its source material and can
+be re-derived; it is only older, superseded captures that cannot be.
