@@ -1,10 +1,18 @@
-alter table listing add column asset_id uuid references asset(id);
-
 -- Seed slugs are only safe because source_product_id happens to be unique
 -- across marketplaces today: 6,876 listings, 6,876 distinct values. The unique
 -- index is on the pair, not on source_product_id alone, so that is luck rather
 -- than a constraint. Assert it here so a collision is a clear message and not a
 -- primary-key violation halfway through the migration.
+--
+-- This guard runs first, before the column is even added, on purpose. It only
+-- reads listing.source_product_id, which needs nothing from this file to
+-- exist first. If a migration runner ever applies this file statement by
+-- statement instead of as one transaction, a guard that ran after the column
+-- add would leave that add committed on failure: a nullable, all-null
+-- asset_id with no assets, no slugs, and a retry that fails immediately
+-- because the column already exists, needing a manual drop before anyone can
+-- try again. Running the guard first means a failure here leaves nothing
+-- behind to clean up. Do not move this back below the column add.
 do $$
 declare n int;
 begin
@@ -15,6 +23,8 @@ begin
       'cannot seed slugs: % source_product_id values are shared by more than one listing', n;
   end if;
 end $$;
+
+alter table listing add column asset_id uuid references asset(id);
 
 with made as (
   insert into asset (primary_listing_id)
