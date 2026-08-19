@@ -19,7 +19,8 @@ This plan implements **phase 1 only**. Phases 2 and 3 get their own plans, writt
 Copied from the spec. Every task's requirements include these.
 
 - **The evidence gate in `ingest_capture` is not to be relaxed for any reason.** The block from `hay_listing :=` through the end of the `kindmap` loop must be byte-identical before and after. Its current md5 is `d9156fc8d49d2bcd6aafb1e0c4b7edc6` over the whole function body, verified to match the repo file exactly.
-- **Every `create or replace view` carries its `grant` immediately after it, in the same migration.** `create or replace view` drops every grant. This already took all 6,820 logos off the live site once, silently, because `getLogos` returns `{}` on error.
+- **Every `create or replace view` carries its `grant` immediately after it, in the same migration.** A column-compatible replacement does preserve grants; what loses them is a `drop view`, and changing a view's column names or order forces one. That is what took all 6,820 logos off the live site once, silently, because `getLogos` returns `{}` on error. The grant goes next to the view regardless, and Task 7's assertion is what proves the outcome.
+- **A view's existing columns keep their names, types and order. New ones are appended.** `create or replace view` refuses anything else, with `cannot change name of view column`. Changing what an existing column is sourced from is fine.
 - **Every new table gets an explicit RLS policy and grant.** Policies were created by a loop over a hardcoded array in `registry_core.sql`, so a new table inherits nothing, and a table with RLS on and no policy is invisible to `anon`.
 - **Views follow a table rename automatically; plpgsql function bodies do not.** `ingest_capture` and `set_capture_logo` break only when next called, so they must be *executed* during verification, not inspected.
 - **`NOT NULL` cannot be deferred.** Postgres accepts `DEFERRABLE` only on `UNIQUE`, `PRIMARY KEY`, `EXCLUDE` and `REFERENCES`. The asset must exist before the listing that points at it.
@@ -785,16 +786,19 @@ select c.relname, pg_get_viewdef(c.oid, true) as def
 
 For every view: the `from asset a` clause becomes `from listing l`, with the alias updated throughout, and `join capture c on c.id = a.current_capture_id` becomes `l.current_capture_id`.
 
-For `v_registry_card` and `v_asset_passport`: what was `a.id as asset_id` becomes two columns.
+**Append new columns; never reorder or rename an existing one.** `create or replace view` requires the replacement to produce the existing columns with the same names, types and order, and permits new ones only at the end. Changing what an existing column is *sourced from* is fine. Getting this wrong is not a style question: Task 1 hit exactly this and Postgres refused the migration outright with `cannot change name of view column`.
+
+So for `v_registry_card` and `v_asset_passport`: leave `asset_id` exactly where it sits in the column list and change only its source.
 
 ```sql
-  l.id           as listing_id,
-  l.asset_id     as asset_id,
+  l.asset_id     as asset_id,      -- in its existing position, now the real product
+  ...
+  l.id           as listing_id,    -- appended at the very end
 ```
 
 `asset_id` is the real product from this migration onward, rather than a listing id wearing the wrong name for a phase. Assets and listings are 1:1 in phase 1, so `getPassports(assetIds)` in `lib/registry.ts` keeps working either way.
 
-For `v_asset_change_feed`: the same two columns, sourced through the listing.
+For `v_asset_change_feed`: same rule. `asset_id` stays second, where `lib/types.ts` `ChangeRow` expects it, now sourced as `l.asset_id`; `listing_id` is appended last.
 
 ```sql
 from listing_change ch
@@ -802,7 +806,9 @@ join listing l         on l.id = ch.listing_id
 join capture_extract x on x.capture_id = l.current_capture_id
 ```
 
-with `ch.listing_id as listing_id` and `l.asset_id as asset_id` in the select list. Keep `id`, `source_product_id`, `name`, `publisher`, `field`, `old_value`, `new_value`, `observed_at` exactly as they are: `lib/types.ts` `ChangeRow` names them.
+Keep `id`, `source_product_id`, `name`, `publisher`, `field`, `old_value`, `new_value`, `observed_at` in their existing order: `ChangeRow` names them.
+
+Appending rather than reordering also avoids a drop-ordering problem. `v_registry_stats` selects from `v_registry_card`, so dropping the card would require dropping the stats view first or cascading through it. (`registry_search` also reads `v_registry_card`, but it is a text-bodied SQL function, which Postgres does not dependency-track.) If any view here ever genuinely needs its columns reordered, it must be a `drop view` and `create view` pair in dependency order, with every grant reissued.
 
 For `v_registry_stats`: two counts change and the rest stay.
 
@@ -817,7 +823,11 @@ For `v_logo_status`: only the table name and alias change. Its ten columns stay 
 
 - [ ] **Step 3: Put the grants immediately after each view**
 
-Not in a block at the bottom. `create or replace view` drops every grant, and the last time a replacement carried no grant block, `anon` lost SELECT on `v_logo_status` and every logo on the site fell back to initials while the registry still held all 6,820 images.
+Not in a block at the bottom, and next to every view whether or not this particular change strictly needs it.
+
+The mechanism is worth stating correctly, because the repo currently records it wrongly. A **column-compatible** `create or replace view` preserves grants. What loses them is a `drop view`, and changing a view's column names or order forces exactly that. That is what happened during the logo outage: the replacement changed `v_logo_status`'s column shape, so it could only have been a drop and recreate, `anon` lost SELECT, and every logo on the site fell back to initials while the registry still held all 6,820 images. `getLogos` returns `{}` on error, so nothing surfaced.
+
+Step 2 keeps every view in this task column-compatible, so grants should survive. The grant statements go in anyway: they cost nothing, they are required the moment anyone does need a drop, and the assertion in Step 4 is what actually proves the outcome rather than the reasoning.
 
 ```sql
 create or replace view v_logo_status with (security_invoker = true) as
