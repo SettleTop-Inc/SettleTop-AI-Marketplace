@@ -15,15 +15,15 @@ export default function Pagination({
   );
 
   return (
-    <nav className="mkt-pages" aria-label="Result pages">
-      <button className="mkt-page" onClick={() => onPage(page - 1)} disabled={page === 1}>
+    <nav className="reg-pages" aria-label="Result pages">
+      <button className="reg-page" onClick={() => onPage(page - 1)} disabled={page === 1}>
         ‹
       </button>
       {nums.map((n, i) => (
         <span key={n} style={{ display: "contents" }}>
-          {i > 0 && n - nums[i - 1] > 1 && <span className="mkt-page" aria-hidden="true">…</span>}
+          {i > 0 && n - nums[i - 1] > 1 && <span className="reg-page" aria-hidden="true">…</span>}
           <button
-            className="mkt-page"
+            className="reg-page"
             aria-current={n === page ? "page" : undefined}
             onClick={() => onPage(n)}
           >
@@ -31,7 +31,7 @@ export default function Pagination({
           </button>
         </span>
       ))}
-      <button className="mkt-page" onClick={() => onPage(page + 1)} disabled={page === pageCount}>
+      <button className="reg-page" onClick={() => onPage(page + 1)} disabled={page === pageCount}>
         ›
       </button>
     </nav>

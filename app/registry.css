@@ -1,21 +1,21 @@
-/* Marketplace-only styles. Every class is mkt- prefixed because App Router
+/* Registry-only styles. Every class is reg- prefixed because App Router
    never unloads route CSS, so a bare class name shared with globals.css
    would repaint "/" after a back-navigation.
 
-   This sheet used to declare its OWN --s1..--s6 scale on .mkt-shell with
+   This sheet used to declare its OWN --s1..--s6 scale on .reg-shell with
    different values from the design system's (--s1 was 6px here, 4px there).
-   Any shared .st-* component rendered inside the marketplace inherited the
+   Any shared .st-* component rendered inside the registry inherited the
    wrong spacing. The local scale is gone; everything below uses the tokens
    from app/design.css. */
 
-.mkt-shell { background: var(--c-surface); min-height: 100vh; }
+.reg-shell { background: var(--c-surface); min-height: 100vh; }
 
 /* ---- Toolbar --------------------------------------------------------
    The search and view controls used to sit in a sticky bar that carried a
-   back-link and nothing else — no wordmark, no nav — so the marketplace
+   back-link and nothing else — no wordmark, no nav — so the registry
    opened on what read as a debug strip. The site header now supplies
    identity and navigation, and this row is only about the query. */
-.mkt-toolbar {
+.reg-toolbar {
   display: flex;
   align-items: center;
   gap: var(--s4);
@@ -24,21 +24,21 @@
   margin-bottom: var(--s6);
   border-bottom: 1px solid var(--c-line);
 }
-.mkt-total { display: flex; align-items: baseline; gap: var(--s2); }
-.mkt-total b {
+.reg-total { display: flex; align-items: baseline; gap: var(--s2); }
+.reg-total b {
   font-family: var(--font-display);
   font-size: var(--t-xl);
   font-weight: 600;
   letter-spacing: -.02em;
   color: var(--c-heading);
 }
-.mkt-total span { font-size: var(--t-xs); color: var(--c-ink-3); }
-.mkt-spacer { margin-left: auto; }
+.reg-total span { font-size: var(--t-xs); color: var(--c-ink-3); }
+.reg-spacer { margin-left: auto; }
 
 /* Capped, not fluid. At full width this input stretched past the point
    where the eye can track a field, and became the loudest thing on a page
    whose subject is the agents. */
-.mkt-search {
+.reg-search {
   flex: 0 1 420px;
   display: grid;
   grid-template-columns: 34px 1fr;
@@ -49,8 +49,8 @@
   border-radius: var(--radius);
   min-width: 0;
 }
-.mkt-search span { text-align: center; color: var(--c-ink-3); }
-.mkt-search input {
+.reg-search span { text-align: center; color: var(--c-ink-3); }
+.reg-search input {
   border: 0;
   background: transparent;
   font-size: var(--t-sm);
@@ -58,24 +58,24 @@
   padding-right: var(--s3);
   min-width: 0;
 }
-.mkt-search input:focus-visible { outline: 2px solid var(--c-gold); outline-offset: 2px; border-radius: var(--radius-sm); }
+.reg-search input:focus-visible { outline: 2px solid var(--c-gold); outline-offset: 2px; border-radius: var(--radius-sm); }
 
-.mkt-head {
+.reg-head {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--s8);
   padding: var(--s7) 0 var(--s6);
 }
-.mkt-head__text { min-width: 0; }
-.mkt-head h1 { margin: var(--s2) 0 var(--s3); }
-.mkt-head p { margin: 0; }
+.reg-head__text { min-width: 0; }
+.reg-head h1 { margin: var(--s2) 0 var(--s3); }
+.reg-head p { margin: 0; }
 @media (max-width: 820px) {
-  .mkt-head { flex-direction: column; align-items: stretch; gap: var(--s5); }
-  .mkt-search { flex-basis: auto; }
+  .reg-head { flex-direction: column; align-items: stretch; gap: var(--s5); }
+  .reg-search { flex-basis: auto; }
 }
 
-.mkt-layout {
+.reg-layout {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
   gap: var(--s7);
@@ -87,7 +87,7 @@
    Seven groups run taller than most viewports, and a sticky element taller
    than the screen hides its own last groups with no way to reach them. Cap
    it to the visible area and let the rail scroll itself. */
-.mkt-rail {
+.reg-rail {
   background: var(--c-paper);
   border: 1px solid var(--c-line);
   border-radius: var(--radius-lg);
@@ -98,22 +98,22 @@
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-@media (max-width: 820px) { .mkt-rail { max-height: none; overflow-y: visible; } }
+@media (max-width: 820px) { .reg-rail { max-height: none; overflow-y: visible; } }
 
-.mkt-rail-head {
+.reg-rail-head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: var(--s3);
   padding-bottom: var(--s4);
 }
-.mkt-rail-head b {
+.reg-rail-head b {
   font-family: var(--font-display);
   font-size: var(--t-md);
   font-weight: 600;
   color: var(--c-heading);
 }
-.mkt-clear {
+.reg-clear {
   border: 0;
   background: transparent;
   color: var(--c-gold);
@@ -121,18 +121,18 @@
   font-weight: 600;
   padding: 0;
 }
-.mkt-clear:hover { text-decoration: underline; }
+.reg-clear:hover { text-decoration: underline; }
 
 /* Rules between groups, not just gaps — a hairline is what makes seven
    fieldsets read as separate questions rather than one long column. */
-.mkt-group {
+.reg-group {
   border: 0;
   border-top: 1px solid var(--c-line-soft);
   padding: var(--s4) 0 var(--s2);
   margin: 0;
 }
-.mkt-group:first-of-type { border-top: 0; padding-top: 0; }
-.mkt-group legend {
+.reg-group:first-of-type { border-top: 0; padding-top: 0; }
+.reg-group legend {
   font-family: var(--font-data);
   font-size: var(--t-2xs);
   font-weight: 500;
@@ -141,13 +141,13 @@
   color: var(--c-ink-3);
   padding: 0 0 var(--s2);
 }
-.mkt-note {
+.reg-note {
   font-size: var(--t-xs);
   line-height: var(--lh-snug);
   color: var(--c-ink-3);
   margin: 0 0 var(--s3);
 }
-.mkt-facet {
+.reg-facet {
   display: flex;
   align-items: center;
   gap: var(--s3);
@@ -157,11 +157,11 @@
   cursor: pointer;
   border-radius: var(--radius-sm);
 }
-.mkt-facet:hover { color: var(--c-ink); }
-.mkt-facet input { margin: 0; accent-color: var(--c-gold); }
-.mkt-facet input:focus-visible { outline: 2px solid var(--c-gold); outline-offset: 2px; }
-.mkt-facet[aria-disabled="true"] { color: rgba(238, 243, 250, .32); cursor: not-allowed; }
-.mkt-count {
+.reg-facet:hover { color: var(--c-ink); }
+.reg-facet input { margin: 0; accent-color: var(--c-gold); }
+.reg-facet input:focus-visible { outline: 2px solid var(--c-gold); outline-offset: 2px; }
+.reg-facet[aria-disabled="true"] { color: rgba(238, 243, 250, .32); cursor: not-allowed; }
+.reg-count {
   margin-left: auto;
   font-family: var(--font-data);
   font-size: var(--t-2xs);
@@ -169,9 +169,9 @@
   font-variant-numeric: tabular-nums;
 }
 
-.mkt-results { min-width: 0; }
+.reg-results { min-width: 0; }
 
-.mkt-control {
+.reg-control {
   border: 1px solid var(--c-line);
   background: var(--c-paper);
   color: var(--c-ink-2);
@@ -180,40 +180,40 @@
   font-size: var(--t-xs);
   font-weight: 600;
 }
-.mkt-control:hover { background: var(--c-surface); }
-.mkt-control:focus-visible { outline: 2px solid var(--c-gold); outline-offset: 2px; }
+.reg-control:hover { background: var(--c-surface); }
+.reg-control:focus-visible { outline: 2px solid var(--c-gold); outline-offset: 2px; }
 
 /* auto-fill rather than a fixed three columns: at 1848px the fixed grid
    left the right-hand edge of the page unused while the cards themselves
    stretched. This fills whatever width the results area actually has. */
-.mkt-grid {
+.reg-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
   gap: var(--s5);
 }
 
-.mkt-empty {
+.reg-empty {
   background: var(--c-paper);
   border: 1px dashed var(--c-line);
   border-radius: var(--radius-lg);
   text-align: center;
   padding: var(--s10) var(--s6);
 }
-.mkt-empty b { font-size: var(--t-md); display: block; color: var(--c-ink); }
-.mkt-empty p { color: var(--c-ink-2); font-size: var(--t-sm); margin: var(--s2) 0 0; }
+.reg-empty b { font-size: var(--t-md); display: block; color: var(--c-ink); }
+.reg-empty p { color: var(--c-ink-2); font-size: var(--t-sm); margin: var(--s2) 0 0; }
 
-.mkt-error {
+.reg-error {
   background: var(--c-unknown-bg);
   border: 1px solid rgba(168, 31, 56, .2);
   border-left: 3px solid var(--c-unknown);
   border-radius: var(--radius);
   padding: var(--s5);
 }
-.mkt-error b { font-size: var(--t-md); display: block; color: var(--c-unknown); }
-.mkt-error p { font-size: var(--t-sm); color: var(--c-ink-2); margin: var(--s2) 0 0; }
+.reg-error b { font-size: var(--t-md); display: block; color: var(--c-unknown); }
+.reg-error p { font-size: var(--t-sm); color: var(--c-ink-2); margin: var(--s2) 0 0; }
 
-.mkt-pages { display: flex; justify-content: center; gap: var(--s2); margin-top: var(--s7); }
-.mkt-page {
+.reg-pages { display: flex; justify-content: center; gap: var(--s2); margin-top: var(--s7); }
+.reg-page {
   min-width: 36px;
   height: 36px;
   border: 1px solid var(--c-line);
@@ -223,12 +223,12 @@
   font-weight: 600;
   color: var(--c-ink-2);
 }
-.mkt-page:hover:not(:disabled) { background: var(--c-surface); }
-.mkt-page[aria-current="page"] { background: var(--c-action-bg); color: var(--c-action-fg); border-color: var(--c-action-bg); }
-.mkt-page:disabled { opacity: .4; }
-.mkt-page:focus-visible { outline: 2px solid var(--c-gold); outline-offset: 2px; }
+.reg-page:hover:not(:disabled) { background: var(--c-surface); }
+.reg-page[aria-current="page"] { background: var(--c-action-bg); color: var(--c-action-fg); border-color: var(--c-action-bg); }
+.reg-page:disabled { opacity: .4; }
+.reg-page:focus-visible { outline: 2px solid var(--c-gold); outline-offset: 2px; }
 
-.mkt-sr {
+.reg-sr {
   position: absolute;
   width: 1px; height: 1px;
   overflow: hidden;
@@ -237,13 +237,13 @@
 }
 
 @media (max-width: 820px) {
-  .mkt-layout { grid-template-columns: 1fr; gap: var(--s6); }
-  .mkt-rail { position: static; }
+  .reg-layout { grid-template-columns: 1fr; gap: var(--s6); }
+  .reg-rail { position: static; }
 }
 
 /* ---- List view ------------------------------------------------------- */
-.mkt-list { display: grid; gap: var(--s2); }
-.mkt-row {
+.reg-list { display: grid; gap: var(--s2); }
+.reg-row {
   display: grid;
   grid-template-columns: 40px minmax(0, 2fr) minmax(0, 1fr) 130px 100px 128px;
   gap: var(--s4);
@@ -253,19 +253,19 @@
   border-radius: var(--radius);
   padding: var(--s3) var(--s4);
 }
-.mkt-row:hover { border-color: #2c5290; }
-.mkt-row-name {
+.reg-row:hover { border-color: #2c5290; }
+.reg-row-name {
   font-family: var(--font-display);
   font-size: var(--t-base);
   font-weight: 600;
   color: var(--c-heading);
   margin: 0;
 }
-.mkt-row-sub { font-size: var(--t-2xs); color: var(--c-ink-3); }
-.mkt-row-reach { display: flex; align-items: center; gap: var(--s2); font-size: var(--t-2xs); }
-.mkt-row-reach .st-ledger__cells { flex: 1; }
-.mkt-row-risk { text-align: right; font-size: var(--t-xs); font-weight: 700; }
-.mkt-risk-basis {
+.reg-row-sub { font-size: var(--t-2xs); color: var(--c-ink-3); }
+.reg-row-reach { display: flex; align-items: center; gap: var(--s2); font-size: var(--t-2xs); }
+.reg-row-reach .st-ledger__cells { flex: 1; }
+.reg-row-risk { text-align: right; font-size: var(--t-xs); font-weight: 700; }
+.reg-risk-basis {
   display: block;
   color: var(--c-ink-3);
   font-size: var(--t-2xs);
@@ -273,8 +273,8 @@
   margin-top: 2px;
 }
 
-.mkt-toggle { display: flex; border: 1px solid var(--c-line); border-radius: var(--radius); overflow: hidden; }
-.mkt-toggle button {
+.reg-toggle { display: flex; border: 1px solid var(--c-line); border-radius: var(--radius); overflow: hidden; }
+.reg-toggle button {
   border: 0;
   border-right: 1px solid var(--c-line);
   background: var(--c-paper);
@@ -283,25 +283,25 @@
   font-weight: 600;
   color: var(--c-ink-3);
 }
-.mkt-toggle button:last-child { border-right: 0; }
-.mkt-toggle button[aria-pressed="true"] { background: var(--c-verified-bg); color: var(--c-heading); }
-.mkt-toggle button:focus-visible { outline: 2px solid var(--c-gold); outline-offset: -2px; }
+.reg-toggle button:last-child { border-right: 0; }
+.reg-toggle button[aria-pressed="true"] { background: var(--c-verified-bg); color: var(--c-heading); }
+.reg-toggle button:focus-visible { outline: 2px solid var(--c-gold); outline-offset: -2px; }
 
 @media (max-width: 900px) {
-  .mkt-row { grid-template-columns: 40px minmax(0, 1fr) 100px 100px; }
-  .mkt-row-sub.mkt-hide-sm, .mkt-row-reach { display: none; }
+  .reg-row { grid-template-columns: 40px minmax(0, 1fr) 100px 100px; }
+  .reg-row-sub.reg-hide-sm, .reg-row-reach { display: none; }
 }
 
 /* Compare-select checkboxes at the MAX_COMPARE cap: same aria-disabled
-   treatment as .mkt-facet, applied to the checkbox itself since these
-   labels carry no visible value text. Scoped to .mkt-shell so it never
+   treatment as .reg-facet, applied to the checkbox itself since these
+   labels carry no visible value text. Scoped to .reg-shell so it never
    reaches AgentCard's other caller, the landing page, which has no compare
    tray and never sets aria-disabled here. */
-.mkt-shell label[aria-disabled="true"] { cursor: not-allowed; }
-.mkt-shell label[aria-disabled="true"] input[type="checkbox"] { cursor: not-allowed; opacity: .45; }
+.reg-shell label[aria-disabled="true"] { cursor: not-allowed; }
+.reg-shell label[aria-disabled="true"] input[type="checkbox"] { cursor: not-allowed; opacity: .45; }
 
 /* ---- Compare tray + table -------------------------------------------- */
-.mkt-tray {
+.reg-tray {
   position: fixed;
   left: 0; right: 0; bottom: 0;
   z-index: 60;
@@ -310,9 +310,9 @@
   padding: var(--s3) 0;
   box-shadow: 0 -8px 24px rgba(11, 35, 66, .18);
 }
-.mkt-tray-inner { display: flex; align-items: center; gap: var(--s3); font-size: var(--t-sm); font-weight: 600; }
-.mkt-tray-list { display: flex; gap: var(--s2); flex-wrap: wrap; }
-.mkt-chip {
+.reg-tray-inner { display: flex; align-items: center; gap: var(--s3); font-size: var(--t-sm); font-weight: 600; }
+.reg-tray-list { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.reg-chip {
   background: rgba(255, 255, 255, .14);
   border: 0;
   color: #fff;
@@ -320,28 +320,28 @@
   padding: var(--s1) var(--s3);
   font-size: var(--t-2xs);
 }
-.mkt-chip:hover { background: rgba(255, 255, 255, .24); }
+.reg-chip:hover { background: rgba(255, 255, 255, .24); }
 
-.mkt-cmp-wrap { overflow-x: auto; border: 1px solid var(--c-line); border-radius: var(--radius-lg); background: var(--c-paper); }
-.mkt-cmp { border-collapse: collapse; width: 100%; min-width: 720px; }
-.mkt-cmp th, .mkt-cmp td {
+.reg-cmp-wrap { overflow-x: auto; border: 1px solid var(--c-line); border-radius: var(--radius-lg); background: var(--c-paper); }
+.reg-cmp { border-collapse: collapse; width: 100%; min-width: 720px; }
+.reg-cmp th, .reg-cmp td {
   text-align: left;
   padding: var(--s3) var(--s4);
   border-bottom: 1px solid var(--c-line-soft);
   font-size: var(--t-sm);
   vertical-align: top;
 }
-.mkt-cmp thead th { background: var(--c-surface-2); border-bottom: 1px solid var(--c-line); font-size: var(--t-base); color: var(--c-heading); }
-.mkt-cmp tbody th { background: var(--c-surface-2); color: var(--c-ink-3); font-weight: 500; width: 200px; font-size: var(--t-xs); }
-.mkt-cmp tr.mkt-diff th { border-left: 3px solid var(--c-gold-bright); }
-.mkt-cmp tr.mkt-diff { background: rgba(248, 184, 88, .07); }
-.mkt-cmp .mkt-none { color: var(--c-ink-3); font-style: italic; }
-.mkt-cmp-legend { display: flex; gap: var(--s5); font-size: var(--t-xs); color: var(--c-ink-2); margin-top: var(--s3); }
+.reg-cmp thead th { background: var(--c-surface-2); border-bottom: 1px solid var(--c-line); font-size: var(--t-base); color: var(--c-heading); }
+.reg-cmp tbody th { background: var(--c-surface-2); color: var(--c-ink-3); font-weight: 500; width: 200px; font-size: var(--t-xs); }
+.reg-cmp tr.reg-diff th { border-left: 3px solid var(--c-gold-bright); }
+.reg-cmp tr.reg-diff { background: rgba(248, 184, 88, .07); }
+.reg-cmp .reg-none { color: var(--c-ink-3); font-style: italic; }
+.reg-cmp-legend { display: flex; gap: var(--s5); font-size: var(--t-xs); color: var(--c-ink-2); margin-top: var(--s3); }
 
 /* Non-colour signal for a "differs" row: readable text, not reliant on hue,
    so it reaches both screen readers and colour-blind sighted visitors —
    the row tint + left border alone reach neither. */
-.mkt-diff-flag {
+.reg-diff-flag {
   margin-left: var(--s2);
   font-family: var(--font-data);
   font-size: var(--t-2xs);
@@ -357,10 +357,10 @@
 
 /* Selectable list rows (compare checkbox): one extra leading grid column,
    only when ResultList is given onSelect. */
-.mkt-list-select .mkt-row { grid-template-columns: 24px 40px minmax(0, 2fr) minmax(0, 1fr) 130px 100px 128px; }
-.mkt-row-select { display: flex; align-items: center; justify-content: center; }
+.reg-list-select .reg-row { grid-template-columns: 24px 40px minmax(0, 2fr) minmax(0, 1fr) 130px 100px 128px; }
+.reg-row-select { display: flex; align-items: center; justify-content: center; }
 @media (max-width: 900px) {
-  .mkt-list-select .mkt-row { grid-template-columns: 24px 40px minmax(0, 1fr) 100px 100px; }
+  .reg-list-select .reg-row { grid-template-columns: 24px 40px minmax(0, 1fr) 100px 100px; }
 }
 
 /* The next page is on its way. The current results stay in place and readable
@@ -368,10 +368,10 @@
    nothing reflows and the visitor keeps their reading position. Paired with
    aria-busy on the same element, which is what actually tells a screen reader
    the list is stale. */
-.mkt-results[aria-busy="true"] {
+.reg-results[aria-busy="true"] {
   opacity: 0.55;
   transition: opacity 0.12s ease-out;
 }
 @media (prefers-reduced-motion: reduce) {
-  .mkt-results[aria-busy="true"] { transition: none; }
+  .reg-results[aria-busy="true"] { transition: none; }
 }

@@ -28,18 +28,18 @@ export default function ResultToolbar({
   onPerPage: (n: number) => void;
 }) {
   return (
-    <div className="mkt-toolbar">
-      <div className="mkt-total" aria-live="polite">
+    <div className="reg-toolbar">
+      <div className="reg-total" aria-live="polite">
         <b>{total.toLocaleString()}</b>
         <span>{total === 1 ? "agent" : "agents"}</span>
       </div>
-      <div className="mkt-spacer" />
-      <label className="mkt-sr" htmlFor="mkt-sort">
+      <div className="reg-spacer" />
+      <label className="reg-sr" htmlFor="reg-sort">
         Sort results by
       </label>
       <select
-        id="mkt-sort"
-        className="mkt-control"
+        id="reg-sort"
+        className="reg-control"
         value={sort}
         onChange={(e) => {
           const picked = OPTIONS.find((o) => o.key === e.target.value)!;
@@ -52,12 +52,12 @@ export default function ResultToolbar({
           </option>
         ))}
       </select>
-      <label className="mkt-sr" htmlFor="mkt-per">
+      <label className="reg-sr" htmlFor="reg-per">
         Results per page
       </label>
       <select
-        id="mkt-per"
-        className="mkt-control"
+        id="reg-per"
+        className="reg-control"
         value={perPage}
         onChange={(e) => onPerPage(Number(e.target.value))}
       >
@@ -67,7 +67,7 @@ export default function ResultToolbar({
           </option>
         ))}
       </select>
-      <div className="mkt-toggle" role="group" aria-label="Result layout">
+      <div className="reg-toggle" role="group" aria-label="Result layout">
         <button aria-pressed={view === "grid"} onClick={() => onView("grid")}>
           ▦ Grid
         </button>

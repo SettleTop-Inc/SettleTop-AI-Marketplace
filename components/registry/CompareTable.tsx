@@ -150,15 +150,15 @@ export default function CompareTable({ agents }: { agents: AssetPassport[] }) {
 
   return (
     <>
-      <div className="mkt-cmp-wrap">
-        <table className="mkt-cmp">
+      <div className="reg-cmp-wrap">
+        <table className="reg-cmp">
           <thead>
             <tr>
               <th scope="col">Provenance layer</th>
               {agents.map((a) => (
                 <th scope="col" key={a.asset_id}>
                   {a.name}
-                  <div className="mkt-row-sub">{a.publisher ?? UNKNOWN}</div>
+                  <div className="reg-row-sub">{a.publisher ?? UNKNOWN}</div>
                 </th>
               ))}
             </tr>
@@ -169,7 +169,7 @@ export default function CompareTable({ agents }: { agents: AssetPassport[] }) {
               const compareValues = agents.map((a) => r.compareValue(a));
               const state = rowState(compareValues);
               return (
-                <tr key={r.label} className={state === "differs" ? "mkt-diff" : undefined}>
+                <tr key={r.label} className={state === "differs" ? "reg-diff" : undefined}>
                   <th scope="row">
                     {r.label}
                     {state === "differs" && (
@@ -177,7 +177,7 @@ export default function CompareTable({ agents }: { agents: AssetPassport[] }) {
                       // border this row also gets are the only other signal,
                       // and neither reaches a colour-blind sighted visitor or
                       // (being decorative, not text) a screen reader.
-                      <span className="mkt-diff-flag">differs</span>
+                      <span className="reg-diff-flag">differs</span>
                     )}
                   </th>
                   {state === "no-evidence" ? (
@@ -188,12 +188,12 @@ export default function CompareTable({ agents }: { agents: AssetPassport[] }) {
                     // must not invite. A single message spanning every agent
                     // column says the row is not comparable, once, instead of
                     // asserting anything per agent.
-                    <td className="mkt-none" colSpan={agents.length}>
+                    <td className="reg-none" colSpan={agents.length}>
                       No evidence to compare — every agent is Unknown here.
                     </td>
                   ) : (
                     displayValues.map((v, i) => (
-                      <td key={agents[i].asset_id} className={v === UNKNOWN ? "mkt-none" : undefined}>
+                      <td key={agents[i].asset_id} className={v === UNKNOWN ? "reg-none" : undefined}>
                         {v}
                       </td>
                     ))
@@ -204,9 +204,9 @@ export default function CompareTable({ agents }: { agents: AssetPassport[] }) {
           </tbody>
         </table>
       </div>
-      <div className="mkt-cmp-legend">
+      <div className="reg-cmp-legend">
         <span>Highlighted rows (marked “differs”) have different stated values</span>
-        <span className="mkt-none">Unknown — the source is silent</span>
+        <span className="reg-none">Unknown — the source is silent</span>
       </div>
     </>
   );

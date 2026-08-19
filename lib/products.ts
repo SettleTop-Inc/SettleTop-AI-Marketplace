@@ -84,7 +84,7 @@ export const PRODUCTS: Product[] = [
     line: "Component intelligence, from an SBOM",
     summary:
       "Upload a bill of materials and every component resolves to its real source repository, enriched with maintenance, contributor, release, dependency and advisory signals — then assessed for where in the world it is actually maintained.",
-    tags: ["Self-hosted", "Helm or Compose", "Runs locally"],
+    tags: ["Self-hostable", "Helm or Compose", "Runs locally"],
     visual: "sbom-flow",
     points: [
       "Citeable dossiers, versioned and time-stamped",
@@ -163,7 +163,7 @@ export const PRODUCTS: Product[] = [
       "Enterprises with formal governance, GRC and third-party risk processes",
     ],
     deploy: [
-      { k: "Runs", v: "Entirely on your own infrastructure" },
+      { k: "Runs", v: "Deployable entirely on your own infrastructure" },
       { k: "Install", v: "Docker Compose, or Helm on Kubernetes" },
       { k: "Stack", v: "FastAPI service, Next.js UI, Postgres, Redis, object storage" },
       { k: "Identity", v: "Keycloak single sign-on in production" },
@@ -218,9 +218,9 @@ export const PRODUCTS: Product[] = [
       },
     ],
     deploy: [
-      { k: "Runs", v: "In your cluster, reachable only from inside it" },
+      { k: "Runs", v: "Deployable in your cluster, reachable only from inside it" },
       { k: "Install", v: "Helm chart, or Compose for a local run" },
-      { k: "Egress", v: "None to us — bring your own model" },
+      { k: "Egress", v: "None required; bring your own model" },
       { k: "Offline", v: "Suitable for secure and air-gapped environments" },
     ],
   },
