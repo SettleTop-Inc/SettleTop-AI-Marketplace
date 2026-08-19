@@ -36,11 +36,22 @@ if (!agents.length) {
 
 const have = new Map((await readJsonl(OUT)).map((d) => [d.slug, d]));
 const posted = agents.filter((a) => a.post_url);
-let todo = posted.filter((a) => !have.has(a.slug));
+
+// Resume skips what we already have, but only where "what we have" was written
+// by the parser now in the file. A record from an older shape — details written
+// when a bare "Tier 3" mention was read as a price — is re-read rather than
+// trusted, so correcting the parser costs a re-run and not a manual delete.
+const currentShape = (d) => Array.isArray(d.plans);
+const reread = posted.filter((a) => have.has(a.slug) && !currentShape(have.get(a.slug)));
+
+let todo = posted.filter((a) => !have.has(a.slug) || !currentShape(have.get(a.slug)));
 if (limit) todo = todo.slice(0, limit);
 
 console.log(
-  `${agents.length} agents | ${posted.length} with a post | ${have.size} already read | ${todo.length} to go\n`
+  `${agents.length} agents | ${posted.length} with a post | ` +
+    `${have.size - reread.length} already read | ${todo.length} to go` +
+    (reread.length ? ` (${reread.length} re-read: older parse)` : "") +
+    "\n"
 );
 
 const failures = [];
@@ -59,8 +70,8 @@ await pool(todo, CONCURRENCY, async (agent) => {
     }
 
     have.set(agent.slug, { slug: agent.slug, url: agent.post_url, ...post });
-    const tiers = post.tiers.length ? `tiers ${post.tiers.join(",")}` : "no tier stated";
-    console.log(`  ✓ ${agent.slug.padEnd(38)} ${String(post.text.length).padStart(5)} chars  ${tiers}`);
+    const price = post.plans.length ? `${post.plans.length} priced tier(s)` : "no price stated";
+    console.log(`  ✓ ${agent.slug.padEnd(38)} ${String(post.text.length).padStart(5)} chars  ${price}`);
   } catch (e) {
     failures.push([agent.slug, e.message]);
     console.error(`  ✗ ${agent.slug.padEnd(38)} ${e.message}`);
@@ -69,9 +80,9 @@ await pool(todo, CONCURRENCY, async (agent) => {
 
 await writeJsonl(OUT, [...have.values()]);
 
-const withTiers = [...have.values()].filter((d) => d.tiers?.length).length;
+const priced = [...have.values()].filter((d) => d.plans?.length).length;
 console.log(`\n${have.size} posts read -> ${OUT}`);
-console.log(`${withTiers} state tier membership, ${have.size - withTiers} do not`);
+console.log(`${priced} publish a price, ${have.size - priced} do not`);
 if (failures.length) {
   console.log(`\n${failures.length} failed. Re-run to retry — reading is resumable.`);
   for (const [slug, msg] of failures) console.log(`  ${slug}: ${msg}`);

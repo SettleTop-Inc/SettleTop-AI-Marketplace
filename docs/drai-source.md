@@ -83,20 +83,40 @@ The roadmap and obligation lines stay out of the array and remain in
 ## Pricing: only where the listing says so
 
 The skill puts the same four-tier `plans` array on every DRAI capture. The site
-contradicts this:
+contradicts this. **DRAI prices the platform, not the agents inside it**, and
+exactly one listing publishes a price: the Secure Workspace launch post, which
+is itself a captured asset. Every other DRAI asset carries `pricing: null` and
+an empty `plans`.
 
-- **Opp Shredder's** post states it integrates into **Tier 1, Tier 2 and Tier 3**
-  — not Tier 0.
-- **GovEntity Dossier's** article states no tier at all.
+The table appears there one row per line, and this is the only place any DRAI
+dollar figure comes from:
 
-So tier membership varies per agent and is often simply absent. `plans` is
-populated only where the post states membership; `pricing` is null otherwise.
-The full tier table belongs to the Secure Workspace asset, where it is actually
-published.
+```
+Tier 0 – Essentials ($1,499/mo): Entry-level pipeline clarity with ...
+Tier 1 – Pipeline Edge ($3,999/mo): Multi-vehicle monitoring and ...
+Tier 2 – Growth Accelerator ($9,999/mo): Enterprise-grade pipeline ...
+Tier 3 – Hyperscaler ($29,999/mo): Full federal-scale capture ...
+```
 
-Tier names carry an **en dash**, not a hyphen: `Tier 0 – Essentials`,
-`Tier 1 – Pipeline Edge`, `Tier 2 – Growth Accelerator`, `Tier 3 – Hyperscaler`,
-at `$1,499/mo`, `$3,999/mo`, `$9,999/mo`, `$29,999/mo`.
+Tier names carry an **en dash**, not a hyphen, and the parser keeps whatever the
+page prints rather than a name of ours.
+
+### A tier named in an agent post is not that agent's price
+
+Agent posts name tiers too, and reading those as prices is the mistake this
+section exists to prevent. Opp Shredder's post says:
+
+> It can be deployed as a standalone agent or integrated into Tier 1 (Pipeline
+> Edge), Tier 2 (Growth Accelerator), and Tier 3 (Hyperscaler) capture
+> intelligence suites.
+
+Those are **suites that bundle many agents**, and the same sentence offers a
+standalone option DRAI does not price anywhere. Matching the bare word "Tier"
+and looking the number up in a table put `$3,999/mo to $29,999/mo` on the Opp
+Shredder card — a figure DRAI has never charged for that agent, assembled from
+a page the reader never sees. `plansStatedIn()` therefore matches the shape of a
+published table row (dash, then a parenthesised `/mo` figure) and nothing else:
+a parenthesised suite name is not a price.
 
 ## Verified, having previously been assumed
 
