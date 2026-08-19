@@ -3,7 +3,7 @@ import { PRODUCTS } from "@/lib/products";
 import ProductLogo from "@/components/ProductLogo";
 
 /**
- * The three products, marketplace first — it is the one a visitor can
+ * The three products, registry first — it is the one a visitor can
  * use immediately, so it leads rather than trailing the two self-hosted
  * platforms.
  *
@@ -25,9 +25,9 @@ export default function ProductGrid() {
           <p className="st-eyebrow">Products</p>
           <h2 className="st-display">Three records, one method</h2>
           <p className="st-lede">
-            Each product answers the same question about software you did not
-            write: what is in it, who says so, and how do you know. All three
-            install where you run and keep their evidence local.
+            Three products, three parts of the same picture: the agents and AI
+            apps on offer, the open source inside what you ship, and the
+            vulnerabilities that reach both.
           </p>
         </header>
 

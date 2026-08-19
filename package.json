@@ -1,8 +1,8 @@
 {
-  "name": "settletop-ai-marketplace",
+  "name": "settletop-ai-registry",
   "version": "0.1.0",
   "private": true,
-  "description": "SettleTop AI Marketplace — a provenance registry for AI agents.",
+  "description": "SettleTop AI Registry — a provenance registry for AI agents.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

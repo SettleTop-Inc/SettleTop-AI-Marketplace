@@ -21,7 +21,7 @@ export async function generateMetadata({
   // read gets a neutral title rather than announcing an absence it cannot know.
   if (!read.ok) return { title: "Agent Passport — SettleTop" };
   const a = read.data;
-  if (!a) return { title: "Agent not found — SettleTop AI Marketplace" };
+  if (!a) return { title: "Agent not found — SettleTop AI Registry" };
   return {
     title: `${a.name} — Agent Passport — SettleTop`,
     description:

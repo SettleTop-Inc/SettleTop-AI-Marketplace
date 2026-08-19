@@ -4,10 +4,10 @@ import type { RegistryStats } from "@/lib/types";
 /**
  * The company hero.
  *
- * Replaces a hero that pitched the agent marketplace as though it were the
+ * Replaces a hero that pitched the agent registry as though it were the
  * whole company. SettleTop ships three products, so the headline is the
- * thing all three do: supply intelligence a model can cite, without the
- * data leaving the customer's network.
+ * thing all three do: trace where every part of a software estate came
+ * from, whether it was written in-house, borrowed or bought.
  *
  * The agent search that used to live here has gone — it duplicated the
  * registry section's own search further down the page, and an agent query
@@ -75,22 +75,21 @@ export default function HomeHero({
   return (
     <section className="hm-hero">
       <div className="st-shell st-shell--wide">
-        <p className="st-eyebrow">The AI data provenance company</p>
+        <p className="st-eyebrow">The software provenance company</p>
 
         <h1 className="hm-hero__title">
-          Intelligence your AI can cite.
-          <br />
-          <span>Inside your perimeter.</span>
+          Know what you <span>build, buy and borrow.</span>
         </h1>
 
         <p className="hm-hero__lede">
-          Verified, timestamped intelligence about the software and AI you didn’t
-          write. It installs in your cluster, runs offline, and answers your own
-          model’s questions with sources.
+          Understanding your software starts with knowing where it came from.
+          SettleTop traces the provenance of every part of it: your code and the
+          open source beneath it, the vendors behind it, the agents and AI apps
+          you adopt, and the data they run on. It keeps a record of what changed.
         </p>
 
         <div className="hm-hero__actions">
-          {/* The marketplace leads: it is the one product a visitor can use
+          {/* The registry leads: it is the one product a visitor can use
               without installing anything. */}
           <Link className="st-btn st-btn--primary" href="/marketplace">
             Browse AI &amp; Agents

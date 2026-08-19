@@ -12,7 +12,6 @@ import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
 import HomeHero from "@/components/home/HomeHero";
 import ProductGrid from "@/components/home/ProductGrid";
-import Sovereignty from "@/components/home/Sovereignty";
 import ServicesGrid from "@/components/home/ServicesGrid";
 import type {
   AssetPassport,
@@ -51,7 +50,7 @@ export default function LandingApp({
   featured: AssetPassport | null;
 }) {
   const [topFilter, setTopFilter] = useState<TopFilter>("All");
-  const [modal, setModal] = useState<null | { kind: "vendor" } | { kind: "agent"; id: string }>(null);
+  const [modal, setModal] = useState<null | { kind: "agent"; id: string }>(null);
   const [passport, setPassport] = useState<AssetPassport | null>(null);
   const [loadingPassport, setLoadingPassport] = useState(false);
 
@@ -60,7 +59,7 @@ export default function LandingApp({
   const top = topAgents[topFilter];
 
   useEffect(() => {
-    if (!modal || modal.kind !== "agent") {
+    if (!modal) {
       setPassport(null);
       return;
     }
@@ -90,18 +89,12 @@ export default function LandingApp({
 
   return (
     <>
-      <SiteHeader
-        current="overview"
-        wide
-        onVendor={() => setModal({ kind: "vendor" })}
-      />
+      <SiteHeader current="overview" wide />
 
       <main id="top">
         <HomeHero stats={stats} />
 
         <ProductGrid />
-
-        <Sovereignty />
 
         <ServicesGrid />
 
@@ -247,27 +240,26 @@ export default function LandingApp({
                 </p>
               </div>
               <Link className="st-btn st-btn--primary" href="/marketplace">
-                Open the marketplace →
+                Open the registry →
               </Link>
             </div>
           </div>
         </section>
 
-        <section className="vendor-cta st-invert">
-          <div className="container vendor-cta-inner">
-            <div>
-              <span className="overline light-overline">
-                FOR AGENT BUILDERS &amp; VENDORS
-              </span>
-              <h2>Move from Unknown to Verified.</h2>
-              <p>
-                Claim your listing, disclose the agent stack and provide provenance
-                evidence so buyers can understand what they’re adopting.
+        {/* There is no claim flow, so this offers the one route that does
+            exist: a way to report a record that is wrong. A call to action
+            for a process we cannot honour costs more than it earns. */}
+        <section className="hm-section" id="corrections">
+          <div className="st-shell st-shell--wide">
+            <header className="hm-section__head">
+              <p className="st-eyebrow">Corrections and disclosures</p>
+              <p className="st-lede">
+                The registry records what a source states, and reads Unknown
+                where it states nothing. If a record about your agent is wrong
+                or incomplete, write to{" "}
+                <a href="mailto:registry@settletop.com">registry@settletop.com</a>.
               </p>
-            </div>
-            <button className="light-btn" onClick={() => setModal({ kind: "vendor" })}>
-              Claim an agent
-            </button>
+            </header>
           </div>
         </section>
       </main>
@@ -297,9 +289,7 @@ export default function LandingApp({
             <button className="modal-close" onClick={() => setModal(null)} aria-label="Close">
               ×
             </button>
-            {modal.kind === "vendor" ? (
-              <VendorModal />
-            ) : loadingPassport ? (
+            {loadingPassport ? (
               <p className="passport-description">Loading the passport…</p>
             ) : passport ? (
               <PassportView a={passport} />
@@ -464,49 +454,5 @@ function Workbench({
         </div>
       </div>
     </div>
-  );
-}
-
-function VendorModal() {
-  return (
-    <>
-      <span className="overline">VENDOR VERIFICATION</span>
-      <h2>Claim and verify an agent</h2>
-      <p className="passport-description">
-        Vendors can claim a registry listing, disclose the agent stack and submit
-        provenance evidence. SettleTop can then distinguish vendor-disclosed
-        information from independently verified evidence.
-      </p>
-      <div className="verify-flow">
-        <div>
-          <b>1</b>
-          <span>
-            <strong>Claim</strong>
-            <small>Confirm vendor and agent identity</small>
-          </span>
-        </div>
-        <div>
-          <b>2</b>
-          <span>
-            <strong>Disclose</strong>
-            <small>Models, frameworks, tools, data and dependencies</small>
-          </span>
-        </div>
-        <div>
-          <b>3</b>
-          <span>
-            <strong>Verify</strong>
-            <small>Attach evidence and attestations</small>
-          </span>
-        </div>
-        <div>
-          <b>4</b>
-          <span>
-            <strong>Maintain</strong>
-            <small>Track version and stack changes over time</small>
-          </span>
-        </div>
-      </div>
-    </>
   );
 }
