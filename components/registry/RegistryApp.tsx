@@ -5,11 +5,11 @@ import { usePathname, useRouter } from "next/navigation";
 import AgentCard from "@/components/AgentCard";
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
-import CompareTray from "@/components/marketplace/CompareTray";
-import FacetRail from "@/components/marketplace/FacetRail";
-import Pagination from "@/components/marketplace/Pagination";
-import ResultList from "@/components/marketplace/ResultList";
-import ResultToolbar from "@/components/marketplace/ResultToolbar";
+import CompareTray from "@/components/registry/CompareTray";
+import FacetRail from "@/components/registry/FacetRail";
+import Pagination from "@/components/registry/Pagination";
+import ResultList from "@/components/registry/ResultList";
+import ResultToolbar from "@/components/registry/ResultToolbar";
 import {
   type Criteria,
   type FacetKey,
@@ -19,12 +19,12 @@ import {
   MAX_COMPARE,
   defaultCriteria,
   serializeCriteria,
-} from "@/lib/marketplace-query";
+} from "@/lib/registry-query";
 import type { RegistryPage } from "@/lib/registry";
 import type { RegistryCard } from "@/lib/types";
 
 /**
- * The marketplace shell.
+ * The registry shell.
  *
  * Filtering used to happen here, over every card in the registry. It now
  * happens in Postgres: this component receives one page of results and the
@@ -36,7 +36,7 @@ import type { RegistryCard } from "@/lib/types";
  * screen and marks them busy rather than blanking the grid, so the page reads
  * as working rather than broken.
  */
-export default function MarketplaceApp({
+export default function RegistryApp({
   criteria,
   result,
   registryTotal,
@@ -54,7 +54,7 @@ export default function MarketplaceApp({
   const rows = result?.rows ?? [];
 
   // The exact query string for the current view, threaded onto every passport
-  // link below so "Back to the marketplace" restores the search that was
+  // link below so "Back to the registry" restores the search that was
   // built rather than dropping the visitor on unfiltered page 1.
   const backQS = serializeCriteria(criteria);
 
@@ -139,7 +139,7 @@ export default function MarketplaceApp({
 
   return (
     <div className="mkt-shell">
-      <SiteHeader current="marketplace" wide />
+      <SiteHeader current="registry" wide />
       <div className="st-shell st-shell--wide">
         <header className="mkt-head">
           <div className="mkt-head__text">
@@ -220,7 +220,7 @@ export default function MarketplaceApp({
             ) : criteria.view === "list" ? (
               <ResultList
                 rows={rows}
-                from="marketplace"
+                from="registry"
                 back={backQS}
                 selectedIds={selected}
                 onSelect={toggleSelect}
@@ -232,7 +232,7 @@ export default function MarketplaceApp({
                   <AgentCard
                     key={c.asset_id}
                     c={c}
-                    from="marketplace"
+                    from="registry"
                     back={backQS}
                     selected={selected.includes(c.asset_id)}
                     onSelect={toggleSelect}

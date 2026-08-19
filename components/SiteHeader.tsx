@@ -11,14 +11,14 @@ import ThemeToggle from "@/components/ThemeToggle";
  * it rather than squashing it.
  *
  * No hooks, so this stays usable from both server routes (the passport)
- * and client ones (the marketplace, the landing page).
+ * and client ones (the registry, the landing page).
  */
 export default function SiteHeader({
   current,
   wide,
   sections,
 }: {
-  current?: "overview" | "marketplace";
+  current?: "overview" | "registry";
   /** Match the page's own shell so the lockup aligns with the content
       beneath it: the browsing surfaces are wide, document pages are not. */
   wide?: boolean;
@@ -69,7 +69,7 @@ export default function SiteHeader({
 
         <div className="st-header__actions">
           <ThemeToggle />
-          {current === "marketplace" ? (
+          {current === "registry" ? (
             <span className="st-header__here" aria-current="page">
               Browsing AI &amp; Agents
             </span>

@@ -41,7 +41,7 @@ export default async function AgentPage({
 }) {
   const { id } = await params;
   // `back`, like `from`, is a search param: Next decodes it once before it
-  // reaches us, so this is already the marketplace's raw serialized query
+  // reaches us, so this is already the registry's raw serialized query
   // string (e.g. "risk=Low&q=agent"). Do NOT decodeURIComponent it again —
   // a second decode would corrupt any literal `%` inside it and throw.
   const { from, back: backQS } = await searchParams;
@@ -68,14 +68,18 @@ export default async function AgentPage({
   // malformed `?back=` can steer this link off `/registry` or `/`. An
   // unrecognised `back` value is not a risk either: parseCriteria() ignores
   // anything it doesn't recognise rather than applying it.
-  const back =
-    from === "marketplace"
-      ? { href: `/registry${backQS ? `?${backQS}` : ""}`, label: "Back to the registry" }
-      : { href: "/", label: "Back to the overview" };
+  // "marketplace" is what this parameter carried before the browsing tool
+  // moved to /registry, and passports were shared with it in the link. Both
+  // values are honoured; only "registry" is emitted now.
+  const fromRegistry = from === "registry" || from === "marketplace";
+
+  const back = fromRegistry
+    ? { href: `/registry${backQS ? `?${backQS}` : ""}`, label: "Back to the registry" }
+    : { href: "/", label: "Back to the overview" };
 
   return (
     <>
-      <SiteHeader current={from === "marketplace" ? "marketplace" : undefined} />
+      <SiteHeader current={fromRegistry ? "registry" : undefined} />
       <main id="top">
         <PassportView a={a} back={back} />
       </main>

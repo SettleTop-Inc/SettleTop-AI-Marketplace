@@ -8,7 +8,7 @@ import {
   FACET_LABELS,
   PAGE_SIZE,
   PAGE_SIZES,
-} from "./marketplace-query.ts";
+} from "./registry-query.ts";
 import type {
   AssetPassport,
   ChangeRow,
@@ -89,7 +89,7 @@ export async function getStats(): Promise<RegistryStats | null> {
 /**
  * PostgREST answers at most 1000 rows per request, whatever the query asks
  * for, and it does so without an error — the read simply returns a truncated
- * list. The registry passed that mark, so /marketplace was quietly showing
+ * list. The registry passed that mark, so /registry was quietly showing
  * the first 1000 agents and reporting "1,000 agents" as if that were all of
  * them.
  *

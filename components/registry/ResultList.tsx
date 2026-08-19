@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import AgentLogo from "@/components/AgentLogo";
-import { MAX_COMPARE } from "@/lib/marketplace-query";
+import { MAX_COMPARE } from "@/lib/registry-query";
 import { UNKNOWN, statusClass } from "@/lib/present";
 import type { RegistryCard } from "@/lib/types";
 

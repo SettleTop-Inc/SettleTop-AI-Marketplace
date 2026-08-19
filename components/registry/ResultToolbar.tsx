@@ -1,7 +1,7 @@
 "use client";
 
-import { PAGE_SIZES } from "@/lib/marketplace-query";
-import type { SortDir, SortKey, ViewMode } from "@/lib/marketplace-query";
+import { PAGE_SIZES } from "@/lib/registry-query";
+import type { SortDir, SortKey, ViewMode } from "@/lib/registry-query";
 
 const OPTIONS: Array<{ key: SortKey; dir: SortDir; label: string }> = [
   { key: "reach", dir: "desc", label: "Provenance reach" },

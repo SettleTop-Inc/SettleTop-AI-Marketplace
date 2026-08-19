@@ -1,8 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import CompareTable from "@/components/marketplace/CompareTable";
+import CompareTable from "@/components/registry/CompareTable";
 import { getPassports } from "@/lib/registry";
-import { MAX_COMPARE } from "@/lib/marketplace-query";
+import { MAX_COMPARE } from "@/lib/registry-query";
 import "@/app/registry.css";
 
 export const revalidate = 300;

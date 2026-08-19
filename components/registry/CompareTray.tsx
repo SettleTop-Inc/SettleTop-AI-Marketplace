@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { MAX_COMPARE } from "@/lib/marketplace-query";
+import { MAX_COMPARE } from "@/lib/registry-query";
 import type { RegistryCard } from "@/lib/types";
 
 export default function CompareTray({
