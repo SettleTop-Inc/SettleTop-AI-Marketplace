@@ -138,11 +138,11 @@ export default function RegistryApp({
   const atCap = picked.length >= MAX_COMPARE;
 
   return (
-    <div className="mkt-shell">
+    <div className="reg-shell">
       <SiteHeader current="registry" wide />
       <div className="st-shell st-shell--wide">
-        <header className="mkt-head">
-          <div className="mkt-head__text">
+        <header className="reg-head">
+          <div className="reg-head__text">
             <span className="st-eyebrow">Full registry</span>
             <h1 className="st-display">Browse and compare AI agents</h1>
             <p className="st-lede">
@@ -151,13 +151,13 @@ export default function RegistryApp({
               Unknown.
             </p>
           </div>
-          <div className="mkt-search">
+          <div className="reg-search">
             <span aria-hidden="true">⌕</span>
-            <label className="mkt-sr" htmlFor="mkt-q">
+            <label className="reg-sr" htmlFor="reg-q">
               Search agents
             </label>
             <input
-              id="mkt-q"
+              id="reg-q"
               type="search"
               placeholder={
                 registryTotal === null
@@ -170,7 +170,7 @@ export default function RegistryApp({
           </div>
         </header>
 
-        <div className="mkt-layout">
+        <div className="reg-layout">
           {result && (
             <FacetRail
               facets={result.facets}
@@ -184,7 +184,7 @@ export default function RegistryApp({
               previous page stays readable while the next one is fetched, and
               a screen reader is told it is stale instead of being handed a
               silently changing list. */}
-          <div className="mkt-results" aria-busy={pending || undefined}>
+          <div className="reg-results" aria-busy={pending || undefined}>
             {result && (
               <ResultToolbar
                 total={result.total}
@@ -198,7 +198,7 @@ export default function RegistryApp({
             )}
 
             {loadFailed ? (
-              <div className="mkt-error" role="alert">
+              <div className="reg-error" role="alert">
                 <b>The registry could not be loaded</b>
                 <p>
                   This is a fault on our side, not an empty result. No agents are
@@ -206,14 +206,14 @@ export default function RegistryApp({
                 </p>
               </div>
             ) : result.total === 0 ? (
-              <div className="mkt-empty">
+              <div className="reg-empty">
                 <b>No agents match these filters</b>
                 <p>
                   {registryTotal === null
                     ? "Try removing a filter."
                     : `The registry holds ${registryTotal.toLocaleString()} agents. Try removing a filter.`}
                 </p>
-                <button className="mkt-control" onClick={clear}>
+                <button className="reg-control" onClick={clear}>
                   Clear filters
                 </button>
               </div>
@@ -227,7 +227,7 @@ export default function RegistryApp({
                 atCap={atCap}
               />
             ) : (
-              <div className="mkt-grid">
+              <div className="reg-grid">
                 {rows.map((c) => (
                   <AgentCard
                     key={c.asset_id}

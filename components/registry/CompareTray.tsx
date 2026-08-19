@@ -17,30 +17,30 @@ export default function CompareTray({
   const href = `/registry/compare?ids=${selected.map((s) => s.asset_id).join(",")}`;
 
   return (
-    <div className="mkt-tray st-invert" role="region" aria-label="Compare selection">
-      <div className="container mkt-tray-inner">
+    <div className="reg-tray st-invert" role="region" aria-label="Compare selection">
+      <div className="container reg-tray-inner">
         <span>{selected.length} selected</span>
         {selected.length >= MAX_COMPARE && (
           <span style={{ opacity: 0.7, fontWeight: 400 }}>
             Capped at {MAX_COMPARE} — remove one to swap
           </span>
         )}
-        <div className="mkt-tray-list">
+        <div className="reg-tray-list">
           {selected.map((s) => (
-            <button className="mkt-chip" key={s.asset_id} onClick={() => onRemove(s.asset_id)}>
+            <button className="reg-chip" key={s.asset_id} onClick={() => onRemove(s.asset_id)}>
               {s.name} ×
             </button>
           ))}
         </div>
-        <div className="mkt-spacer" />
+        <div className="reg-spacer" />
         {selected.length >= 2 ? (
-          <Link className="mkt-control" href={href}>
+          <Link className="reg-control" href={href}>
             Compare provenance
           </Link>
         ) : (
           <span style={{ opacity: 0.7, fontWeight: 400 }}>Select one more to compare</span>
         )}
-        <button className="mkt-chip" onClick={onClear}>
+        <button className="reg-chip" onClick={onClear}>
           Clear
         </button>
       </div>

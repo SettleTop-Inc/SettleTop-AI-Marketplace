@@ -32,21 +32,21 @@ export default function ResultList({
   atCap?: boolean;
 }) {
   return (
-    <div className={onSelect ? "mkt-list mkt-list-select" : "mkt-list"}>
+    <div className={onSelect ? "reg-list reg-list-select" : "reg-list"}>
       {rows.map((c) => {
         const isSelected = !!selectedIds?.includes(c.asset_id);
         const disabled = !!atCap && !isSelected;
         return (
-          <article className="mkt-row" key={c.asset_id}>
+          <article className="reg-row" key={c.asset_id}>
             {onSelect && (
               <label
-                className="mkt-row-select"
+                className="reg-row-select"
                 title={
                   disabled ? `Comparison is capped at ${MAX_COMPARE} agents` : "Select to compare"
                 }
                 aria-disabled={disabled || undefined}
               >
-                <span className="mkt-sr">Select {c.name} to compare</span>
+                <span className="reg-sr">Select {c.name} to compare</span>
                 <input
                   type="checkbox"
                   checked={isSelected}
@@ -57,7 +57,7 @@ export default function ResultList({
             )}
             <AgentLogo name={c.name} id={c.source_product_id} logo={c.logo} />
             <div>
-              <h3 className="mkt-row-name">
+              <h3 className="reg-row-name">
                 <Link
                   href={`/agent/${encodeURIComponent(c.source_product_id)}${
                     from ? `?from=${from}${back ? `&back=${encodeURIComponent(back)}` : ""}` : ""
@@ -66,13 +66,13 @@ export default function ResultList({
                   {c.name}
                 </Link>
               </h3>
-              <div className="mkt-row-sub">{c.publisher ?? UNKNOWN}</div>
+              <div className="reg-row-sub">{c.publisher ?? UNKNOWN}</div>
             </div>
-            <div className="mkt-row-sub mkt-hide-sm">{c.function_category ?? UNKNOWN}</div>
+            <div className="reg-row-sub reg-hide-sm">{c.function_category ?? UNKNOWN}</div>
             <span className={`st-stamp st-stamp--${statusClass(c.provenance)}`}>
               {c.provenance}
             </span>
-            <div className="mkt-row-reach">
+            <div className="reg-row-reach">
               <div
                 className="st-ledger__cells"
                 role="img"
@@ -91,9 +91,9 @@ export default function ResultList({
                 {c.layers_known}/{c.layers_tracked}
               </b>
             </div>
-            <div className="mkt-row-risk">
+            <div className="reg-row-risk">
               <b className={`st-field__value--${c.risk.toLowerCase()}`}>{c.risk}</b>
-              {c.risk_basis && <small className="mkt-risk-basis">{c.risk_basis}</small>}
+              {c.risk_basis && <small className="reg-risk-basis">{c.risk_basis}</small>}
             </div>
           </article>
         );

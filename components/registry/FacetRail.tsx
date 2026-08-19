@@ -21,25 +21,25 @@ export default function FacetRail({
   hasFilters: boolean;
 }) {
   return (
-    <aside className="mkt-rail" aria-label="Filters">
-      <div className="mkt-rail-head">
+    <aside className="reg-rail" aria-label="Filters">
+      <div className="reg-rail-head">
         <b>Filters</b>
         {hasFilters && (
-          <button className="mkt-clear" onClick={onClear}>
+          <button className="reg-clear" onClick={onClear}>
             Clear
           </button>
         )}
       </div>
 
       {facets.map((g) => (
-        <fieldset className="mkt-group" key={g.key}>
+        <fieldset className="reg-group" key={g.key}>
           <legend>{g.label}</legend>
-          {g.key === "risk" && <p className="mkt-note">{RISK_NOTE}</p>}
+          {g.key === "risk" && <p className="reg-note">{RISK_NOTE}</p>}
           {g.values.map((v) => {
             const disabled = v.count === 0 && !v.selected;
             return (
               <label
-                className="mkt-facet"
+                className="reg-facet"
                 key={v.value}
                 aria-disabled={disabled || undefined}
               >
@@ -50,7 +50,7 @@ export default function FacetRail({
                   onChange={() => onToggle(g.key, v.value)}
                 />
                 <span>{v.value}</span>
-                <span className="mkt-count">{v.count}</span>
+                <span className="reg-count">{v.count}</span>
               </label>
             );
           })}

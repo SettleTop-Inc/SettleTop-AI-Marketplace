@@ -24,17 +24,17 @@ export default function PassportError({
   return (
     <main id="top">
       <div className="st-shell" style={{ paddingTop: 40, paddingBottom: 80 }}>
-        <div className="mkt-error" role="alert">
+        <div className="reg-error" role="alert">
           <b>This passport could not be loaded</b>
           <p>
             This is a fault on our side. The agent has not been removed, and its
             record has not been withdrawn — we simply could not read it just now.
           </p>
           <p style={{ display: "flex", gap: 12, marginTop: 16 }}>
-            <button className="mkt-control" onClick={reset}>
+            <button className="reg-control" onClick={reset}>
               Try again
             </button>
-            <a className="mkt-control" href="/registry">
+            <a className="reg-control" href="/registry">
               Back to the registry
             </a>
           </p>

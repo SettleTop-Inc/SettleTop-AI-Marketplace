@@ -76,21 +76,21 @@ export default async function ComparePage({ searchParams }: { searchParams: Sear
     : [];
 
   return (
-    <div className="mkt-shell">
+    <div className="reg-shell">
       <div className="container" style={{ paddingTop: 22, paddingBottom: 60 }}>
         <p style={{ marginBottom: 16 }}>
-          <Link className="mkt-back" href="/registry">
+          <Link className="reg-back" href="/registry">
             ← Back to the registry
           </Link>
         </p>
 
         {!result.ok ? (
-          <div className="mkt-error" role="alert">
+          <div className="reg-error" role="alert">
             <b>The registry could not be loaded</b>
             <p>This is a fault on our side. These agents have not been removed.</p>
           </div>
         ) : result.data.length === 0 ? (
-          <div className="mkt-empty">
+          <div className="reg-empty">
             {wanted.length === 0 ? (
               <>
                 <b>Nothing selected to compare</b>
@@ -102,7 +102,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Sear
                 <p>Not found in the registry: {missingIds.join(", ")}.</p>
               </>
             )}
-            <Link className="mkt-control" href="/registry">
+            <Link className="reg-control" href="/registry">
               Go to the registry
             </Link>
           </div>
@@ -110,7 +110,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Sear
           <>
             <CompareTable agents={result.data} />
             {missingIds.length > 0 && (
-              <p className="mkt-note" style={{ marginTop: 12 }}>
+              <p className="reg-note" style={{ marginTop: 12 }}>
                 Not found in the registry: {missingIds.join(", ")}. They were not
                 dropped from the comparison silently.
               </p>
@@ -119,7 +119,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Sear
         )}
 
         {overCap.length > 0 && (
-          <p className="mkt-note" style={{ marginTop: 12 }}>
+          <p className="reg-note" style={{ marginTop: 12 }}>
             Comparison is capped at {MAX_COMPARE} agents. Not included: {overCap.join(", ")}.
           </p>
         )}
