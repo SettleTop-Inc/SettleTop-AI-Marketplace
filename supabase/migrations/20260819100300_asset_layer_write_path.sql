@@ -36,39 +36,39 @@ security definer
 set search_path = public
 as $fn$
 declare
-  meta        jsonb := payload -> 'capture_meta';
-  ex          jsonb := payload -> 'extract';
-  cert_d      jsonb := coalesce(ex -> 'cert_detail', '{}'::jsonb);
-  v_mkt       text  := coalesce(meta ->> 'marketplace_id', 'microsoft');
-  v_pid       text  := meta ->> 'source_product_id';
-  v_drive     text  := meta ->> 'drive_file_id';
-  v_asset     uuid;
+  meta            jsonb := payload -> 'capture_meta';
+  ex              jsonb := payload -> 'extract';
+  cert_d          jsonb := coalesce(ex -> 'cert_detail', '{}'::jsonb);
+  v_mkt           text  := coalesce(meta ->> 'marketplace_id', 'microsoft');
+  v_pid           text  := meta ->> 'source_product_id';
+  v_drive         text  := meta ->> 'drive_file_id';
+  v_asset         uuid;
   v_listing       uuid;
   v_new_listing   boolean := false;
   v_slug_fallback boolean := false;
-  v_capture   uuid;
-  v_prev      uuid;
-  v_hash      text;
-  v_captured  timestamptz := coalesce((meta ->> 'captured_at_utc')::timestamptz, now());
-  hay_listing text;
-  hay_cert    text;
-  perms       text[] := coalesce(array(select jsonb_array_elements_text(cert_d -> 'graph_permissions')), '{}');
-  compl       text[] := coalesce(array(select jsonb_array_elements_text(cert_d -> 'compliance')), '{}');
-  works       text[] := coalesce(array(select jsonb_array_elements_text(ex -> 'works_with')), '{}');
-  surfaces    text[] := coalesce(array(select jsonb_array_elements_text(ex -> 'surfaces')), '{}');
-  cats        text[] := coalesce(array(select jsonb_array_elements_text(ex -> 'categories')), '{}');
-  inds        text[] := coalesce(array(select jsonb_array_elements_text(ex -> 'industries')), '{}');
-  v_cert      certification_status := coalesce(nullif(ex ->> 'certification','')::certification_status, 'none');
-  plan_count  int := coalesce(jsonb_array_length(ex -> 'plans'), 0);
-  layers      text[];
-  n_layers    int;
-  v_reach     int;
-  v_risk      jsonb;
-  v_prov      jsonb;
-  v_price     jsonb;
-  v_fn        text;
-  changes     int := 0;
-  kindmap     jsonb := jsonb_build_object(
+  v_capture       uuid;
+  v_prev          uuid;
+  v_hash          text;
+  v_captured      timestamptz := coalesce((meta ->> 'captured_at_utc')::timestamptz, now());
+  hay_listing     text;
+  hay_cert        text;
+  perms           text[] := coalesce(array(select jsonb_array_elements_text(cert_d -> 'graph_permissions')), '{}');
+  compl           text[] := coalesce(array(select jsonb_array_elements_text(cert_d -> 'compliance')), '{}');
+  works           text[] := coalesce(array(select jsonb_array_elements_text(ex -> 'works_with')), '{}');
+  surfaces        text[] := coalesce(array(select jsonb_array_elements_text(ex -> 'surfaces')), '{}');
+  cats            text[] := coalesce(array(select jsonb_array_elements_text(ex -> 'categories')), '{}');
+  inds            text[] := coalesce(array(select jsonb_array_elements_text(ex -> 'industries')), '{}');
+  v_cert          certification_status := coalesce(nullif(ex ->> 'certification','')::certification_status, 'none');
+  plan_count      int := coalesce(jsonb_array_length(ex -> 'plans'), 0);
+  layers          text[];
+  n_layers        int;
+  v_reach         int;
+  v_risk          jsonb;
+  v_prov          jsonb;
+  v_price         jsonb;
+  v_fn            text;
+  changes         int := 0;
+  kindmap         jsonb := jsonb_build_object(
     'models','model','frameworks','framework','tools_mcp','tool_mcp',
     'data_sources','data_source','integrations','integration',
     'deployment','deployment','languages','language');
@@ -107,6 +107,16 @@ begin
       select id, asset_id into v_listing, v_asset
         from listing
        where marketplace_id = v_mkt and source_product_id = v_pid;
+      if v_listing is null then
+        -- Unreachable under READ COMMITTED, where this re-read sees the very row
+        -- that caused the conflict. Under REPEATABLE READ the snapshot predates
+        -- that row, so say what happened here rather than failing three
+        -- statements later at the capture insert, with a not-null violation that
+        -- names a column and explains nothing.
+        raise exception
+          'ingest_capture: listing % on marketplace % vanished between the unique violation and the re-read',
+          v_pid, v_mkt;
+      end if;
       v_new_listing := false;
     end;
 
@@ -315,7 +325,7 @@ begin
 end $fn$;
 
 revoke all on function ingest_capture(jsonb) from public, anon, authenticated;
-grant execute on function ingest_capture(jsonb) to service_role;
+grant execute on function ingest_capture(jsonb) to service_role;;
 
 -- Called by the capture worker once it has identified, in the live DOM, which
 -- image is the product logo. Idempotent per capture.
