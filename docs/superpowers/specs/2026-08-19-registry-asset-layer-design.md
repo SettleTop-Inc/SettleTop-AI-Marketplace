@@ -132,11 +132,14 @@ create table asset_merge (
   listing_ids    uuid[] not null,
   slugs          text[] not null,
   basis          text not null,
-  merged_by      text not null,
+  merged_by      text not null,   -- a handle, never an email. This table is public.
   merged_at      timestamptz not null default now(),
   undone_at      timestamptz
 );
 ```
+
+`merged_by` is publicly readable under the policy below, so it holds a handle. An
+email address in that column would be published by the registry.
 
 `asset.primary_listing_id` and `listing.asset_id` reference each other. The
 existing schema already has this shape (`asset.current_capture_id` against
@@ -170,6 +173,10 @@ create policy asset_merge_public_read on public.asset_merge for select to anon, 
 grant select on public.asset, public.asset_slug, public.asset_merge to anon, authenticated, service_role;
 ```
 
+The policies on the renamed table keep their old names, so `listing` would carry a
+policy called `asset_public_read`. Rename them in the same migration; a policy whose
+name contradicts its table is the sort of thing that misleads the next reader.
+
 ## Backfill
 
 One asset and one canonical slug per existing listing, so the registry after
@@ -188,6 +195,19 @@ update listing l set asset_id = made.asset_id
 
 alter table listing alter column asset_id set not null;
 
+-- Seed slugs are only safe because source_product_id happens to be unique across
+-- marketplaces today. Assert it rather than discover a collision as a constraint
+-- violation halfway through the migration.
+do $$
+declare n int;
+begin
+  select count(*) into n from (
+    select source_product_id from listing group by 1 having count(*) > 1) d;
+  if n > 0 then
+    raise exception 'cannot seed slugs: % source_product_id values are shared by more than one listing', n;
+  end if;
+end $$;
+
 insert into asset_slug (slug, asset_id, is_canonical)
 select l.source_product_id, l.asset_id, true from listing l;
 ```
@@ -198,36 +218,64 @@ already carries, so every existing URL keeps resolving with no redirect.
 ## `ingest_capture`
 
 The function must resolve a listing, and create a singleton asset when the listing
-is new:
+is new.
+
+**The asset has to exist first.** `listing.asset_id` is `not null`, so there is no
+moment at which a listing exists without one, and the obvious shape (upsert the
+listing, then notice `asset_id` came back null, then create the asset) cannot run.
+Deferring the constraint is not an option either: Postgres accepts `DEFERRABLE`
+only on `UNIQUE`, `PRIMARY KEY`, `EXCLUDE` and `REFERENCES`, never on `NOT NULL`
+or `CHECK`.
+
+So the upsert becomes a lookup, and the insert path creates the asset before the
+listing that points at it:
 
 ```sql
-insert into listing (marketplace_id, source_product_id, listing_url)
-values (v_mkt, v_pid, <the existing listing_url coalesce, unchanged>)
-on conflict (marketplace_id, source_product_id) do update set updated_at = now()
-returning id, asset_id into v_listing, v_asset;
+select id, asset_id into v_listing, v_asset
+  from listing
+ where marketplace_id = v_mkt and source_product_id = v_pid;
 
--- asset_id is null only on a genuinely new listing, because the backfill and
--- this branch together guarantee every existing listing already has one.
-if v_asset is null then
-  insert into asset (primary_listing_id) values (v_listing) returning id into v_asset;
-  update listing set asset_id = v_asset where id = v_listing;
+if v_listing is null then
+  insert into asset default values returning id into v_asset;
 
-  insert into asset_slug (slug, asset_id, is_canonical)
-  values (v_pid, v_asset, true)
-  on conflict (slug) do nothing;
+  begin
+    insert into listing (marketplace_id, source_product_id, listing_url, asset_id)
+    values (v_mkt, v_pid, <the existing listing_url coalesce, unchanged>, v_asset)
+    returning id into v_listing;
+  exception when unique_violation then
+    -- Another transaction created this listing between the select and the insert.
+    -- Its asset wins; ours is discarded unused.
+    delete from asset where id = v_asset;
+    select id, asset_id into v_listing, v_asset
+      from listing
+     where marketplace_id = v_mkt and source_product_id = v_pid;
+  end;
 
-  if not found then
+  if v_new_listing then
+    update asset set primary_listing_id = v_listing where id = v_asset;
+
     insert into asset_slug (slug, asset_id, is_canonical)
-    values (v_mkt || '-' || v_pid, v_asset, true);
-    v_slug_fallback := true;
+    values (v_pid, v_asset, true)
+    on conflict (slug) do nothing;
+
+    if not found then
+      insert into asset_slug (slug, asset_id, is_canonical)
+      values (v_mkt || '-' || v_pid, v_asset, true);
+      v_slug_fallback := true;
+    end if;
   end if;
+else
+  update listing set updated_at = now() where id = v_listing;
 end if;
 ```
 
-Detecting the new listing by `asset_id is null` rather than by `xmax` keeps the
-test readable and is safe here: the backfill gives every pre-existing listing an
-asset, and this branch gives every new one an asset in the same transaction, so a
-null can only mean "inserted just now".
+`v_new_listing` is set inside the `begin` block and cleared by the exception
+handler, so the slug and `primary_listing_id` work runs only for the transaction
+that actually created the listing.
+
+The race is not hypothetical: `harvest.mjs` runs sources as concurrent child
+processes. They use different `marketplace_id` values today, so they cannot collide
+on this key, but the handler costs nothing and removes the assumption.
 
 **Hard constraint.** `ingest_capture` carries the evidence verification gate, and
 that gate is not to be relaxed for any reason. The diff to this function must be
@@ -255,12 +303,28 @@ it did so.
 
 The app reads five views and one RPC and **never touches a base table**. This was
 verified across every `.ts`, `.tsx` and `.mjs` in the repo. It is what makes the
-rename safe: as long as the views keep their names and column shapes, the database
-can change without the deployed site changing.
+rename safe: as long as the views keep their names and grain, the database can
+change without the deployed site changing.
+
+### The one operational fact that makes phase 1 tractable
+
+**Views follow a table rename automatically. Function bodies do not.**
+
+A view records its dependencies by object identity, so `alter table asset rename to
+listing` leaves every view working, still reading the same table under its new name.
+A plpgsql function body is stored as text and resolved when it runs, so the same
+statement silently breaks `ingest_capture` and `set_capture_logo`, which fail at
+their next call with "relation asset does not exist".
+
+That asymmetry is why phase 1 can leave the read surface alone while the write path
+must be rewritten in the same migration. Every plpgsql function naming `asset` has
+to be recreated in the migration that performs the rename: `ingest_capture` and
+`set_capture_logo`. Nothing else in the schema names it from inside a function body.
+
+### View grain
 
 This table describes the **end state**, reached in phase 2. Phase 1 keeps every
-existing view's grain and columns exactly as they are today, adding only the
-columns marked as arriving in phase 1.
+existing view's grain as it is today, and changes columns only additively.
 
 | view | today | end state |
 |---|---|---|
@@ -287,6 +351,53 @@ instead. Otherwise a merged-away product's URL stops being pre-rendered.
 `v_asset_evidence` is the read path for "always point back to it or run AI over it":
 given an asset, hand back every listing, every capture, `captured_at`,
 `content_hash`, `ingest_source` and whether `raw` is present, newest first.
+
+### Aggregation rules
+
+An asset's card and passport draw their descriptive fields from the primary
+listing, but several fields are not descriptive and must not be taken from one
+listing. Each is stated here so that nobody has to guess:
+
+| field | rule |
+|---|---|
+| `last_captured_at` | `max` across the asset's listings |
+| `capture_count` | `sum` across the asset's listings |
+| `first_seen_at` | `min` across the asset's listings |
+| `marketplace_ids` | array of every listing's marketplace, sorted |
+| `listing_count` | count of listings |
+| `certification` | **any**, not primary. See below |
+
+**Certification is "any listing", and the page names which one.** If Microsoft
+certifies a product and AWS does not, the product is certified, and the passport
+says who certified it. Taking it from the primary listing would make a real
+attestation appear and disappear depending on a stored pointer, which is a worse
+answer than either marketplace gives on its own.
+
+The same rule governs `v_registry_stats.certified` and `.attested`: an asset counts
+if any of its listings qualifies. `provenance`, `risk` and `evidence_tier` are
+derived from certification, so they follow the qualifying listing rather than the
+primary one, and the passport attributes them.
+
+### Search must span every listing, not just the primary
+
+`registry_search` builds its haystack from `v_registry_card` columns. If the card is
+asset-keyed and drawn from the primary listing, text that appears only on a
+secondary listing becomes unfindable: a product whose AWS description names vLLM but
+whose Microsoft page does not would not match a search for vLLM, though the registry
+holds the text. That is the no-flattening rule leaking out of the page and into the
+query layer.
+
+Two changes, both in phase 2:
+
+1. `v_registry_card` carries a `search_blob text` built by concatenating the nine
+   searched fields **across every listing of the asset**, in the existing field
+   order. `registry_search` matches against that instead of against the primary
+   listing's columns. The nine-field order must continue to match `searchBlob()` in
+   `marketplace-query.ts`, which is what the existing parity test checks.
+2. The `source` facet moves from equality on a single `marketplace_name` to
+   containment against `marketplace_ids`. An asset listed on Microsoft and AWS must
+   match a filter for either. Every other facet stays single-valued and comes from
+   the primary listing, except `certification`, which follows the "any" rule above.
 
 ### Grants, and the reason this section exists
 
@@ -354,10 +465,18 @@ The registry grid shows one card per asset with a marketplace badge per listing.
 
 Three phases, each independently shippable, and the first is invisible to visitors.
 
-**Phase 1: schema.** Rename, create, backfill, re-point `ingest_capture`. Every
-view is recreated over `listing` with identical names and column shapes, and
-re-granted. Assets and listings are 1:1, so `v_registry_stats.agents` is unchanged
-and the site behaves exactly as before. No app deploy required.
+**Phase 1 runs on a Supabase branch database first.** The rename is the least
+reversible step in this work and there is no down-migration worth trusting for it.
+Phase 1 is applied to a branch, the phase 1 verification list is run there in full,
+and only then is it merged to production. If it fails on the branch, the branch is
+discarded and nothing was risked. This is a requirement of the phase, not a
+suggestion for the day.
+
+**Phase 1: schema.** Rename, create, backfill, recreate `ingest_capture` and
+`set_capture_logo`, re-grant. Every view keeps its name and grain; the only column
+change is the additive one on `v_asset_change_feed`. Assets and listings are 1:1, so
+`v_registry_stats` is unchanged and the site behaves exactly as before. No app deploy
+required.
 
 **Phase 2: read surface.** Add `v_listing_passport` and `v_asset_evidence`. Move
 `v_registry_card` and `v_asset_passport` to asset-keyed with the added columns.
@@ -372,6 +491,23 @@ move.
 `v_registry_stats.agents` becomes a count of products rather than pages, so it
 falls as merges land. That is the correct meaning of the number, and it does not
 move until phase 3.
+
+**Retired assets must be excluded from every count.** A merged-away asset is kept
+rather than deleted, so `select count(*) from asset` would include it and the
+headline number would never move no matter how many merges landed. Every count over
+`asset` carries `where merged_into is null`. `marketplaces` moves to
+`count(distinct marketplace_id) from listing`, since marketplace membership is a
+property of listings and always was.
+
+```sql
+(select count(*) from asset where merged_into is null)              as agents,
+(select count(distinct marketplace_id) from listing)                as marketplaces,
+```
+
+The same exclusion applies anywhere else an asset is counted or listed, including
+`v_registry_card`, which joins through `listing` and therefore already excludes
+them: a retired asset has no listings. The stats view is the one place that counts
+`asset` directly, which is exactly why it is the one place that gets this wrong.
 
 ## Correction to an existing comment
 
@@ -391,29 +527,34 @@ overlapping pages, which produced two contradictory answers during the design
 review of this document, and the 1,000-row default cap has silently truncated this
 project's reads four times.
 
-**Phase 1**
+**Phase 1**, run in full on the branch database before production
 
 - `select count(*) from listing` equals 6,876, unchanged.
 - Every listing has exactly one asset: `select count(*) from listing where asset_id is null` is 0.
-- Every asset has exactly one canonical slug.
+- Every asset has exactly one canonical slug, and every slug resolves.
 - Every pre-existing `/agent/{source_product_id}` resolves to the same passport content as before.
-- `v_registry_stats` returns identical values before and after.
+- `v_registry_stats` returns identical values before and after, field by field.
 - Every view named in this document has `select` for `anon`, `authenticated` and, where it had one, `service_role`.
 - The evidence gate block in `ingest_capture` is byte-identical to its previous text.
+- `ingest_capture` and `set_capture_logo` both execute successfully after the rename. A function that still names `asset` fails only when called, so this must be exercised, not inspected.
 - A harvest of one DRAI asset produces one listing, one asset, and one capture, and the reported counts match.
+- Re-harvesting an existing listing creates no second asset and no second slug.
 
 **Phase 2**
 
-- Row counts of `v_registry_card` and `v_asset_passport` equal the asset count.
+- Row counts of `v_registry_card` and `v_asset_passport` equal the count of assets where `merged_into is null`.
 - `v_listing_passport` row count equals the listing count.
 - `v_asset_evidence` returns 30,900 rows, one per capture.
-- `registry_search` returns the same result set as before for a fixed set of queries.
+- `registry_search` returns the same result set as before for a fixed set of queries, which is still meaningful because assets and listings are 1:1 until phase 3.
+- The existing `registry-search.parity.test.ts` passes unchanged, which is what proves `search_blob` still matches `searchBlob()` field for field.
 
 **Phase 3**
 
-- Merging `ffmpeg`'s three listings yields one asset with three listings, and all three original URLs resolve to it.
-- `unmerge_asset` restores the exact prior state: listing count, slug ownership, canonical flags.
+- A duplicate set chosen at the time, from the 193 within-Microsoft candidates, merges into one asset holding all its listings, and every one of the original URLs resolves to it. Whether any particular set is genuinely one product is a data judgment made then, not asserted here.
+- After that merge, `v_registry_stats.agents` has fallen by exactly the number of listings absorbed minus one.
+- `unmerge_asset` restores the exact prior state: listing ownership, slug ownership, canonical flags, and the stats figure.
 - No capture, extract, plan, link or evidence row is modified by a merge or an unmerge.
+- Searching for text that appears only on an absorbed listing still finds the merged asset.
 
 ## Risks
 
@@ -422,7 +563,11 @@ project's reads four times.
 | `create or replace view` drops grants and breaks reads silently | grants in the same migration, immediately after each view, plus a failing assertion |
 | A new table with RLS and no policy is invisible to `anon` | explicit policy and grant per new table, verified |
 | The evidence gate is disturbed while editing `ingest_capture` | gate block must be byte-identical; checked in review |
-| The rename breaks the deployed site | the app touches only views; phase 1 keeps every view's name and shape |
+| The rename breaks the deployed site | the app touches only views, and views follow a rename automatically; phase 1 keeps every view's name and grain |
+| The rename breaks the write path, which no view protects | plpgsql bodies are text and do not follow a rename, so `ingest_capture` and `set_capture_logo` are recreated in the same migration and then actually called during verification |
+| Phase 1 goes wrong in production with no way back | applied and fully verified on a Supabase branch database first; a failed branch is discarded, not rolled back |
+| Search stops finding text held only on a secondary listing | `v_registry_card.search_blob` spans every listing of the asset; the source facet moves to array containment |
+| A retired asset keeps being counted, so the headline never moves | every count over `asset` carries `where merged_into is null` |
 | A wrong merge publishes a false claim about two products | merges are manual, recorded with basis and author, and fully reversible; listings and captures are never modified |
 | Slug collision on a future marketplace | `asset_slug.slug` is a primary key; ingest falls back to `{marketplace_id}-{source_product_id}` and records that it did |
 | "Agents indexed" changes on the front page | unchanged until phase 3, then correct by construction, since it becomes a count of products |
