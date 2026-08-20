@@ -10,8 +10,10 @@ import {
   PAGE_SIZES,
 } from "./registry-query.ts";
 import type {
+  AssetEvidenceRow,
   AssetPassport,
   ChangeRow,
+  ListingPassport,
   RegistryCard,
   RegistryStats,
 } from "./types.ts";
@@ -99,6 +101,23 @@ export async function getStats(): Promise<RegistryStats | null> {
  */
 const PAGE = 1000;
 
+// select("*") rather than an explicit column list, kept deliberately. Phase 2
+// appends search_blob to v_registry_card, and under 1:1 it is the same nine
+// fields this row already carries, concatenated: real duplication with
+// nothing consuming it yet. Two things keep that duplication off the path a
+// visitor actually pays for:
+//
+//   - fetchAllCards is not read by any page. searchRegistry(), below, is what
+//     the registry grid calls, and it goes through registry_search(), a
+//     Postgres function that builds its own JSON with to_jsonb(v), so a
+//     column list here would not touch that payload at all.
+//   - getTopAgents(), the other select("*") on this view, reads at most 18
+//     rows total, where the duplication is a rounding error.
+//
+// An explicit list would also be a second, hand-maintained copy of
+// v_registry_card's column set, kept in sync by hand on every future append,
+// exactly the kind of drift the exhaustiveness checks elsewhere in this
+// codebase exist to catch, for no payload this function actually serves.
 async function fetchAllCards(): Promise<
   { ok: true; data: RegistryCard[] } | { ok: false; error: string }
 > {
@@ -307,9 +326,9 @@ export async function searchRegistry(c: Criteria): Promise<ReadResult<RegistryPa
 }
 
 /**
- * Compare needs full passports, keyed by asset_id. getPassport() cannot be
- * reused: it returns null for both a missing row and a failed read, so compare
- * would report an agent as "not found" during an outage.
+ * Compare needs full passports, keyed by asset_id. getPassportBySlug() cannot
+ * be reused: it returns null for both a missing row and a failed read, so
+ * compare would report an agent as "not found" during an outage.
  */
 export async function getPassports(
   assetIds: string[]
@@ -327,27 +346,97 @@ export async function getPassports(
 }
 
 /**
- * One passport, with "we could not read" kept distinct from "there is no such
- * record". Collapsing the two is what the comment above getPassports() warns
- * about, and this reader used to do exactly that: it returned null for a failed
- * read, the route called notFound(), and the 404 page told the visitor there is
- * no captured record for that agent and that the registry never invents one to
- * fill a gap. A confident claim of absence, produced by an outage, about a
- * record that exists — and cached by ISR for five minutes after recovery.
+ * One passport, resolved through a URL slug rather than a listing id.
+ *
+ * Two reads: asset_slug is the only table keyed on the string a visitor
+ * typed, and v_asset_passport is keyed on asset_id. A merge can retire a
+ * slug's old primary listing without touching the slug row itself, so this
+ * keeps resolving after phase 3 even though a lookup keyed on
+ * source_product_id would not: that column names one listing, which after
+ * phase 2 is not what a visitor's URL identifies.
+ *
+ * "We could not read" is kept distinct from "there is no such record" here,
+ * the same way getPassports() above does it. A reader that collapsed the two
+ * used to sit at this name: it returned null for a failed read, the route
+ * called notFound(), and the 404 page told the visitor there is no captured
+ * record for that agent and that the registry never invents one to fill a
+ * gap. A confident claim of absence, produced by an outage, about a record
+ * that exists, and cached by ISR for five minutes after recovery. Task 5
+ * moved the route onto this function instead, and nothing calls the old one
+ * any more, so it was deleted rather than kept as a second reader with the
+ * same bug this one exists to avoid.
  */
-export async function getPassport(
-  sourceProductId: string
+export async function getPassportBySlug(
+  slug: string
 ): Promise<ReadResult<AssetPassport | null>> {
+  const { data: slugRow, error: slugError } = await supabase
+    .from("asset_slug")
+    .select("asset_id")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (slugError) {
+    console.error("getPassportBySlug", slugError.message);
+    return { ok: false, error: slugError.message };
+  }
+  if (!slugRow) return { ok: true, data: null };
+
+  const assetId = (slugRow as { asset_id: string }).asset_id;
   const { data, error } = await supabase
     .from("v_asset_passport")
     .select("*")
-    .eq("source_product_id", sourceProductId)
+    .eq("asset_id", assetId)
     .maybeSingle();
   if (error) {
-    console.error("getPassport", error.message);
+    console.error("getPassportBySlug", error.message);
     return { ok: false, error: error.message };
   }
   return { ok: true, data: (data as AssetPassport) ?? null };
+}
+
+/**
+ * Every marketplace's own, unresolved account of one asset. Compare view:
+ * what v_asset_passport was before phase 2, one row per listing, nothing
+ * folded across marketplaces. The raw material the merged passport's
+ * certification-group resolution is drawn from.
+ *
+ * Ordered on marketplace_name, then listing_id, which is unique per row, so
+ * the panels render in a stable order across requests.
+ */
+export async function getListingPassports(
+  assetId: string
+): Promise<ReadResult<ListingPassport[]>> {
+  const { data, error } = await supabase
+    .from("v_listing_passport")
+    .select("*")
+    .eq("asset_id", assetId)
+    .order("marketplace_name", { ascending: true })
+    .order("listing_id", { ascending: true });
+  if (error) {
+    console.error("getListingPassports", error.message);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, data: (data ?? []) as ListingPassport[] };
+}
+
+/**
+ * Every capture of every listing of one asset, newest first: the evidence
+ * trail a passport points back to. capture_id is unique per row and breaks
+ * ties within the same captured_at.
+ */
+export async function getAssetEvidence(
+  assetId: string
+): Promise<ReadResult<AssetEvidenceRow[]>> {
+  const { data, error } = await supabase
+    .from("v_asset_evidence")
+    .select("*")
+    .eq("asset_id", assetId)
+    .order("captured_at", { ascending: false })
+    .order("capture_id", { ascending: true });
+  if (error) {
+    console.error("getAssetEvidence", error.message);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, data: (data ?? []) as AssetEvidenceRow[] };
 }
 
 /**
@@ -380,16 +469,4 @@ export async function getRecentChanges(limit = 12): Promise<ChangeRow[]> {
     return [];
   }
   return (data ?? []) as ChangeRow[];
-}
-
-/** Every source_product_id, for generating passport routes at build time. */
-export async function getAllProductIds(): Promise<string[]> {
-  const { data, error } = await supabase
-    .from("v_registry_card")
-    .select("source_product_id");
-  if (error) {
-    console.error("getAllProductIds", error.message);
-    return [];
-  }
-  return (data ?? []).map((r) => (r as { source_product_id: string }).source_product_id);
 }

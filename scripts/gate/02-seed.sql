@@ -8,6 +8,30 @@ set role service_role;
 
 -- 1. microsoft/seed-alpha: full payload, graph_permissions so capture_permission
 --    is populated, compliance, plans, evidence, links.
+-- Why seed-alpha's publisher looks like that.
+--
+-- The JSON reads "Seed\\_Publisher Ltd", which is one literal backslash
+-- immediately followed by an underscore. It is deliberately adversarial, and
+-- it is the shortest string that exercises the one way gate.like_literal() can
+-- be wrong.
+--
+-- check_card_asset asserts that search_blob contains the publisher, by
+-- splicing it into a LIKE pattern. A LIKE pattern needs its wildcards escaped
+-- or the assertion degenerates into "does the blob contain anything", which is
+-- the vacuous pass this whole gate exists to hunt. Escaping a backslash before
+-- a wildcard is the case that is easy to get wrong: escape the underscore but
+-- not the backslash and the pattern reads a literal backslash followed by a
+-- LIVE wildcard, so it matches text that does not contain the publisher at all.
+-- The first version of gate.like_literal() had exactly that bug, dormant
+-- because no seed value contained a backslash. This value is why it cannot be
+-- dormant again.
+--
+-- publisher is not one of the fields ingest_capture tracks as a change, so
+-- carrying it through every capture of seed-alpha costs no listing_change row
+-- and moves no count. It has to be identical in all three places seed-alpha is
+-- ingested, here twice and in 07-final.sql, or the re-ingest would quietly put
+-- the ordinary value back before step 7 reads it.
+
 select ingest_capture($p$
 {
   "capture_meta": {
@@ -26,7 +50,7 @@ select ingest_capture($p$
   "extract": {
     "extract_spec_version": "v2",
     "name": "Seed Alpha Agent",
-    "publisher": "Seed Publisher Ltd",
+    "publisher": "Seed\\_Publisher Ltd",
     "tagline": "An agent that reads Microsoft Graph and writes summaries",
     "overview_text": "Seed Alpha Agent uses GPT-4o and LangChain to summarise mail. It integrates with SharePoint and Teams.",
     "support": "https://support.example/alpha",
@@ -139,7 +163,7 @@ select ingest_capture($p$
   "extract": {
     "extract_spec_version": "v2",
     "name": "Seed Alpha Agent",
-    "publisher": "Seed Publisher Ltd",
+    "publisher": "Seed\\_Publisher Ltd",
     "tagline": "An agent that reads Microsoft Graph and writes summaries",
     "overview_text": "Seed Alpha Agent uses GPT-4o and LangChain to summarise mail. It integrates with SharePoint and Teams.",
     "support": "https://support.example/alpha",

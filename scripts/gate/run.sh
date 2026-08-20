@@ -98,22 +98,20 @@ docker exec "$CONTAINER" psql -U postgres -c \
 # in through the OLD write path. That ordering is what production will do: the
 # rows the later checks read are rows the backfill produced, not rows the new
 # code made.
-say "3. Every migration before the rename, in filename order, one transaction each"
+say "3. Every migration before 20260819100000, in filename order, one transaction each"
 #
-# WARNING, and it will bite phase 2. This glob takes everything in the directory
-# and the case below skips only the five phase 1 files by their 2026081910
-# prefix. Any migration added later sorts AFTER those five and has a different
-# prefix, so it lands in THIS loop and is applied BEFORE the rename, against a
-# schema that does not have `listing` yet.
-#
-# When phase 2 adds a migration, this needs an explicit cutoff rather than a
-# prefix skip: apply files whose name sorts below 20260819100000, seed, then
-# apply the rest in order. Left as a prefix match for now because it is exact
-# for the set of files that exist today, and a wrong cutoff is harder to spot
-# than this comment.
+# The threshold is the rename migration itself, 20260819100000_listing_rename.sql.
+# Everything before it needs the pre-rename schema (the name `asset` still
+# meaning the old listings table); everything from it onward depends on the
+# rename having already run, and the seed below goes in through the OLD
+# ingest_capture between the two loops. Comparing basenames as strings against
+# a fixed threshold, rather than a prefix skip or an explicit file list, keeps
+# this correct as later phases add migrations with prefixes of their own: a
+# 20260820* file sorts below nothing here and lands in the second loop, a
+# 20260901* file does too, and neither has to be named.
 for f in "$MIGRATIONS"/*.sql; do
   b=$(basename "$f")
-  case "$b" in 2026081910*) continue ;; esac
+  [[ "$b" < "20260819100000" ]] || continue
   printf '%-72s ' "$b"
   if ! psql_file -q -1 < "$f" >/dev/null; then
     echo "FAILED"
@@ -127,14 +125,12 @@ done
 say "4. Seed through the OLD ingest_capture, as service_role"
 psql_file -1 < "$HERE/02-seed.sql"
 
-say "5. The five asset-layer migrations"
-for b in 20260819100000_listing_rename.sql \
-         20260819100100_asset_layer_tables.sql \
-         20260819100200_asset_layer_backfill.sql \
-         20260819100300_asset_layer_write_path.sql \
-         20260819100400_asset_layer_views.sql; do
+say "5. Every migration from 20260819100000 onward, in filename order"
+for f in "$MIGRATIONS"/*.sql; do
+  b=$(basename "$f")
+  [[ "$b" < "20260819100000" ]] && continue
   printf '%-50s ' "$b"
-  if ! psql_file -q -1 < "$MIGRATIONS/$b" >/dev/null; then
+  if ! psql_file -q -1 < "$f" >/dev/null; then
     echo "FAILED"
     echo "Migration $b did not apply. The gate stops here." >&2
     exit 1

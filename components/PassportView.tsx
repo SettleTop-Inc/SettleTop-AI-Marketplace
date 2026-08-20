@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { AssetPassport } from "@/lib/types";
 import AgentLogo from "@/components/AgentLogo";
+import ListingPanels, { type ListingSummary } from "@/components/registry/ListingPanels";
 import {
   UNKNOWN,
   evidence,
@@ -95,6 +96,57 @@ function SectionHead({ children, count }: { children: string; count?: string }) 
 }
 
 /**
+ * `AssetPassport` in lib/types.ts does not yet declare `listings`: see the
+ * comment on `ListingPassport` there. The column exists on `v_asset_passport`
+ * from phase 2 onward and is simply absent from a phase 1 row, so it is
+ * always optional here rather than added to the shared type, which this
+ * component does not own.
+ */
+type Passport = AssetPassport & { listings?: ListingSummary[] };
+
+/**
+ * Where the leading description came from.
+ *
+ * `overview_text` and `tagline` are the primary listing's own text, per
+ * `20260820100000_asset_keyed_views.sql`'s `v_asset_passport`, which joins
+ * `capture_extract` through the primary listing for everything outside the
+ * certification group. `marketplace_name` on the passport is that same
+ * primary listing's marketplace, in both the phase 1 and phase 2 shape, so
+ * it is always the right attribution and needs no `listings` array at all.
+ */
+function descriptionSource(a: Passport): string {
+  return a.marketplace_name;
+}
+
+/**
+ * Where the certification badge came from.
+ *
+ * Certification resolves as ANY listing, not necessarily the primary one
+ * (same migration, "rule 1"), so once an asset carries more than one
+ * listing this can legitimately name a different marketplace than
+ * descriptionSource() above. Under one listing, or with no `listings` array
+ * at all (phase 1), there is only one candidate and this returns the same
+ * name descriptionSource() does.
+ *
+ * Prefers the primary listing when its certification already equals the
+ * resolved value, matching the SQL resolver's own tie-break. Past that, this
+ * walks `listings` in the array's own order (primary first, then by
+ * marketplace_name), while the resolver's own tie-break past the primary is
+ * by listing_id. Those two orderings can only ever disagree with three or
+ * more non-primary candidates tied on certification tier, so with at most
+ * two listings total (today's ceiling) they always agree. If it ever
+ * matters, listing_id is the one to match, not marketplace_name.
+ */
+function certificationSource(a: Passport): string {
+  const listings = a.listings ?? [];
+  if (listings.length <= 1) return a.marketplace_name;
+  const primaryMatch = listings.find((l) => l.is_primary && l.certification === a.certification);
+  if (primaryMatch) return primaryMatch.marketplace_name;
+  const match = listings.find((l) => l.certification === a.certification);
+  return match?.marketplace_name ?? a.marketplace_name;
+}
+
+/**
  * `back` is present on the standalone /agent/[id] route and absent when the
  * landing page renders the same record inside its modal, which supplies its
  * own close control and its own width.
@@ -103,9 +155,10 @@ export default function PassportView({
   a,
   back,
 }: {
-  a: AssetPassport;
+  a: Passport;
   back?: { href: string; label: string };
 }) {
+  const listings = a.listings ?? [];
   const ev = a.evidence ?? {};
   const cert = a.certification;
   const fromListing = (v: string) => statusFor(v, "listing", cert);
@@ -172,6 +225,9 @@ export default function PassportView({
                 {!a.capture_complete && <span className="st-tag">Partial capture</span>}
                 <span className="st-tag">{a.cert_label}</span>
               </div>
+              <p className="st-note" style={{ marginTop: "var(--s2)" }}>
+                Certification per {certificationSource(a)}.
+              </p>
             </div>
           </div>
 
@@ -209,6 +265,9 @@ export default function PassportView({
 
         <SectionHead>What the publisher says</SectionHead>
         <div className="st-prose">
+          <p className="st-note" style={{ margin: "0 0 var(--s3)" }}>
+            As described on {descriptionSource(a)}.
+          </p>
           {blocks.length === 0 ? (
             <p>This listing publishes no overview text.</p>
           ) : (
@@ -354,6 +413,17 @@ export default function PassportView({
                 </div>
               )}
             </div>
+          </>
+        )}
+
+        {listings.length > 0 && (
+          <>
+            <SectionHead
+              count={`${listings.length} marketplace${listings.length === 1 ? "" : "s"}`}
+            >
+              Listed on
+            </SectionHead>
+            <ListingPanels listings={listings} />
           </>
         )}
 

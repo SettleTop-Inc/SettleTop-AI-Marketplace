@@ -65,6 +65,50 @@ test("searchBlob covers all nine fields including surfaces", () => {
   }
 });
 
+test("searchBlob returns the server blob verbatim when present", () => {
+  // Deliberately does NOT contain any of the nine fallback fields, so a test
+  // that accidentally exercised the reconstruction instead of the pass-through
+  // would fail loudly rather than passing for the wrong reason.
+  const c = card({ search_blob: "spans every listing of the asset, not just this row" });
+  assert.equal(searchBlob(c), "spans every listing of the asset, not just this row");
+});
+
+test("searchBlob falls back to the nine-field reconstruction when search_blob is absent", () => {
+  const c = card({ surfaces: ["Virtual Machines"] });
+  assert.equal(c.search_blob, undefined, "fixture must not set search_blob for this case");
+  assert.ok(searchBlob(c).includes("virtual machines"));
+});
+
+// v_registry_card is asset-keyed since phase 2: one row per asset, sourced
+// from that asset's primary listing, and it never emits two rows sharing one
+// asset_id. So the two cards built below are not "two listings on one asset
+// before the server rolls it up": the server always arrives already rolled
+// up, and that shape is not one the view produces at any stage the client sees.
+//
+// What this models instead is matchesFacet's own contract: a card object on
+// its own carries no promise of the view's one-row-per-asset grain, and
+// matchesFacet reads marketplace_name off whatever row it is handed,
+// independent of any other row sharing its asset_id. That is narrower than
+// it looks and not proof that a source filter can match an asset through a
+// marketplace other than its primary one: v_registry_card only ever hands
+// the client that one marketplace_name, so a filter naming a secondary
+// marketplace still misses the asset entirely. That gap is open, recorded in
+// docs/asset-layer-phase-2-handoff.md as unresolved until phase 3.
+test("an asset with two marketplaces matches a source filter for either", () => {
+  const cards = [
+    card({ asset_id: "a1", source_product_id: "MS1", marketplace_name: "Microsoft Marketplace" }),
+    card({ asset_id: "a1", source_product_id: "DRAI1", marketplace_name: "DRAI Marketplace" }),
+  ];
+  const base = defaultCriteria();
+  const ms = runQuery(cards, { ...base, facets: { ...base.facets, source: ["Microsoft Marketplace"] } });
+  assert.equal(ms.total, 1);
+  assert.equal(ms.rows[0].marketplace_name, "Microsoft Marketplace");
+
+  const drai = runQuery(cards, { ...base, facets: { ...base.facets, source: ["DRAI Marketplace"] } });
+  assert.equal(drai.total, 1);
+  assert.equal(drai.rows[0].marketplace_name, "DRAI Marketplace");
+});
+
 test("q matches a surfaces-only needle", () => {
   const cards = [card({ asset_id: "a1", surfaces: ["Virtual Machines"] }), card({ asset_id: "a2" })];
   const r = runQuery(cards, { ...defaultCriteria(), q: "Virtual Machines" });

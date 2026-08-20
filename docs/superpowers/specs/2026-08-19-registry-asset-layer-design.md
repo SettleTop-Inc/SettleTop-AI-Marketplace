@@ -343,10 +343,21 @@ both: `listing_id` for what actually changed, and `asset_id` for the product it
 belongs to. They hold different values from phase 3 onward, and `asset_id` is the
 more useful of the two for a feed a visitor browses.
 
-`getAllProductIds` feeds `generateStaticParams` for the passport route by selecting
-`source_product_id` from `v_registry_card`. Once that view is asset-keyed it would
-only ever emit primary listings, so in phase 2 it reads every row of `asset_slug`
-instead. Otherwise a merged-away product's URL stops being pre-rendered.
+**Struck during phase 2. This paragraph was false when written.** It said
+`getAllProductIds` feeds `generateStaticParams` for the passport route, and
+required phase 2 to point it at `asset_slug` instead.
+
+`generateStaticParams` exists only on `app/news/[slug]` and `app/products/[slug]`.
+The passport route has never had one and has never been statically generated, so
+`getAllProductIds` had no caller and was dead before any of this work began. Phase
+2 deleted it rather than inventing a caller, because adding static generation would
+pre-render 6,878 pages at build time, which is a real cost and a behaviour change
+nobody asked for.
+
+The reasoning it contained is still correct and worth keeping for whenever
+pre-rendering is actually wanted: read `asset_slug`, not `v_registry_card`, because
+the card emits only primary listings and a merged-away product's URL would stop
+being pre-rendered.
 
 `v_asset_evidence` is the read path for "always point back to it or run AI over it":
 given an asset, hand back every listing, every capture, `captured_at`,
@@ -374,9 +385,49 @@ attestation appear and disappear depending on a stored pointer, which is a worse
 answer than either marketplace gives on its own.
 
 The same rule governs `v_registry_stats.certified` and `.attested`: an asset counts
-if any of its listings qualifies. `provenance`, `risk` and `evidence_tier` are
-derived from certification, so they follow the qualifying listing rather than the
-primary one, and the passport attributes them.
+if any of its listings qualifies.
+
+**Amended during phase 2, after getting this wrong three times.** This paragraph
+originally said `provenance`, `risk` and `evidence_tier` follow the qualifying
+listing. That list was too short, and each attempt to extend it was short again by
+whatever sat one derivation further out:
+
+1. `risk_basis` was omitted, so a page could state one risk and explain another.
+   It is the sentence `registry_risk()` builds from the same certification as
+   `risk`.
+2. `known_layers` and `layers_known` were omitted, so a ledger could read
+   "7 of 12" beside a `risk_basis` naming a different count. Three of the twelve
+   layers only ever appear on a certification page.
+3. `reach` was omitted, on the stated grounds that it is not certification
+   derived. It is: `reach = round(100 * cardinality(known_layers) / 12)`. It was
+   already rendering contradictorily, a 25 percent ring above "7 of 12 layers".
+
+The rule is therefore **not a list of fields**. It is a closure, and it must be
+evaluated rather than recalled:
+
+> The certification group is the connected component containing `certification`
+> under the relation "is a function of", treated as **undirected**. A column
+> belongs to the group if it is computed from something in the component, or if
+> something in the component is computed from it. `layers_tracked` is excluded: it
+> is a constant from `registry_layers()` and describes no listing.
+
+As of phase 2 the members are `certification`, `cert_label`, `provenance`,
+`evidence_tier`, `risk`, `risk_basis`, `known_layers`, `layers_known` and `reach`,
+carried by one lateral so they cannot come apart.
+
+**The component is currently cut, and phase 3 must close it.** `known_layers`
+summarises twelve facts, and eleven of them still come from the primary listing:
+`publisher`, `cert_hosting`, `cert_data_location`, `pricing`, `plans`,
+`acquire_using`, `support`, and the five build layers drawn from verified
+`capture_evidence` rows. Only permission scope travelled with the certification.
+So under two listings a passport can show a ledger reading "7 of 12 traced" above
+`Hosting: Unknown` and an empty model list. Phase 3 chooses between moving the
+whole disclosure block to the qualifying listing, or returning `known_layers` to
+the primary and attributing `risk_basis`. Neither was taken in phase 2, because
+1:1 makes the choice untestable.
+
+The passport attributes the group, naming the marketplace its certification came
+from separately from the one its description came from.
 
 ### Search must span every listing, not just the primary
 
