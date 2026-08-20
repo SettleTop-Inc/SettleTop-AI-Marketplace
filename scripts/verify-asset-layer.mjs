@@ -329,6 +329,69 @@ if (!SERVICE) {
   });
 }
 
+// 6. Phase 2: the asset-keyed read surface. Written first and failing first,
+// same as phase 1's checks did: the columns and the two new views these
+// name do not exist yet, so every check in this section is expected to FAIL
+// until a later task adds them. That is the RED evidence this task records.
+await check("v_registry_card carries the asset-level columns", async () => {
+  const r = await fetch(`${URL_BASE}/rest/v1/v_registry_card?select=marketplace_ids,listing_count,search_blob&limit=1`,
+    { headers: head(ANON) });
+  return { ok: r.ok, detail: r.ok ? "" : `${r.status} ${(await r.text()).slice(0, 90)}` };
+});
+
+await check("v_asset_passport carries listings", async () => {
+  const r = await fetch(`${URL_BASE}/rest/v1/v_asset_passport?select=listings&limit=1`, { headers: head(ANON) });
+  return { ok: r.ok, detail: r.ok ? "" : `${r.status} ${(await r.text()).slice(0, 90)}` };
+});
+
+for (const v of ["v_listing_passport", "v_asset_evidence"]) {
+  await check(`anon can select from ${v}`, async () => {
+    const r = await fetch(`${URL_BASE}/rest/v1/${v}?select=*&limit=1`, { headers: head(ANON) });
+    return { ok: r.ok, detail: r.ok ? "" : `${r.status} ${(await r.text()).slice(0, 90)}` };
+  });
+}
+
+// A row count proves nothing on these two: both reach their payload through
+// correlated subqueries, so a policy failure empties the payload and leaves the
+// count intact. Assert on values.
+await check("v_asset_evidence carries real capture rows", async () => {
+  const r = await fetch(`${URL_BASE}/rest/v1/v_asset_evidence?select=capture_id,captured_at,content_hash&limit=1`,
+    { headers: head(ANON) });
+  if (!r.ok) return { ok: false, detail: `${r.status}` };
+  const [row] = await r.json();
+  return {
+    ok: Boolean(row?.capture_id && row?.captured_at && row?.content_hash),
+    detail: row ? `capture ${row.capture_id?.slice(0, 8)}` : "no rows",
+  };
+});
+
+await check("v_registry_card.search_blob is populated", async () => {
+  const r = await fetch(`${URL_BASE}/rest/v1/v_registry_card?select=name,search_blob&limit=1`, { headers: head(ANON) });
+  if (!r.ok) return { ok: false, detail: `${r.status}` };
+  const [row] = await r.json();
+  const ok = Boolean(row?.search_blob) && row.search_blob.includes(String(row.name ?? "").toLowerCase());
+  return { ok, detail: ok ? `${row.search_blob.length} chars` : "blob empty or missing the name" };
+});
+
+// v_asset_evidence reaches capture by inner join only, so a row count is
+// sound for it in the way it is not for the passport above. It is asserted
+// here as a live, standalone equality against v_registry_stats.captures,
+// both read in this same run, rather than folded into snapshot() and the
+// baseline: the baseline is the pre-phase-1 record, v_asset_evidence does not
+// exist yet to have been captured into it, and requiring the field there
+// would make the existing baseline file fail isCompleteSnapshot and take
+// every baseline-comparison check down with it.
+await check("v_asset_evidence row count equals v_registry_stats.captures", async () => {
+  const statsRes = await fetch(`${URL_BASE}/rest/v1/v_registry_stats?select=captures`, { headers: head(ANON) });
+  if (!statsRes.ok) return { ok: false, detail: `v_registry_stats: ${statsRes.status}` };
+  const [stats] = await statsRes.json();
+  const evidence_rows = await count("v_asset_evidence?select=capture_id");
+  return {
+    ok: evidence_rows === Number(stats?.captures),
+    detail: `${evidence_rows} evidence rows vs ${stats?.captures} captures`,
+  };
+});
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);
 process.exit(failed.length ? 1 : 0);
