@@ -56,6 +56,20 @@ export interface RegistryCard {
    * hotlink the publisher's CDN instead.
    */
   logo?: string | null;
+  /**
+   * Phase 2 columns, appended to v_registry_card. Optional because production
+   * still runs the phase 1 schema until that migration is deployed: a row read
+   * from production simply will not carry these keys.
+   *
+   * search_blob: the same nine fields searchBlob() builds, concatenated across
+   * every listing of the asset rather than just this row's own. Prefer it in
+   * searchBlob() so client and server search agree by construction.
+   */
+  search_blob?: string;
+  /** Every marketplace id the asset is listed on. */
+  marketplace_ids?: string[];
+  /** How many listings the asset has. */
+  listing_count?: number;
 }
 
 export interface PlanRow {
@@ -111,6 +125,37 @@ export interface AssetPassport extends RegistryCard {
   media: string[];
   graph_permissions: string[];
   compliance: string[];
+}
+
+/**
+ * One row per listing, unaggregated: what one marketplace said about one
+ * product, with nothing resolved across marketplaces. Mirrors
+ * v_listing_passport, which is column-for-column what v_asset_passport was
+ * before phase 2, minus the `listings` summary that view now carries.
+ */
+export type ListingPassport = Omit<AssetPassport, "listings">;
+
+/** capture.method, named at the row rather than derived. */
+export type CaptureMethod = "browser_dom" | "embedded_state" | "api" | "backfill";
+
+/**
+ * One capture of one listing of one asset. Mirrors v_asset_evidence: the
+ * evidence trail behind a passport, newest first, with raw itself left out
+ * and has_raw saying whether it is still held.
+ */
+export interface AssetEvidenceRow {
+  asset_id: string;
+  listing_id: string;
+  marketplace_id: string;
+  source_product_id: string;
+  capture_id: string;
+  captured_at: string;
+  content_hash: string;
+  ingest_source: string;
+  method: CaptureMethod;
+  capture_complete: boolean;
+  missing: string[];
+  has_raw: boolean;
 }
 
 export interface RegistryStats {

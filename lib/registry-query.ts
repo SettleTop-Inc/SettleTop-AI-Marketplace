@@ -84,10 +84,19 @@ export function defaultCriteria(): Criteria {
  * this — if they diverge, the landing page's hand-off link lands the visitor on
  * an empty grid and blames their filters.
  *
- * Field order is preserved from the original landing-page implementation so a
- * needle spanning a field boundary behaves identically on both surfaces.
+ * Prefers c.search_blob, which the server builds across every listing of the
+ * asset. That agrees with the nine-field reconstruction below only while an
+ * asset has one listing; the day a second lands, the two answer different
+ * questions and only the server's blob is complete. The reconstruction stays
+ * as the fallback for a card read from production before this migration
+ * deploys, where search_blob is absent.
+ *
+ * Field order in the fallback is preserved from the original landing-page
+ * implementation so a needle spanning a field boundary behaves identically on
+ * both surfaces.
  */
 export function searchBlob(c: RegistryCard): string {
+  if (c.search_blob !== undefined) return c.search_blob;
   return [
     c.name, c.publisher, c.function_category, c.tagline, c.marketplace_name,
     c.evidence_tier, c.delivery, c.cert_label, (c.surfaces ?? []).join(" "),
