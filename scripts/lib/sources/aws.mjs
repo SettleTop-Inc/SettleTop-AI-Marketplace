@@ -292,9 +292,20 @@ function supportLines(detail) {
     .filter((r) => r.value);
 }
 
-const linksFrom = (resources) =>
+/**
+ * The LINK resources of a block, as product links.
+ *
+ * `label` is null wherever AWS states no resourceName, and it is left null
+ * rather than filled in. The recon believed only TEXT entries had a null name;
+ * the corpus disproves it, because the customer-connect demo and private-offer
+ * links on a SaaS listing are LINK entries with resourceName null. A label of
+ * ours on a link of theirs would be an invention in a field a reader takes for
+ * the publisher's own words.
+ */
+const linksFrom = (resources, { labels = null } = {}) =>
   arr(resources)
     .filter((r) => r?.resourceType === "LINK" && text(r?.resourceValue))
+    .filter((r) => !labels || labels.includes(r?.resourceLabel))
     .map((r) => ({ label: text(r?.resourceName), url: text(r?.resourceValue) }));
 
 /**
@@ -527,7 +538,15 @@ export function parseProductPage({ id, html, url = null }) {
       product_links: [
         ...linksFrom(overview.overviewResources),
         ...linksFrom(usage?.listingDetail?.usage?.usageResources),
-        ...linksFrom(detail.listingDetail?.support?.supportResources),
+        // CREATOR_SUPPORT only, for the same reason the support text is
+        // filtered: the other label is AWS_SUPPORT, whose value is
+        // https://aws.amazon.com/premiumsupport/ on every listing that carries
+        // it. That is AWS's own infrastructure support, not this publisher's
+        // channel, and a reader seeing it among a product's links would take it
+        // for one.
+        ...linksFrom(detail.listingDetail?.support?.supportResources, {
+          labels: ["CREATOR_SUPPORT"],
+        }),
       ],
       legal_documents: arr(legalTerm?.documents).map((d) => ({
         type: text(d?.type),
@@ -543,6 +562,12 @@ export function parseProductPage({ id, html, url = null }) {
       // empty payload with no summary key: AWS publishes no price for an
       // engagement, which is different from a price we failed to read.
       pricing_published: Boolean(pricing?.summary),
+      // Every termType AWS states, priceable or not. Kept so that "this listing
+      // publishes purchase terms but no price" can be said in those words
+      // rather than looking identical to "we read no terms at all". Some
+      // listings carry only a ByolPricingTerm or a FreeTrialPricingTerm, and
+      // neither publishes a figure.
+      term_types: terms.map((t) => text(t?.termType)).filter(Boolean),
 
       reviews: readReviews(reviewsQuery(ctx)),
 
@@ -635,6 +660,17 @@ export function toPayload({ record, capturedAt }) {
   const missing = [];
   if (!record.pricing_published) {
     missing.push("price: AWS publishes no pricing for this listing");
+  } else if (!arr(record.plans).length && !arr(record.plans_omitted).length) {
+    // AWS answered the pricing query and stated terms, but none of them carries
+    // a figure. A bring-your-own-licence or free-trial term is a real purchase
+    // option with no price attached, and saying so is different from saying the
+    // listing has no pricing at all.
+    const terms = arr(record.term_types);
+    missing.push(
+      terms.length
+        ? `price: AWS states purchase terms (${terms.join(", ")}) but no priced plan`
+        : "price: AWS states no priced plan for this listing"
+    );
   }
   for (const o of arr(record.plans_omitted)) {
     missing.push(

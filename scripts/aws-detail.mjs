@@ -81,6 +81,15 @@ const ledger = new Map((await readJsonl(SEEN)).map((r) => [r.id, r]));
 const keepers = new Map((await readJsonl(OUT)).map((r) => [r.id, r]));
 
 /**
+ * A keeper written by the parser now in this file, rather than an earlier one.
+ *
+ * Same job as drai-detail.mjs's currentShape(): correcting the parser should
+ * cost a re-run, not a manual delete. term_types was the last field added, so
+ * a keeper without it predates the current extraction and is re-read.
+ */
+const currentShape = (d) => Array.isArray(d?.term_types);
+
+/**
  * What still needs fetching.
  *
  * Terminal outcomes are skipped. "unreadable" is always retried, because it
@@ -93,9 +102,9 @@ const isStale = (r) =>
   !r ||
   r.outcome === "unreadable" ||
   r.predicate_version !== PREDICATE_VERSION ||
-  // A torn checkpoint: the ledger says kept but the keeper never landed. Self
-  // healing, and the reason seen.jsonl is written after details.jsonl.
-  (r.outcome === "kept" && !keepers.has(r.id));
+  // A torn checkpoint, or a keeper from an older parser. Both self heal, and
+  // the first is the reason seen.jsonl is written after details.jsonl.
+  (r.outcome === "kept" && !currentShape(keepers.get(r.id)));
 
 let todo = ids.filter(({ id }) => isStale(ledger.get(id)));
 const backlog = todo.length;
