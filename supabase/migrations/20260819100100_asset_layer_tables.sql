@@ -15,7 +15,7 @@ comment on column asset.primary_listing_id is
   'Which listing supplies the headline fields. Stored rather than derived: a rule like "most captures" would silently change a product''s headline whenever data moved.';
 
 -- asset.primary_listing_id and listing.asset_id reference each other. The same
--- shape already exists between asset.current_capture_id and capture, and is
+-- shape already exists between listing.current_capture_id and capture, and is
 -- solved the same way: add the constraint once both tables exist.
 alter table asset
   add constraint asset_primary_listing_fk

@@ -1,8 +1,11 @@
 -- Restore the grants on v_logo_status, and keep them next to the view.
 --
--- CREATE OR REPLACE VIEW drops every grant on the view. v_logo_status was
--- replaced to add marketplace_id and listing_url, and the replacement carried
--- no grant block, so SELECT silently fell back to the owner alone.
+-- A column-compatible CREATE OR REPLACE VIEW preserves grants. What loses them
+-- is a DROP VIEW, and changing a view's column names or order forces one.
+-- v_logo_status was replaced to add marketplace_id and listing_url, and that
+-- changed the view's column shape, so the replacement was really a drop and
+-- recreate. The replacement carried no grant block, so SELECT silently fell
+-- back to the owner alone.
 --
 -- Two things broke at once, and only one of them was noticeable:
 --
@@ -16,9 +19,9 @@
 --   empty result rather than an error is exactly the failure mode this project
 --   keeps having to design against.
 --
--- Any future replacement of this view must re-grant. That is a property of
--- CREATE OR REPLACE VIEW, not something a migration can prevent -- so the
--- grants live here, immediately after the view, where the next person editing
--- it will see them.
+-- Any future replacement of this view that changes its column shape forces a
+-- drop, and a drop must be followed by a re-grant. A column-compatible
+-- replacement needs no re-grant at all -- but the grants live here regardless,
+-- immediately after the view, where the next person editing it will see them.
 
 grant select on public.v_logo_status to anon, authenticated, service_role;

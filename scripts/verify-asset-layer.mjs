@@ -27,9 +27,10 @@
  * tally; the exit code is still non-zero if anything failed.
  *
  * --baseline validates the snapshot before writing it: every v_registry_stats
- * field present, listings a positive integer. Everything in phase 1 is
- * measured against that file, so a partial snapshot must never be written
- * silently, and the check run refuses to compare against one that is.
+ * field present, and listings, logo_status and passports each a positive
+ * integer. Everything in phase 1 is measured against that file, so a partial
+ * snapshot must never be written silently, and the check run refuses to
+ * compare against one that is.
  */
 import fs from "node:fs";
 
@@ -115,15 +116,26 @@ async function snapshot() {
   if (!r.ok) throw new Error(`v_registry_stats: ${r.status} ${await r.text()}`);
   const stats = (await r.json())[0];
   const listings = await count("v_registry_card?select=asset_id");
-  return { stats, listings };
+  // v_logo_status and v_asset_passport are read surfaces nothing else here
+  // requires a row from. A view that silently returns no rows still answers
+  // select=*&limit=1 with HTTP 200 and [], which is exactly the shape of the
+  // outage that took 6,820 logos off the site: getLogos() swallows the empty
+  // result and renders initials. Recording a real row count here, and
+  // comparing it against the baseline below, is what turns that into a FAIL.
+  const logo_status = await count("v_logo_status?select=state");
+  const passports = await count("v_asset_passport?select=asset_id");
+  return { stats, listings, logo_status, passports };
 }
 
-/** True only when every expected stats field is present and listings is a
- * positive integer. Gates both the --baseline write and any comparison
- * against an existing baseline file, so a hole is never treated as real. */
+/** True only when every expected stats field is present and listings,
+ * logo_status and passports are each a positive integer. Gates both the
+ * --baseline write and any comparison against an existing baseline file,
+ * so a hole is never treated as real. */
 function isCompleteSnapshot(snap) {
   if (!snap || typeof snap !== "object") return false;
   if (!Number.isInteger(snap.listings) || snap.listings <= 0) return false;
+  if (!Number.isInteger(snap.logo_status) || snap.logo_status <= 0) return false;
+  if (!Number.isInteger(snap.passports) || snap.passports <= 0) return false;
   if (!snap.stats || typeof snap.stats !== "object") return false;
   return EXPECTED_STATS.every((k) => snap.stats[k] !== undefined && snap.stats[k] !== null);
 }
@@ -131,6 +143,8 @@ function isCompleteSnapshot(snap) {
 function missingFields(snap) {
   const missing = [];
   if (!Number.isInteger(snap?.listings) || snap.listings <= 0) missing.push("listings");
+  if (!Number.isInteger(snap?.logo_status) || snap.logo_status <= 0) missing.push("logo_status");
+  if (!Number.isInteger(snap?.passports) || snap.passports <= 0) missing.push("passports");
   for (const k of EXPECTED_STATS) {
     if (!snap?.stats || snap.stats[k] === undefined || snap.stats[k] === null) missing.push(`stats.${k}`);
   }
@@ -254,6 +268,16 @@ if (base) {
   await check("listing count unchanged", async () => {
     const listings = await count("v_registry_card?select=asset_id");
     return { ok: listings === base.listings, detail: `${listings} vs ${base.listings}` };
+  });
+
+  await check("v_logo_status row count unchanged", async () => {
+    const logo_status = await count("v_logo_status?select=state");
+    return { ok: logo_status === base.logo_status, detail: `${logo_status} vs ${base.logo_status}` };
+  });
+
+  await check("v_asset_passport row count unchanged", async () => {
+    const passports = await count("v_asset_passport?select=asset_id");
+    return { ok: passports === base.passports, detail: `${passports} vs ${base.passports}` };
   });
 
   // snapshot() re-reads v_registry_stats and, inside it, counts
