@@ -79,6 +79,42 @@ export async function fetchState(url, { retries = 3, parse = extractState } = {}
   return { ok: false, status: 0, state: null, error: lastErr?.message };
 }
 
+/**
+ * Fetch a page as text, with the same backoff and the same user agent.
+ *
+ * fetchState is for the storefronts that embed their payload as JSON. Some of
+ * what a source must read is ordinary server-rendered HTML instead, and the
+ * fetching part of that is no different: same UA, same throttle handling, same
+ * refusal to treat a 403 as fatal.
+ *
+ * Redirects are followed, and the URL that answered is returned. A source that
+ * enters through a redirector needs to record where it actually landed, or its
+ * provenance points at a forwarding address rather than at the page read.
+ *
+ * A 4xx other than 403 comes straight back without retrying: the page is not
+ * there, and asking again more slowly will not conjure it.
+ */
+export async function fetchText(url, { retries = 3 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: { "user-agent": UA, "accept-language": "en-US,en;q=0.9" },
+        redirect: "follow",
+      });
+      if (res.status === 403 || res.status === 429 || res.status >= 500) {
+        throw new Error(`http ${res.status}`);
+      }
+      if (!res.ok) return { ok: false, status: res.status, url: res.url, html: null };
+      return { ok: true, status: res.status, url: res.url, html: await res.text() };
+    } catch (e) {
+      lastErr = e;
+      await sleep(400 * Math.pow(2, attempt) + Math.random() * 250);
+    }
+  }
+  return { ok: false, status: 0, url, html: null, error: lastErr?.message };
+}
+
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Run `worker` over `items` with bounded concurrency, reporting progress. */
@@ -102,6 +138,66 @@ export async function pool(items, concurrency, worker, onProgress) {
   await Promise.all(runners);
   if (onProgress) onProgress(done, items.length);
   return results;
+}
+
+// ------------------------------------------------------------------ cli ----
+
+/**
+ * The flags a stage script accepts, with anything else refused.
+ *
+ * npm eats flags. `npm run harvest:ingest -- --dry --limit 5` hands the child
+ * ["5"] and nothing else: npm expands --dry into its own --dry-run, treats
+ * --limit as an unknown config, and keeps both, warning as it goes. Renaming
+ * them does not help, because npm swallows any unknown --flag the same way.
+ *
+ * The flag that must not go missing is --dry, whose entire job is to stop a run
+ * writing to the database. So an argument a script does not recognise stops the
+ * run. A leftover bare value like "5" is exactly the fingerprint of a swallowed
+ * flag, and the run it would otherwise start is the full live sweep the
+ * operator was trying to avoid.
+ *
+ * Split in two so the rule itself can be tested: readCliArgs decides, and
+ * parseCliArgs is the thin shell that prints and exits.
+ */
+export function readCliArgs({ booleans = [], numbers = [] } = {}, argv = []) {
+  const values = {};
+  for (const b of booleans) values[b] = false;
+  for (const n of numbers) values[n] = 0;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    const name = arg.startsWith("--") ? arg.slice(2) : null;
+    if (name && booleans.includes(name)) {
+      values[name] = true;
+    } else if (name && numbers.includes(name)) {
+      const value = Number(argv[++i]);
+      if (!Number.isInteger(value) || value <= 0) {
+        return { ok: false, error: `--${name} needs a positive whole number.` };
+      }
+      values[name] = value;
+    } else {
+      return { ok: false, error: `Unrecognised argument ${JSON.stringify(arg)}.` };
+    }
+  }
+  return { ok: true, values };
+}
+
+export function parseCliArgs(spec = {}, argv = process.argv.slice(2)) {
+  const read = readCliArgs(spec, argv);
+  if (read.ok) return read.values;
+
+  const usage = [
+    ...(spec.booleans || []).map((b) => `[--${b}]`),
+    ...(spec.numbers || []).map((n) => `[--${n} N]`),
+  ];
+  console.error(read.error);
+  console.error(
+    "Run stage scripts directly, as node scripts/<name>.mjs, not through npm run:" +
+      " npm parses flags after -- as its own configuration and drops them before" +
+      " the script sees them."
+  );
+  console.error(`Accepted here: ${usage.join(" ") || "no arguments"}`);
+  process.exit(1);
 }
 
 // ---------------------------------------------------------------- files ----

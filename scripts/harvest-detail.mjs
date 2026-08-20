@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Pass 2 of 4 — product detail.
+ * Pass 2 of 5: product detail.
  *
  *   node scripts/harvest-detail.mjs [--limit N]
  *

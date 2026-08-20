@@ -296,10 +296,19 @@ enumeration rather than prose.
 
 ### 6.4 Certification full text
 
-Still fetched separately with `WebFetch` against the resolved
-`learn.microsoft.com` URL, per the existing skill. `CertificationState` gives
-the tier cheaply; the full text is what lets the honesty gate verify hosting,
-residency and Graph permissions. Store it in `cert_detail.full_text`.
+**Built.** `scripts/harvest-certification.mjs` reads the page with a plain
+fetch rather than `WebFetch`: it is server-rendered, so no browser is involved.
+`CertificationState` gives the tier cheaply; the page is what lets the honesty
+gate verify hosting, residency and Graph permissions.
+
+One correction to what this section assumed. `cert_detail.full_text` is read by
+nothing: it is not part of `hay_cert`, and `capture_extract` has no column for
+it. The gate's haystack is `hosting + data_location + data_handling +
+graph_permissions + compliance`, so **`data_handling` is where verifiable page
+text has to live**, and it carries the data and privacy answers plus the Graph
+justifications verbatim. `full_text` is still populated, for the contract, and
+the certification record is added to `payload.raw` so the text survives the
+write at all.
 
 ---
 
@@ -313,8 +322,31 @@ residency and Graph permissions. Store it in `cert_detail.full_text`.
 4. Run `archive-logos.mjs` once the CDN hosts are allowlisted.
 5. Build the detail pass: one page load per product, merge
    `offerDetailInformationData` into a second capture.
-6. Certification pass via `WebFetch` for products where
-   `CertificationState !== 'None'`.
+6. Certification pass for products where `CertificationState !== 'None'`.
+   **Built**, as `harvest-certification.mjs`, running fourth of five stages so
+   its record joins the same capture rather than making a second one. 219
+   products of 6,855 have a page; the rest have no link and are skipped.
+
+   Every page states its own product id, and a page whose stated id is not the
+   one we asked for, or which states none at all, is refused and reported
+   rather than written. Microsoft's `/forward/<id>` links do land on a sibling
+   listing's questionnaire, with a 200 and a well-formed body, so that check is
+   the only thing standing between a redirect and one product's answers being
+   published under another's name. The pass prints how many it read and how
+   many it refused; the counts move as Microsoft remaps links, so read them off
+   the run rather than from here.
+
+   Run the stage scripts as `node scripts/<name>.mjs`. **`npm run` drops
+   flags**: `npm run harvest:ingest -- --dry --limit 5` hands the child `["5"]`
+   and nothing else, because npm parses both flags as its own configuration.
+   The scripts now refuse an argument they do not recognise instead of running
+   without it, `npm run harvest:ingest` is wired to the dry run, and
+   `harvest:ingest:live` is the one that writes.
+
+   Re-running the pass resumes: records already in `certifications.jsonl` are
+   carried forward verbatim and not re-parsed. After any change to
+   `parseCertificationPage`, run it with `--refresh` so the whole file is one
+   generation of parse policy rather than two.
 
 Steps 3, 5 and 6 are all resumable and idempotent — `drive_file_id` /
 content-hash idempotency already exists in `ingest_capture()`. Build them to

@@ -1,25 +1,32 @@
 #!/usr/bin/env node
 /**
- * Pass 4 of 4 — merge and load.
+ * Pass 5 of 5: merge and load.
  *
  *   node scripts/harvest-ingest.mjs [--limit N] [--dry]
  *
- * Merges tiles + details + plans into one capture per product and sends it
- * through ingest_capture(), then records the logo via set_capture_logo().
+ * Run it as node, never as npm run: npm parses flags after -- as its own
+ * configuration and drops them, so --dry never reaches this script. The npm
+ * script is wired to the dry run for that reason, and harvest:ingest:live is
+ * the one that writes.
+ *
+ * Merges tiles + details + plans + certifications into one capture per product
+ * and sends it through ingest_capture(), then records the logo via
+ * set_capture_logo().
  *
  * Kept separate from the fetch passes on purpose: the JSONL files ARE the raw
  * observation, so extraction can be improved and re-run without touching the
  * marketplace again. Re-running this is safe and cheap.
  *
- * One capture per product per sweep — the three fetch passes contribute to a
- * single observation rather than three, so the change feed stays meaningful.
+ * One capture per product per sweep: the four fetch passes contribute to a
+ * single observation rather than four, so the change feed stays meaningful.
  */
-import { readJsonl, supabaseEnv, rpc, pool, dataPath } from "./lib/marketplace.mjs";
+import { readJsonl, supabaseEnv, rpc, pool, dataPath, parseCliArgs } from "./lib/marketplace.mjs";
 import { toPayload, ID } from "./lib/sources/microsoft.mjs";
 
-const limitArg = process.argv.indexOf("--limit");
-const limit = limitArg > -1 ? Number(process.argv[limitArg + 1]) : 0;
-const dry = process.argv.includes("--dry");
+// This is the only script in the harvest that writes to the database, so an
+// argument it does not recognise stops it. A swallowed --dry looks exactly like
+// no --dry, and the run it would start is a full live sweep of every product.
+const { limit, dry } = parseCliArgs({ booleans: ["dry"], numbers: ["limit"] });
 
 const env = dry ? null : supabaseEnv();
 const capturedAt = new Date().toISOString();
@@ -29,11 +36,19 @@ if (!tiles.length) { console.error("No data/tiles.jsonl. Run harvest-catalog.mjs
 
 const details = new Map((await readJsonl(dataPath(ID, "details.jsonl"))).map((d) => [d.id, d]));
 const plans = new Map((await readJsonl(dataPath(ID, "plans.jsonl"))).map((p) => [p.id, p.plans]));
+// Absent certifications.jsonl is an empty Map, not an error. Every pass here
+// runs on its own, and a merge that refused to run without the newest file
+// would make the older ones depend on it.
+const certs = new Map((await readJsonl(dataPath(ID, "certifications.jsonl"))).map((c) => [c.id, c]));
 
 let work = tiles;
 if (limit) work = work.slice(0, limit);
 
-console.log(`${work.length} products | details ${details.size} | pricing ${plans.size}${dry ? " | DRY RUN" : ""}\n`);
+const carried = work.filter((t) => certs.has(t.entityId)).length;
+console.log(
+  `${work.length} products | details ${details.size} | pricing ${plans.size} | ` +
+    `certifications ${certs.size}, carried by ${carried} of these${dry ? " | DRY RUN" : ""}\n`
+);
 
 const tally = { created: 0, updated: 0, already_ingested: 0, failed: 0, rejected: 0, changes: 0, logos: 0 };
 const failures = [];
@@ -46,6 +61,7 @@ await pool(
       tile,
       detail: details.get(tile.entityId) || null,
       plans: plans.get(tile.entityId) || [],
+      cert: certs.get(tile.entityId) || null,
       capturedAt,
     });
 
@@ -77,14 +93,21 @@ console.log(`\n\ncreated ${tally.created} · updated ${tally.updated} · unchang
 console.log(`${tally.logos} logos recorded · ${tally.changes} change events · ${tally.rejected} evidence values rejected`);
 
 if (dry) {
+  // Prefer a product that carries a certification record. Most products have
+  // none, so a sample taken from the top of the list shows an empty cert_detail
+  // and says nothing about what this run would actually send.
+  const pick = work.find((t) => certs.has(t.entityId)) || work[0];
   const sample = toPayload({
-    tile: work[0],
-    detail: details.get(work[0].entityId) || null,
-    plans: plans.get(work[0].entityId) || [],
+    tile: pick,
+    detail: details.get(pick.entityId) || null,
+    plans: plans.get(pick.entityId) || [],
+    cert: certs.get(pick.entityId) || null,
     capturedAt,
   });
-  console.log("\nsample payload:");
+  console.log(`\nsample payload (${pick.entityId}):`);
   console.log(JSON.stringify(sample.extract, null, 1).slice(0, 1600));
+  console.log("\nsample cert_detail:");
+  console.log(JSON.stringify(sample.extract.cert_detail, null, 1).slice(0, 2400));
 }
 
 if (failures.length) {

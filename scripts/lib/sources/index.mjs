@@ -15,6 +15,9 @@
  *   - docs before catalog, because an agent capture copies text out of the
  *     publisher's security statement and the evidence gate verifies against it
  *   - catalog before detail, because detail walks what catalog enumerated
+ *   - certification after catalog, because it reads the link the tile carries,
+ *     and before ingest, because its record belongs to the same capture rather
+ *     than to a second one
  *   - ingest last, because it joins every earlier file
  *
  * Logos are deliberately NOT a per-source stage. v_logo_status carries
@@ -30,6 +33,7 @@ export const SOURCES = [
       "harvest-catalog.mjs",
       "harvest-detail.mjs",
       "harvest-pricing.mjs",
+      "harvest-certification.mjs",
       "harvest-ingest.mjs",
     ],
   },

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Pass 1 of 4 — enumerate the category.
+ * Pass 1 of 5: enumerate the category.
  *
  *   node scripts/harvest-catalog.mjs
  *

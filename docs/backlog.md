@@ -37,6 +37,33 @@ stored. See `docs/capture-integration.md`.
 This also closes the loop on `capture.raw`: once 2.0 is live, every new capture
 stores its own source, and extraction can be re-run without re-scraping.
 
+**Done for the Microsoft harvester** by `scripts/harvest-certification.mjs`,
+which reads all 219 certification pages and lands their text. Two things it
+learned that the rest of this item should absorb:
+
+- `cert_detail.full_text` is read by nothing. It is absent from `hay_cert` and
+  has no column in `capture_extract`, so a value placed only there verifies
+  nothing. The haystack is `hosting + data_location + data_handling +
+  graph_permissions + compliance`, and **`data_handling` is the field that has
+  to carry the page's prose**.
+- `capture.raw` comes from `payload.raw` alone, never from `extract`. The
+  harvester adds the certification record there so the text is actually stored.
+
+Measured against the 14 rejected values, all of which are Microsoft listings
+with a certification page: **9 of the 14 now sit inside `hay_cert`** and would
+verify if proposed again. `Aws` on WA200004554 is one of them, and it verifies
+only because the cloud provider answer is carried in `data_handling`.
+
+The other 5 are on the page but outside the zones `data_handling` carries: four
+are inside "Core functionality of the app" and one inside the authentication
+library question. Widening a field the passport displays as data handling to
+take in an app's functional description is a product decision, not a parser
+one, so it was left alone.
+
+None of the 14 changes on its own: they sit on captures already written, and
+nothing re-evaluates a stored capture. They verify when a capture proposes them
+again.
+
 ## 3. Logos: run the pass, then the archiver
 
 All 140 assets read `no_logo_identified` in `v_logo_status`. Two halves, in order:
@@ -117,6 +144,31 @@ versioning, documentation and rate limits.
 - **140 backfilled rows have `capture.raw = NULL`.** They came from the
   pre-Supabase index, which is recorded honestly in `capture.ingest_source =
   'backfill'`. They cannot be re-derived from source until re-captured.
+- **Two hosting answers the delivery facet cannot say.** Reading the
+  certification page fills `cert_hosting` for 216 Microsoft listings, and with
+  `surfaces` empty for all of them that one string decides the public delivery
+  facet through `public.registry_delivery`. Three products answer `Hybrid`,
+  which has no branch there, so a product that did state its hosting model
+  still renders Unknown. Fourteen answer `Iaas_Hybrid_Onprem`, match the
+  `%iaas%` branch and render "Vendor cloud (IaaS)", which drops the
+  on-premises half of the answer. Nothing is lost in the stated data:
+  `cert_hosting` holds the answer verbatim and the passport shows it. Only the
+  derived facet is narrower, and widening it is a change to
+  `registry_delivery`, not to the harvester.
+- **Sign-in scopes count as Graph permissions.** `openid`, `profile`, `email`
+  and `offline_access` appear in the page's own "Graph Permission" column and
+  are stored as the page writes them, which is the honest reading. Downstream,
+  any non-empty permission list writes a verified "Microsoft Graph" evidence
+  row and lights the tools layer, so a product listing only sign-in scopes
+  publishes as a verified Graph consumer on the strength of `email`. **Four of
+  the 216 do**, counted across the whole file rather than sampled: SAP Joule
+  (`WA200008645`, `email`), Trello (`WA200002592`) and Jira Cloud
+  (`WA200002140`), both `offline_access openid profile`, and Lucidchart
+  (`WA104381935`, `email openid profile`). The parser stores what the column
+  says and is right to: these scopes are granted on Microsoft Graph and the
+  page files them there. Whether the tools layer should light for a sign-in
+  scope is a product decision about the evidence row, not a parser one. Re-count
+  after each sweep.
 - **Mojibake in some captured text** (`ð`, U+FFFD) is present in the source
   listings themselves and was preserved deliberately rather than "corrected".
   Do not clean it — it is what the marketplace publishes.

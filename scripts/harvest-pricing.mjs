@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Pass 3 of 4 — plan pricing. The only pass that needs a real browser.
+ * Pass 3 of 5: plan pricing. The only pass that needs a real browser.
  *
  *   npx playwright install chromium     # once
  *   node scripts/harvest-pricing.mjs [--limit N] [--concurrency 4]

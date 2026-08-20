@@ -33,8 +33,33 @@ const arr = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
 const names = (v) => arr(v).map((x) => (typeof x === "string" ? x : x?.Title || x?.name)).filter(Boolean);
 
 /**
- * Build the ingest_capture payload from a tile, optional detail block, and
- * optional plans.
+ * The cert_detail block, from a certification record or from nothing.
+ *
+ * Nothing is the common case: 6,636 of 6,855 products have no certification
+ * page at all, and for those every field stays null and every list stays empty,
+ * exactly as before this pass existed. Absence of a page is not a value.
+ *
+ * The seven keys are the contract in docs/capture-integration.md, plus
+ * full_text. Only hosting, data_location and graph_permissions move a layer;
+ * data_handling and compliance exist to be read verbatim by the evidence gate
+ * and to be shown as the publisher wrote them.
+ */
+function certDetail(cert) {
+  return {
+    hosting: cert?.hosting ?? null,
+    data_location: cert?.data_location ?? null,
+    data_handling: cert?.data_handling ?? null,
+    graph_permissions: cert?.graph_permissions ?? [],
+    compliance: cert?.compliance ?? [],
+    developer_last_updated: cert?.developer_last_updated ?? null,
+    page_last_updated: cert?.page_last_updated ?? null,
+    full_text: cert?.full_text ?? null,
+  };
+}
+
+/**
+ * Build the ingest_capture payload from a tile, optional detail block, optional
+ * plans, and the optional certification record.
  *
  * The `stated` evidence block is deliberately left EMPTY. The database verifies
  * every stated value verbatim against the capture's own text, and structured
@@ -43,7 +68,7 @@ const names = (v) => arr(v).map((x) => (typeof x === "string" ? x : x?.Title || 
  * refuses. Only LanguagesSupported maps across, because it is an explicit
  * enumeration rather than a claim about the build.
  */
-export function toPayload({ tile, detail, plans, capturedAt }) {
+export function toPayload({ tile, detail, plans, cert = null, capturedAt }) {
   const info = detail?.info || {};
   const core = detail?.core || {};
   const id = tile.entityId;
@@ -91,12 +116,14 @@ export function toPayload({ tile, detail, plans, capturedAt }) {
       external_rating: null,
       external_count: null,
       certification: CERT_MAP[tile.CertificationState] || "none",
-      cert_url: tile.CertificationLink || null,
-      cert_detail: {
-        hosting: null, data_location: null, data_handling: null,
-        graph_permissions: [], compliance: [],
-        developer_last_updated: null, page_last_updated: null, full_text: null,
-      },
+      // The page that was actually read, when one was. The catalog stores a
+      // /forward/<id> redirector, and some of those land on a different
+      // product's questionnaire, so the redirector is not the address of the
+      // evidence: the page it resolved to is. The link falls
+      // back to the redirector when no page was read, because then that is the
+      // only address there is and the slug is not derivable from the id.
+      cert_url: cert?.resolved_url || tile.CertificationLink || null,
+      cert_detail: certDetail(cert),
       plans: plans || [],
       product_links: productLinks,
       legal_links: legalLinks,
@@ -109,8 +136,342 @@ export function toPayload({ tile, detail, plans, capturedAt }) {
         languages: names(info.LanguagesSupported),
       },
     },
-    raw: { tile, detail: detail || null },
+    // The certification record joins raw only when there is one. capture.raw is
+    // written from payload.raw and nothing else, so this is the only way the
+    // page text survives the write: cert_detail.full_text is read by no column
+    // and no haystack. A product without a certification page keeps the payload
+    // it has always had, key for key.
+    raw: { tile, detail: detail || null, ...(cert ? { cert } : {}) },
     ingest_source: "dual_write",
   };
 }
 
+
+// -------------------------------------------------------- certification ----
+
+/**
+ * The Microsoft 365 app certification page.
+ *
+ * Every certified or self-attested product carries a CertificationLink to
+ * docs.microsoft.com/.../forward/<id>, which redirects twice to a Learn page
+ * under /microsoft-365-app-certification/{saas|teams}/<publisher-slug>. The
+ * slug is not derivable from the product id, so the stored link is the only
+ * way in, and the resolved URL is what provenance should point at.
+ *
+ * The page is one questionnaire the publisher filled in, rendered as six
+ * sibling <div class="zone has-pivot" data-pivot="NAME"> blocks, each holding
+ * one two-column Information/Response table. Microsoft-certified pages append a
+ * seventh zone holding the audit result. That is the ONLY structural difference
+ * between the two tiers, so one parser reads all 219 pages.
+ *
+ * Everything below transcribes. It never summarises, never normalises a value,
+ * and never fills a field the page left blank: an app that does not answer the
+ * geographic storage question has no residency claim, and inventing one from
+ * its headquarters or its cloud provider would be exactly the inference this
+ * registry exists to refuse.
+ */
+
+/** The six zones every page has. A page missing one is not a page we can read. */
+const CERT_ZONES = ["general", "data", "security", "compliance", "privsection", "zerotrust"];
+
+/**
+ * Question text, verbatim, including Microsoft's own typos. "infastructure" is
+ * theirs. Matching a corrected spelling silently finds nothing, and a parser
+ * that silently finds nothing looks exactly like a product that disclosed
+ * nothing.
+ */
+const Q_HOSTING = "What is the hosting environment or service model used to run your app?";
+const Q_PROVIDERS = "Which hosting cloud providers does the app use?";
+const Q_GEOGRAPHY =
+  "If underlying infastructure processes or stores Microsoft customer data, where is this data geographically stored?";
+
+const NO_GRAPH = "This application does not use Microsoft Graph.";
+const ZONE_RE = /<div class="zone has-pivot" data-pivot="([^"]+)"[^>]*>/g;
+
+/**
+ * Cell text.
+ *
+ * htmlToText is the shared converter and is right for a cell, which holds only
+ * text, <a> and <strong>. It is NOT run over a whole table: it emits no
+ * separator for </td>, so a two-column row would collapse into
+ * "questionanswer" with nothing between them. Whitespace is then flattened
+ * because three question strings on these pages carry stray double spaces and
+ * one is missing a space altogether, and a raw comparison misses all of them.
+ *
+ * Case is left alone. The evidence gate is a case-sensitive substring test and
+ * the page writes "Aws" and "Saas"; normalising here would break verification
+ * with no visible symptom.
+ */
+const cellText = (html) => htmlToText(html).replace(/\s+/g, " ").trim();
+
+/**
+ * Split the article into its zone blocks. The zone divs are siblings, so the
+ * next marker is the end of the current block and no depth tracking applies.
+ */
+function certZones(html) {
+  const body = html.split('<div id="ms--additional-resources-mobile"')[0];
+  const marks = [...body.matchAll(ZONE_RE)];
+  const zones = new Map();
+  marks.forEach((m, i) => {
+    const end = i + 1 < marks.length ? marks[i + 1].index : body.length;
+    if (!zones.has(m[1])) zones.set(m[1], body.slice(m.index, end));
+  });
+  return zones;
+}
+
+const tablesIn = (zone) => zone.match(/<table[\s\S]*?<\/table>/g) || [];
+
+/**
+ * Rows of raw cell HTML. Raw, because the certification table encodes its
+ * hierarchy as leading &nbsp; entities, which decoding would erase.
+ */
+const rowsOf = (table) =>
+  [...table.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)].map(([, r]) =>
+    [...r.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/g)].map(([, c]) => c)
+  );
+
+/**
+ * The Information/Response table of a zone, as question to answer.
+ *
+ * A present question with a blank answer is dropped rather than stored as "".
+ * 49 such cells exist across the corpus; an empty string would create a field
+ * backed by nothing.
+ */
+function qaTable(zone) {
+  for (const table of tablesIn(zone)) {
+    const rows = rowsOf(table).map((cells) => cells.map(cellText));
+    if (rows[0]?.[0] !== "Information" || rows[0]?.[1] !== "Response") continue;
+    const qa = new Map();
+    for (const [q, a] of rows.slice(1)) {
+      if (q && a && !qa.has(q)) qa.set(q, a);
+    }
+    return qa;
+  }
+  return null;
+}
+
+const qaLines = (qa) => [...qa].map(([q, a]) => `${q}: ${a}`);
+
+/**
+ * The Graph permission table, or null when the page has none.
+ *
+ * null and [] are different answers and the difference matters: a single
+ * element of any content writes a verified "Microsoft Graph" evidence row and
+ * lights the tools layer. Only column 0 of a table whose header says
+ * "Graph Permission" is ever allowed to become one.
+ */
+function graphRows(zone) {
+  for (const table of tablesIn(zone)) {
+    const rows = rowsOf(table).map((cells) => cells.map(cellText));
+    if (rows[0]?.[0] !== "Graph Permission") continue;
+    return rows.slice(1).filter((r) => r[0]);
+  }
+  return null;
+}
+
+/**
+ * Microsoft's own audit result, on certified pages only.
+ *
+ * This is Microsoft's scope of assessment, not a publisher claim, so it stays
+ * out of `compliance`, where every element is published as a certification the
+ * product holds. "In Scope" is not a certification, and "PASS" is Microsoft's
+ * word rather than the publisher's.
+ */
+function certResults(zone) {
+  if (!zone) return null;
+  for (const table of tablesIn(zone)) {
+    const rows = rowsOf(table);
+    if (cellText(rows[0]?.[0] ?? "") !== "Control") continue;
+    return rows
+      .slice(1)
+      .map((cells) => ({
+        control: cellText(cells[0] ?? ""),
+        result: cellText(cells[1] ?? ""),
+        // Sub-controls are indented with five &nbsp; entities and section rows
+        // are not. Read off the raw cell: after decoding, both start with
+        // whitespace and the distinction is gone.
+        level: /^\s*&nbsp;/.test(cells[0] ?? "") ? "control" : "section",
+      }))
+      .filter((r) => r.control && r.result);
+  }
+  return null;
+}
+
+const MONTHS = {
+  January: "01", February: "02", March: "03", April: "04", May: "05", June: "06",
+  July: "07", August: "08", September: "09", October: "10", November: "11", December: "12",
+};
+
+/**
+ * "August 28, 2025" to "2025-08-28". A month table rather than Date parsing, so
+ * the result cannot shift with the machine's locale or timezone.
+ */
+function developerDate(html) {
+  const m = html.match(/Last updated by the developer on:\s*([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})/);
+  const month = m && MONTHS[m[1]];
+  return month ? `${m[3]}-${month}-${m[2].padStart(2, "0")}` : null;
+}
+
+/**
+ * The Learn footer date. Note what this is: the element carries
+ * data-article-date-source="calculated", so it is the docs build date, not
+ * something the publisher stated. Unrelated pages share it after a bulk
+ * rebuild. It is on the page, so it is storable, but it is not a claim.
+ *
+ * The page's <meta> dates disagree with the rendered value on some pages, so
+ * the rendered element is the one read.
+ */
+function pageDate(html) {
+  const tag = html.match(/<local-time[^>]*data-article-date-source[^>]*>/)?.[0];
+  return tag?.match(/datetime="(\d{4}-\d{2}-\d{2})/)?.[1] ?? null;
+}
+
+/**
+ * Parse one certification page into the record stored in certifications.jsonl.
+ *
+ * Returns `{ ok: false, reason }` for anything that is not a readable
+ * certification page. That distinction is load-bearing: a rejected page is
+ * reported and retried on the next run, while a page written with null fields
+ * would be indistinguishable from a product that disclosed nothing.
+ */
+export function parseCertificationPage({ id, html, url }) {
+  if (!/\/microsoft-365-app-certification\/(teams|saas)\//.test(url)) {
+    // The programme's landing page answers 200 with no questionnaire on it.
+    // Left undetected it becomes an all-null record that reads as a real
+    // capture.
+    return { ok: false, reason: `did not resolve to a certification page: ${url}` };
+  }
+
+  const zones = certZones(html);
+  const missing = CERT_ZONES.filter((z) => !zones.has(z));
+  if (missing.length) return { ok: false, reason: `missing zones: ${missing.join(", ")}` };
+
+  const tables = Object.fromEntries(CERT_ZONES.map((z) => [z, qaTable(zones.get(z))]));
+  const tableless = CERT_ZONES.filter((z) => !tables[z]);
+  if (tableless.length) return { ok: false, reason: `no question table in: ${tableless.join(", ")}` };
+
+  // Every page states its own product id, and that row is the only thing that
+  // stops one product's answers being filed under another when a redirect
+  // misbehaves. Links that resolve to a sibling listing's page, with a 200 and
+  // a well-formed body, are not hypothetical: the pass finds them on every
+  // sweep, and Microsoft remaps which ones, so this is the check doing the
+  // work rather than a belt on top of one.
+  //
+  // A page that states no id fails the same way one stating the wrong id does.
+  // There is nothing left to match against, and accepting it would file the
+  // questionnaire under whatever id the caller happened to pass, on the
+  // strength of a redirect alone. Every readable page states one today, so an
+  // absent row means the template changed, not that a publisher said less.
+  const statedId = tables.general.get("ID");
+  if (!statedId) return { ok: false, reason: "page states no ID" };
+  if (statedId !== id) return { ok: false, reason: `page states ID ${statedId}` };
+
+  const hosting = tables.general.get(Q_HOSTING) ?? null;
+  if (!hosting) return { ok: false, reason: "no hosting answer" };
+
+  // A page either lists Graph permissions or says it uses none. Both at once,
+  // or neither, means the template changed and the safe reading of an empty
+  // permission list is no longer available.
+  const graph = graphRows(zones.get("zerotrust"));
+  const saysNone = zones.get("zerotrust").includes(NO_GRAPH);
+  if ((graph !== null) === saysNone) {
+    return {
+      ok: false,
+      reason: graph
+        ? "Graph table and the no-Graph sentence both present"
+        : "no Graph table and no no-Graph sentence",
+    };
+  }
+
+  /**
+   * data_handling carries the page's own words, transcribed.
+   *
+   * It lights no layer. Its job is to be the haystack: hay_cert is built from
+   * hosting, data_location, data_handling, graph_permissions and compliance,
+   * and this is the only one of those large enough to hold the prose in which
+   * a publisher names what its app touches. The cloud providers live here
+   * rather than in `hosting` because `hosting` alone decides the public
+   * delivery facet, by substring match, and a provider name has no business
+   * influencing that.
+   */
+  const dataHandling =
+    [
+      [Q_HOSTING, Q_PROVIDERS]
+        .filter((q) => tables.general.has(q))
+        .map((q) => `${q}: ${tables.general.get(q)}`),
+      qaLines(tables.data),
+      qaLines(tables.privsection),
+      // Both trailing cells are optional. A two-column Graph table would
+      // otherwise write the literal "(undefined)" into the haystack, and this
+      // text is shown on the passport as data handling.
+      graph
+        ? graph.map(([permission, type, why]) =>
+            `${type ? `${permission} (${type})` : permission}: ${why ?? ""}`.trim()
+          )
+        : [],
+    ]
+      .filter((block) => block.length)
+      .map((block) => block.join("\n"))
+      .join("\n\n") || null;
+
+  /**
+   * compliance keeps the publisher's whole sentence, question and answer both.
+   *
+   * Each element is published as a certification the product holds. The page
+   * never says "ISO 27001": it asks whether the app complies, and records Yes.
+   * Distilling that to a label would turn a self-assessment into a credential.
+   * Only Yes rows qualify: N/A is not a negative, and No is not a claim. On
+   * roughly two fifths of these pages every answer is No or N/A, and an empty
+   * array is then the correct reading.
+   */
+  const compliance = [...tables.compliance]
+    .filter(([, answer]) => answer === "Yes")
+    .map(([question, answer]) => `${question} ${answer}`);
+
+  const fullText = [...zones]
+    .map(([, zone]) => {
+      const qa = qaTable(zone);
+      const g = graphRows(zone);
+      const results = certResults(zone);
+      return [
+        qa ? qaLines(qa).join("\n") : "",
+        g ? g.map((r) => r.join(" | ")).join("\n") : "",
+        results ? results.map((r) => `${r.control}: ${r.result}`).join("\n") : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    })
+    .filter(Boolean)
+    .join("\n\n");
+
+  return {
+    ok: true,
+    record: {
+      id,
+      resolved_url: url,
+      // What the page itself shows, recorded as an observation. The catalog's
+      // CertificationState and this can disagree, in both directions.
+      // Reconciling them is not this pass's job, and neither value is allowed
+      // to overwrite the other.
+      //
+      // This is the one value read out of markup rather than copied from
+      // stated text, and it is allowed because it reaches nothing: badge is
+      // not a cert_detail key, so it lands in payload.raw.cert and no column,
+      // no haystack and no facet ever sees it.
+      badge: /media\/certified\.png/.test(html)
+        ? "certified"
+        : /media\/attested\.png/.test(html)
+          ? "attested"
+          : null,
+      certification_results: certResults(zones.get("certification")),
+      hosting,
+      data_location: tables.data.get(Q_GEOGRAPHY) ?? null,
+      data_handling: dataHandling,
+      graph_permissions: graph ? graph.map((r) => r[0]) : [],
+      compliance,
+      developer_last_updated: developerDate(html),
+      page_last_updated: pageDate(html),
+      full_text: fullText || null,
+    },
+  };
+}
