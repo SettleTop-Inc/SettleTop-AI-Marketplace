@@ -310,6 +310,19 @@ Outcome vocabulary, terminal outcomes skipped on resume:
 absent is a template change, and recording it as out of category would
 permanently exclude a real listing on the strength of a parse failure.
 
+### Two stamps, and they mean different things
+
+`predicate_version` says which rule decided that a listing belongs in the
+category. `record_version` says which extractor read it. A row can be stale in
+one sense and current in the other, and the two carry different weight:
+
+- **Stale predicate**: the listing may not belong in the category at all. That
+  is a membership error, so `aws-ingest.mjs` **refuses to load such a row** and
+  says so.
+- **Stale record version**: a real in-category listing was read by an older
+  extractor. The row is still a true observation, so it is simply re-read on the
+  next detail run and ingest is unaffected.
+
 **`predicate_version` is not optional.** Roughly 38,000 rows will carry a
 permanent `out_of_category` decision made by one predicate on one day. Widen the
 filter and every one is stale. With the stamp, widening is an ordinary resumable
@@ -336,9 +349,18 @@ pass counts refusals across the run and stops on the twentieth rather than
 grinding through 43,000 backoffs.
 
 Projected full sweep: about 45 to 60 minutes, about 4.8 GB on the wire (gzip),
-about 19 GB parsed, under 30 MB kept. **Stage the first full sweep with
-`--limit`** (2,000, then 5,000, then the rest). Discovering a throttle at
-request 2,000 costs two minutes; discovering it at 40,000 costs the run.
+about 19 GB parsed, under 30 MB kept.
+
+**A run with no `--limit` is capped at 2,000 pages**, and says so. Unlike every
+other stage in this repo, an unbounded AWS detail run reads the whole
+marketplace, and `npm run harvest` would start one with no flags and no one
+asking. The pass resumes, so repeated runs converge, and after the first sweep a
+nightly run only has the sitemap delta and never approaches the cap.
+`AWS_FULL_SWEEP=1` removes it.
+
+The cap is also the staging the measurements ask for: 2,000, then 5,000, then
+the rest. Discovering a throttle at request 2,000 costs two minutes; discovering
+it at 40,000 costs the run.
 
 ## Ours, not AWS's, and never in `stated`
 
