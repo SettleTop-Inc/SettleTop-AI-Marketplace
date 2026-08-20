@@ -116,12 +116,12 @@ const NEW_TABLES = ["asset", "asset_slug", "asset_merge"];
 // times (57014, statement timeout) without the data being at fault: five
 // back-to-back reads measured right after one such failure came back in 876,
 // 307, 204, 213 and 261 ms. That makes it a transient property of a cold
-// cache, not a fact about the schema, so this is the one read in the file
-// that gets a retry: exactly once, only on this exact error, and it leaves a
-// trace in lastStatsRetry so its caller can say so in a check's detail
-// string instead of the retry being silently smoothed away. Nowhere else in
-// this file retries anything: a 404 or a 42703 is a fact about the schema
-// and has to fail on the first try.
+// cache, not a fact about the schema, so every read of v_registry_stats in
+// this file goes through fetchRegistryStats() and gets exactly one retry,
+// only on this exact error; it leaves a trace in lastStatsRetry so its
+// caller can say so in a check's detail string instead of the retry being
+// silently smoothed away. Nothing else in this file retries anything: a 404
+// or a 42703 is a fact about the schema and has to fail on the first try.
 let lastStatsRetry = false;
 async function fetchRegistryStats(select = "*") {
   const read = () =>
@@ -137,7 +137,11 @@ async function fetchRegistryStats(select = "*") {
     await new Promise((resolve) => setTimeout(resolve, 500));
     r = await read();
     if (!r.ok) {
-      throw new Error(`v_registry_stats: ${r.status} ${await r.text()} (after one retry on 57014)`);
+      // Report what the retry itself failed with, not the 57014 that
+      // triggered it: the retry can fail a different way entirely (a
+      // permission error, a second timeout, anything), and naming the
+      // original trigger here would misreport the actual second failure.
+      throw new Error(`v_registry_stats: retried once after 57014, retry failed with ${r.status} ${await r.text()}`);
     }
   }
   return (await r.json())[0];
@@ -202,6 +206,16 @@ console.log("Phase 1 verification\n");
 // 1. anon can read every public surface, including the new tables.
 for (const v of [...READ_SURFACES, ...NEW_TABLES]) {
   await check(`anon can select from ${v}`, async () => {
+    // v_registry_stats is read here first, before snapshot() or the
+    // evidence-count check ever touch it, so this is the coldest read of
+    // the view in the whole run and the one most likely to hit a cold-cache
+    // 57014. Routing it through fetchRegistryStats() gives it the same
+    // single retry every later read of the view gets, instead of a plain
+    // fetch with none.
+    if (v === "v_registry_stats") {
+      await fetchRegistryStats();
+      return { ok: true, detail: lastStatsRetry ? "retried once on 57014" : "" };
+    }
     const r = await fetch(`${URL_BASE}/rest/v1/${v}?select=*&limit=1`, { headers: head(ANON) });
     return { ok: r.ok, detail: r.ok ? "" : `${r.status} ${(await r.text()).slice(0, 90)}` };
   });
@@ -363,23 +377,66 @@ if (!SERVICE) {
 // same as phase 1's checks did: the columns and the two new views these
 // name do not exist yet, so every check in this section is expected to FAIL
 // until a later task adds them. That is the RED evidence this task records.
+//
+// This harness is what runs against production after the merge; the gate's
+// container never sees production data. A check that only asks whether the
+// request succeeded would PASS against a view that exists but returns an
+// empty array or a null column on the live database, and that is exactly
+// the failure shape phase 1 spent a fix round on: listings on both cards and
+// passports reach their payload through an outer join or a correlated
+// subquery, so a broken join empties the payload while the request itself
+// still answers HTTP 200. Every check below that can assert a value does.
 await check("v_registry_card carries the asset-level columns", async () => {
   const r = await fetch(`${URL_BASE}/rest/v1/v_registry_card?select=marketplace_ids,listing_count,search_blob&limit=1`,
     { headers: head(ANON) });
-  return { ok: r.ok, detail: r.ok ? "" : `${r.status} ${(await r.text()).slice(0, 90)}` };
+  if (!r.ok) return { ok: false, detail: `${r.status} ${(await r.text()).slice(0, 90)}` };
+  const [row] = await r.json();
+  const ok = Boolean(row)
+    && Array.isArray(row.marketplace_ids) && row.marketplace_ids.length > 0
+    && Number(row.listing_count) >= 1
+    && Boolean(row.search_blob);
+  return {
+    ok,
+    detail: row
+      ? `marketplace_ids ${Array.isArray(row.marketplace_ids) ? row.marketplace_ids.length : "not an array"}, listing_count ${row.listing_count}, search_blob ${row.search_blob ? "present" : "empty"}`
+      : "no rows",
+  };
 });
 
 await check("v_asset_passport carries listings", async () => {
   const r = await fetch(`${URL_BASE}/rest/v1/v_asset_passport?select=listings&limit=1`, { headers: head(ANON) });
-  return { ok: r.ok, detail: r.ok ? "" : `${r.status} ${(await r.text()).slice(0, 90)}` };
+  if (!r.ok) return { ok: false, detail: `${r.status} ${(await r.text()).slice(0, 90)}` };
+  const [row] = await r.json();
+  const listings = row?.listings;
+  const first = Array.isArray(listings) ? listings[0] : undefined;
+  const ok = Array.isArray(listings) && listings.length > 0
+    && first?.marketplace_id != null && first?.is_primary != null;
+  return {
+    ok,
+    detail: Array.isArray(listings)
+      ? `${listings.length} listings${first ? `, first marketplace_id ${first.marketplace_id}, is_primary ${first.is_primary}` : ""}`
+      : "listings missing or not an array",
+  };
 });
 
-for (const v of ["v_listing_passport", "v_asset_evidence"]) {
-  await check(`anon can select from ${v}`, async () => {
-    const r = await fetch(`${URL_BASE}/rest/v1/${v}?select=*&limit=1`, { headers: head(ANON) });
-    return { ok: r.ok, detail: r.ok ? "" : `${r.status} ${(await r.text()).slice(0, 90)}` };
-  });
-}
+await check("anon can select from v_listing_passport", async () => {
+  const r = await fetch(`${URL_BASE}/rest/v1/v_listing_passport?select=asset_id,source_product_id&limit=1`,
+    { headers: head(ANON) });
+  if (!r.ok) return { ok: false, detail: `${r.status} ${(await r.text()).slice(0, 90)}` };
+  const [row] = await r.json();
+  const ok = Boolean(row) && row.asset_id != null && row.source_product_id != null;
+  return {
+    ok,
+    detail: row ? `asset_id ${String(row.asset_id).slice(0, 8)}, source_product_id ${row.source_product_id}` : "no rows",
+  };
+});
+
+// v_asset_evidence already gets a value check below ("carries real capture
+// rows"), so this one is left as existence-only rather than duplicating it.
+await check("anon can select from v_asset_evidence", async () => {
+  const r = await fetch(`${URL_BASE}/rest/v1/v_asset_evidence?select=*&limit=1`, { headers: head(ANON) });
+  return { ok: r.ok, detail: r.ok ? "" : `${r.status} ${(await r.text()).slice(0, 90)}` };
+});
 
 // A row count proves nothing on these two: both reach their payload through
 // correlated subqueries, so a policy failure empties the payload and leaves the
