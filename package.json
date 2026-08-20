@@ -18,7 +18,10 @@
     "harvest:logos": "node scripts/archive-logos.mjs",
     "harvest": "node scripts/harvest.mjs",
     "harvest:drai": "node scripts/harvest.mjs --marketplace drai",
-    "harvest:microsoft": "node scripts/harvest.mjs --marketplace microsoft"
+    "harvest:microsoft": "node scripts/harvest.mjs --marketplace microsoft",
+    "verify:baseline": "node scripts/verify-asset-layer.mjs --baseline",
+    "verify:asset-layer": "node scripts/verify-asset-layer.mjs",
+    "gate": "bash scripts/gate/run.sh"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

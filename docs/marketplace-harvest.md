@@ -231,7 +231,7 @@ failure.
 
 Niles chose: tag the method, and let the first harvest be a **baseline** rather
 than a wave of fake change events. Re-capturing the existing 140 by a different
-instrument would otherwise emit `asset_change` rows that describe our tooling,
+instrument would otherwise emit `listing_change` rows that describe our tooling,
 not the marketplace. The change feed is the product; do not pollute it.
 
 ```sql
@@ -241,7 +241,7 @@ alter table capture add column method capture_method not null default 'browser_d
 
 Then modify `ingest_capture()` so the change-detection block is **skipped when
 the previous capture's `method` differs from the new one** — record the capture,
-update `current_capture_id`, emit no `asset_change` rows. Only same-method
+update `current_capture_id`, emit no `listing_change` rows. Only same-method
 transitions produce change events.
 
 The 140 existing rows are `backfill`. Everything from this harvest is

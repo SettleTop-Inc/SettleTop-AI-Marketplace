@@ -4,7 +4,7 @@
 
 **Goal:** Rename `asset` to `listing`, introduce an `asset` table above it, and give every existing listing its own asset and slug, with the deployed site behaving identically throughout.
 
-**Architecture:** Five ordered migrations applied in one push: rename, new tables, backfill, write path, views. Assets and listings stay 1:1, so nothing a visitor sees changes. A verification harness written before the migrations proves the invariants, and is the gate on the branch database before production.
+**Architecture:** Five ordered migrations applied in one push: rename, new tables, backfill, write path, views. Assets and listings stay 1:1, so nothing a visitor sees changes. A verification harness written before the migrations proves the invariants. It was to run against a Supabase branch database before production; the project turned out not to have branching, so Task 8 replaces that gate with a local Postgres container and records the unmet spec requirement as a deviation.
 
 **Tech Stack:** Postgres 17 on Supabase, migrations under `supabase/migrations`, applied by the GitHub to Supabase integration on push to `main`. Node 23 scripts, plain `fetch` against PostgREST. Next 16 app, `node --test` for unit tests.
 
@@ -19,11 +19,12 @@ This plan implements **phase 1 only**. Phases 2 and 3 get their own plans, writt
 Copied from the spec. Every task's requirements include these.
 
 - **The evidence gate in `ingest_capture` is not to be relaxed for any reason.** The block from `hay_listing :=` through the end of the `kindmap` loop must be byte-identical before and after. Its current md5 is `d9156fc8d49d2bcd6aafb1e0c4b7edc6` over the whole function body, verified to match the repo file exactly.
-- **Every `create or replace view` carries its `grant` immediately after it, in the same migration.** `create or replace view` drops every grant. This already took all 6,820 logos off the live site once, silently, because `getLogos` returns `{}` on error.
+- **Every `create or replace view` carries its `grant` immediately after it, in the same migration.** A column-compatible replacement does preserve grants; what loses them is a `drop view`, and changing a view's column names or order forces one. That is what took all 6,820 logos off the live site once, silently, because `getLogos` returns `{}` on error. The grant goes next to the view regardless, and Task 7's assertion is what proves the outcome.
+- **A view's existing columns keep their names, types and order. New ones are appended.** `create or replace view` refuses anything else, with `cannot change name of view column`. Changing what an existing column is sourced from is fine.
 - **Every new table gets an explicit RLS policy and grant.** Policies were created by a loop over a hardcoded array in `registry_core.sql`, so a new table inherits nothing, and a table with RLS on and no policy is invisible to `anon`.
 - **Views follow a table rename automatically; plpgsql function bodies do not.** `ingest_capture` and `set_capture_logo` break only when next called, so they must be *executed* during verification, not inspected.
 - **`NOT NULL` cannot be deferred.** Postgres accepts `DEFERRABLE` only on `UNIQUE`, `PRIMARY KEY`, `EXCLUDE` and `REFERENCES`. The asset must exist before the listing that points at it.
-- **Phase 1 is verified in full on a Supabase branch database before it reaches production.** A failed branch is discarded, not rolled back.
+- **Phase 1 was to be verified in full on a Supabase branch database before it reaches production, and it was not.** The project does not have branching, so no preview database exists. Task 8 substitutes a local Postgres container carrying production's roles, and states in full which risks that substitution leaves uncovered. This is a live deviation from the spec, not a resolved one.
 - **No em dashes in any prose a person reads**, including doc updates. Use colons, commas, or two sentences.
 - Assets and listings are 1:1 for the whole of phase 1. `v_registry_stats` must return identical values before and after.
 
@@ -785,16 +786,19 @@ select c.relname, pg_get_viewdef(c.oid, true) as def
 
 For every view: the `from asset a` clause becomes `from listing l`, with the alias updated throughout, and `join capture c on c.id = a.current_capture_id` becomes `l.current_capture_id`.
 
-For `v_registry_card` and `v_asset_passport`: what was `a.id as asset_id` becomes two columns.
+**Append new columns; never reorder or rename an existing one.** `create or replace view` requires the replacement to produce the existing columns with the same names, types and order, and permits new ones only at the end. Changing what an existing column is *sourced from* is fine. Getting this wrong is not a style question: Task 1 hit exactly this and Postgres refused the migration outright with `cannot change name of view column`.
+
+So for `v_registry_card` and `v_asset_passport`: leave `asset_id` exactly where it sits in the column list and change only its source.
 
 ```sql
-  l.id           as listing_id,
-  l.asset_id     as asset_id,
+  l.asset_id     as asset_id,      -- in its existing position, now the real product
+  ...
+  l.id           as listing_id,    -- appended at the very end
 ```
 
 `asset_id` is the real product from this migration onward, rather than a listing id wearing the wrong name for a phase. Assets and listings are 1:1 in phase 1, so `getPassports(assetIds)` in `lib/registry.ts` keeps working either way.
 
-For `v_asset_change_feed`: the same two columns, sourced through the listing.
+For `v_asset_change_feed`: same rule. `asset_id` stays second, where `lib/types.ts` `ChangeRow` expects it, now sourced as `l.asset_id`; `listing_id` is appended last.
 
 ```sql
 from listing_change ch
@@ -802,7 +806,9 @@ join listing l         on l.id = ch.listing_id
 join capture_extract x on x.capture_id = l.current_capture_id
 ```
 
-with `ch.listing_id as listing_id` and `l.asset_id as asset_id` in the select list. Keep `id`, `source_product_id`, `name`, `publisher`, `field`, `old_value`, `new_value`, `observed_at` exactly as they are: `lib/types.ts` `ChangeRow` names them.
+Keep `id`, `source_product_id`, `name`, `publisher`, `field`, `old_value`, `new_value`, `observed_at` in their existing order: `ChangeRow` names them.
+
+Appending rather than reordering also avoids a drop-ordering problem. `v_registry_stats` selects from `v_registry_card`, so dropping the card would require dropping the stats view first or cascading through it. (`registry_search` also reads `v_registry_card`, but it is a text-bodied SQL function, which Postgres does not dependency-track.) If any view here ever genuinely needs its columns reordered, it must be a `drop view` and `create view` pair in dependency order, with every grant reissued.
 
 For `v_registry_stats`: two counts change and the rest stay.
 
@@ -817,7 +823,11 @@ For `v_logo_status`: only the table name and alias change. Its ten columns stay 
 
 - [ ] **Step 3: Put the grants immediately after each view**
 
-Not in a block at the bottom. `create or replace view` drops every grant, and the last time a replacement carried no grant block, `anon` lost SELECT on `v_logo_status` and every logo on the site fell back to initials while the registry still held all 6,820 images.
+Not in a block at the bottom, and next to every view whether or not this particular change strictly needs it.
+
+The mechanism is worth stating correctly, because the repo currently records it wrongly. A **column-compatible** `create or replace view` preserves grants. What loses them is a `drop view`, and changing a view's column names or order forces exactly that. That is what happened during the logo outage: the replacement changed `v_logo_status`'s column shape, so it could only have been a drop and recreate, `anon` lost SELECT, and every logo on the site fell back to initials while the registry still held all 6,820 images. `getLogos` returns `{}` on error, so nothing surfaced.
+
+Step 2 keeps every view in this task column-compatible, so grants should survive. The grant statements go in anyway: they cost nothing, they are required the moment anyone does need a drop, and the assertion in Step 4 is what actually proves the outcome rather than the reasoning.
 
 ```sql
 create or replace view v_logo_status with (security_invoker = true) as
@@ -857,57 +867,150 @@ git commit -m "feat: views read through listing and expose the real asset_id"
 
 ---
 
-### Task 8: Verify on a branch database
+### Task 8: Verify on a local Postgres container
 
-**Files:** none changed. This task is the gate.
+**Files:**
+- Create: `scripts/gate/run.sh`, `scripts/gate/01-roles.sql`, `scripts/gate/02-seed.sql`, `scripts/gate/03-harness.sql`, `scripts/gate/04-reads.sql`, `scripts/gate/05-negative.sql`, `scripts/gate/06-sentinel.sql`, `scripts/gate/07-final.sql`
 
 **Interfaces:**
-- Consumes: every migration from Tasks 3 to 7, and the harness from Task 2.
-- Produces: a pass or a discarded branch.
+- Consumes: every migration from Tasks 1 to 7.
+- Produces: a pass, or a container thrown away and a migration fixed.
 
 The rename has no down-migration worth trusting. Verification happens where failure costs nothing.
 
-- [ ] **Step 1: Open the pull request**
+**This task was rewritten after the fact.** It originally instructed the operator to push the branch, wait for Supabase to build a preview database for the PR, and point `verify-asset-layer.mjs` at it. **This project does not have Supabase branching.** There is no preview database and there is no way to make one, so none of that could be run. What follows is what was actually run in its place, and it is written so it can be run again: `bash scripts/gate/run.sh`.
 
-Push the branch and open the PR. Supabase branching is enabled on this project, so the integration creates a preview database for the PR and applies every migration to it.
+#### Deviation from the spec, recorded rather than dropped
 
-- [ ] **Step 2: Confirm the branch applied the migrations**
+The spec, `docs/superpowers/specs/2026-08-19-registry-asset-layer-design.md`, says at "Migration and deploy order":
 
-Use the Supabase MCP `list_branches` for project `atevamimariwlpidgvog`. Wait for the PR's branch to reach a non-pending status.
+> **Phase 1 runs on a Supabase branch database first.** [...] This is a requirement of the phase, not a suggestion for the day.
 
-Expected: `MIGRATIONS_PASSED`. If it reports `MIGRATIONS_FAILED`, read the error, fix the migration, push again. Nothing touches production while this loops.
+**That requirement is not met.** The reason is that branching is not enabled on this project, which was established after the plan was written. The gate below is a substitute, not an equivalent, and the risks it cannot reach are listed at Step 8. Nobody should read a passing container run as the branch verification the spec asked for.
 
-- [ ] **Step 3: Point the harness at the branch**
+What makes the substitute worth running rather than skipping: the container replays already done during Tasks 1 to 7 covered the DDL, the data logic and the write path, but every one of them ran as the superuser. The layer none of them touched is the one the site actually reads through, which is `anon` and `service_role` against grants and RLS. That layer is plain Postgres rather than anything Supabase adds, so it reproduces locally, and it is exactly where this project's failures have been silent.
 
-Get the branch's URL and keys from the Supabase dashboard, then:
+Silent in a precise sense, and Step 7 pins down which. **A missing RLS policy is the silent one**: the statement succeeds, the view returns zero rows, PostgREST answers HTTP 200 with `[]`, and nothing anywhere reports a fault. **A missing grant is loud at the database**: a `security_invoker` view checks the caller's own rights against the base table and Postgres raises `42501`. It reaches the site as silence only because `getLogos` in `lib/registry.ts` returns `{}` on any error, which is how all 6,820 logos left the live site once. Two different faults with two different signatures, and a gate that only tests one of them is testing half the surface.
 
-```bash
-NEXT_PUBLIC_SUPABASE_URL=https://<branch-ref>.supabase.co \
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<branch publishable key> \
-SUPABASE_SERVICE_ROLE_KEY=<branch service role key> \
-npm run verify:asset-layer
+There is a third signature, and it is the worst of the three, because it is silent all the way down and it survives a row count. A view that reaches a table through a LEFT JOIN or a correlated subquery keeps every row when that table becomes unreadable and loses a COLUMN instead. `v_logo_status` and `v_asset_passport` both do this. Step 5 asserts values rather than row counts for exactly that reason.
+
+- [ ] **Step 1: Build the container and create the roles the way Supabase has them**
+
+`postgres:17-alpine`, matching production's Postgres 17. Three roles are created before any migration runs, because the migrations grant to them and would fail otherwise. Verified against production on 2026-08-19: `anon` and `authenticated` are `NOBYPASSRLS`, `service_role` is `BYPASSRLS`.
+
+```sql
+create role anon          nologin noinherit nobypassrls;
+create role authenticated nologin noinherit nobypassrls;
+create role service_role  nologin noinherit bypassrls;
+grant usage on schema public to anon, authenticated, service_role;
 ```
 
-Expected: every check passes. The branch is seeded from production's schema without data by default, so `listing count unchanged` may legitimately differ; note it and treat the structural checks as the gate. Run `npm run verify:baseline` against the branch first if you want the count checks to be meaningful there.
+Two fidelity decisions are load-bearing and both are argued in `scripts/gate/01-roles.sql`:
 
-- [ ] **Step 4: Exercise the write path against the branch**
+`grant usage on schema public to service_role` is in the bootstrap even though no migration in this repo grants it. It has to be, because production evidently has it: `20260818140000` records that `archive-logos.mjs` failed with `42501 permission denied for view v_logo_status`, which is a relation-level error. Had `service_role` lacked schema usage the error would have been `permission denied for schema public` instead.
 
-This is the check that inspection cannot substitute for. Both calls in the harness prove the functions resolve their tables after the rename, and neither writes.
+Supabase's blanket `alter default privileges in schema public grant all on tables to anon, authenticated, service_role` is deliberately **not** reproduced. The same migration records that on production `service_role` "in fact held SELECT on nothing at all in public", which can only be true if those default privileges are absent. Leaving them out also makes the container a lower bound on privilege: every read asserted below passes with fewer grants than production has, so it would pass with more.
 
-If `ingest_capture reaches its own validation` fails with a message mentioning `relation "asset" does not exist`, Task 6 missed a reference. Find it, fix it, push, and repeat from Step 2.
+- [ ] **Step 2: Replay every migration before the rename**
 
-- [ ] **Step 5: Run the app against the branch**
+Filename order, one transaction per file, matching how Supabase applies them. The five asset-layer migrations are held back.
+
+Expected: nineteen files, all OK. Three emit NOTICEs about `drop trigger if exists` on a trigger that does not exist yet and about ICU locale normalisation. Those are benign.
+
+- [ ] **Step 3: Seed through the OLD `ingest_capture`**
+
+This ordering is the point of the step and it is what production will do. Seeding before the rename means every row the checks below read is a row the **backfill** produced, not a row the new code made. Seeding afterwards would prove only that new writes work, which is the easier half.
+
+`scripts/gate/02-seed.sql` calls `ingest_capture` as `service_role`, so the execute grant is exercised rather than assumed. It creates three listings across both marketplaces, re-ingests one of them with changed pricing so the old function writes `asset_change` rows, sets a logo on two of them through `set_capture_logo`, and archives one through `record_link_archive`.
+
+The seed must reach every view. The views inner-join `capture_extract`, so an empty database makes every check below pass vacuously and prove nothing. In particular it must include at least one listing with a logo link, because `v_logo_status` is the view whose failure is silent, and at least one with `graph_permissions`, so `capture_permission` is populated.
+
+- [ ] **Step 4: Apply the five asset-layer migrations**
+
+Rename, tables, backfill, write path, views. Each in its own transaction.
+
+The backfill migration carries its own `raise exception` if listings, assets and canonical slugs do not come out equal, so a wrong backfill aborts here rather than being caught later.
+
+- [ ] **Step 5: Read every view as `anon`, asserting a NON-ZERO row count**
+
+`set role anon`, then `select count(*)` from each of `v_registry_card`, `v_asset_passport`, `v_asset_change_feed`, `v_registry_stats` and `v_logo_status`, and from the three new tables `asset`, `asset_slug` and `asset_merge`.
+
+**A zero-row result is a FAIL, not a pass.** Statement success is not the assertion. A view returning nothing is indistinguishable from a view working unless the count is checked, which is the whole reason this step exists.
+
+**A row count is only a sound assertion for a view whose every source is an inner join.** Three of the five views fail that test, and each needs its values asserted instead. The rule: if a view reaches a table through a LEFT JOIN, a correlated subquery or a scalar subquery, losing that table empties a **column** and leaves the **row count** untouched.
+
+`v_registry_stats` is nine independent scalar subqueries. It returns exactly one row whatever happens underneath, and Postgres does not evaluate a scalar subquery that `count(*)` never reads, so a row-count assertion is vacuous: Step 7 shows it returning 1 while `anon` holds no SELECT on `capture_extract` at all. `gate.check_stats` asserts all nine values.
+
+`v_logo_status` LEFT JOINs `capture_link`. Make `capture_link` unreadable and the view still returns one row per listing, every one with a null `logo_url` and state `no_logo_identified`. That is every logo on the site replaced by initials, at full row count. `gate.check_logo_status` asserts that rows carrying a logo have a non-null `logo_url`, that both `archived` and `url_only_not_archived` are present, and that no row is internally contradictory.
+
+`v_asset_passport` reaches `capture_plan`, `capture_link`, `capture_permission`, `capture_compliance` and `capture_evidence` through correlated subqueries. Any of those going unreadable leaves every passport with its row and no plans, no links, no permissions or no compliance. `gate.check_passport` asserts each section is non-empty for a named seeded product.
+
+`v_registry_card` and `v_asset_change_feed` do **not** need this. They reach `listing`, `marketplace`, `capture` and `capture_extract` through inner joins only, so losing any of them empties the view and the row count is sound.
+
+One framing detail: `asset_merge` is legitimately empty after the backfill and will be empty on production too. An empty table cannot demonstrate that `anon` can read it, so the harness inserts one synthetic row for the read to return. It leaves `merged_into` alone, so no view's counts move.
+
+- [ ] **Step 6: Read `v_logo_status` as `service_role`, asserting non-zero**
+
+This is the newly load-bearing one. Task 7 flips this view from SECURITY DEFINER to `security_invoker`, so from here on `service_role` must satisfy grants on `listing`, `capture_extract` and `capture_link` directly rather than inheriting the view owner's rights. `archive-logos.mjs` is the only pass that reads a relation instead of calling a definer function, so it is the only one a missing grant reaches.
+
+The three base tables are read as `service_role` too, so a failure says which grant is missing rather than only that the view is unreadable.
+
+`service_role` getting `42501` on the other four views is the designed grant surface, not a regression: they are granted to `anon` and `authenticated` only, in this repo as on production. The harness records those four as informational.
+
+- [ ] **Step 7: Prove the negative**
+
+A check that has never been observed failing is not known to work. Break `anon`'s access to `capture_extract`, which all five views inner-join, confirm every assertion above goes red, restore it, and confirm they go green again.
+
+Two breakages, because they do not behave the same way and the difference is the subject of this whole gate:
+
+**Drop the RLS policy.** This is the silent one. RLS stays on, `anon` keeps its SELECT grant, every statement succeeds, and the four row-returning views return nothing at all. Nothing reports a fault anywhere.
+
+**Revoke the SELECT grant.** This is the loud one. The views are `security_invoker`, so `anon`'s own rights are what the underlying scan is checked against, and Postgres refuses with `42501 permission denied for table capture_extract`. Loud at the SQL and HTTP layers, though `getLogos` still swallows it into initials.
+
+Expect the stats view to misbehave in an instructive way under the silent breakage. `agents`, `captures`, `changes`, `marketplaces` and `last_captured_at` are read straight off `listing`, `capture` and `listing_change` and stay correct, while everything sourced through `v_registry_card` collapses to zero or null. The banner would keep claiming agents exist while the list below it showed none.
+
+**Then a third breakage, which neither of the first two reaches.** Drop the RLS policy on `capture_link` alone, leaving its grant intact and every other policy in place. Every view keeps every row. `v_logo_status` returns one row per listing with a null `logo_url` throughout, and `v_asset_passport` loses its `product_links`, `legal_links` and `media`. Confirm the row-count check still reports PASS and that `gate.check_logo_status` and `gate.check_passport` go red, then restore and confirm they go green. Repeat for `capture_plan`, `capture_permission` and `capture_compliance` together, which empties the passport's plans, permissions and compliance.
+
+That third one is the reason Step 5 asserts values. Without it the gate is green in a state where every card on the site shows initials and every passport has no plans, no links, no permissions and no compliance, which is a superset of the outage this gate exists to prevent.
+
+- [ ] **Step 8: Sentinel ingest**
+
+This is the only place `ingest_capture` is proved to resolve the renamed tables. Postgres only syntax-checks a plpgsql body; it does not resolve object names until a statement runs, and `ingest_capture('{}')` raises at its first guard before touching any relation. A version still saying `from asset` would pass the harness probe and fail here.
+
+Call `ingest_capture` as `service_role` with a complete payload for a `source_product_id` that does not exist, then again with the same id and one changed field. Assert `status: created` then `status: updated`, exactly one listing, one asset and one canonical slug for it, and the returned `asset_id` identical across both calls.
+
+Then re-ingest a listing that came from the **backfill**. That is the branch production runs for all 6,876 existing rows, and it is the combination the write path's `else` arm handles: an existing listing whose asset was created by the backfill migration rather than by `ingest_capture`. It must adopt the existing asset and create no second asset and no second slug.
+
+`set_capture_logo` is exercised in the same step, once against the sentinel and once against a product that does not exist, expecting `set` then `no_capture`. Its probe selects `l.current_capture_id from listing l`, so a version still naming `asset` dies right there.
+
+If any of these fails with a message mentioning `relation "asset" does not exist`, Task 6 missed a reference. Find it, fix it, and re-run the gate from Step 1.
+
+- [ ] **Step 9: Catalog audit and the app's own tests**
+
+Read the view options and the grant matrix out of the catalog rather than trusting the migrations: all five views must report `security_invoker=true`, all five must be selectable by `anon` and `authenticated`, and `v_logo_status` by `service_role`. Scan for any surviving object named for the old `asset` other than the ones deliberately named that way.
 
 ```bash
 npm run typecheck
 npm run test
 ```
 
-Then point `.env.local` at the branch and run `npm run dev`. Open `/registry` and one `/agent/<source_product_id>` page. Both must render exactly as they do against production. This catches anything the harness does not: a view column the app reads that quietly changed name.
+Expected: 18 passing, 1 skipped. The skip is the parity test, which needs Supabase credentials.
 
-- [ ] **Step 6: Report before merging**
+- [ ] **Step 10: What the container cannot cover, stated before merging**
 
-Post the harness output on the PR. Do not merge until every check passes and the app renders. Merging is the user's call, not the implementer's.
+The gate passing does not mean the spec's requirement was met. These risks reach production unverified, and the "After this merges" section below is the only thing that catches them:
+
+**PostgREST is not in the loop.** Every read above is SQL over a socket, not HTTP through PostgREST as `anon`. PostgREST keeps its own schema cache and reloads it on a DDL event trigger, so a renamed relation can leave it briefly stale. That failure is loud, `404 PGRST205 Could not find the table in the schema cache`, and it is transient, but it is not observed here.
+
+**No JWT is involved.** The container uses `set role`; production reaches `anon` and `service_role` through `authenticator` and a signed JWT. A grant on `authenticator`, or role membership, is not exercised.
+
+**The data is a four-row seed, not 6,876 listings and 30,900 captures.** So this proves the shape of the backfill, not its behaviour at scale: no lock duration, no statement timeout, no query plan is representative. The `add column` in the backfill takes an ACCESS EXCLUSIVE lock on every row in the registry, and `v_registry_stats` has already timed out once against production under load.
+
+**"Identical before and after" is not proved by this gate at all.** The claim phase 1 exists to make is that the registry after it is exactly the registry before it. The container has no production data to compare, so nothing here tests it. That evidence comes only from `npm run verify:asset-layer` against production after the merge.
+
+**Any production-only schema divergence is invisible.** The container is built from the repo. If production holds an object the repo does not describe, which is the exact condition Task 1 existed to fix, this gate cannot see it. The controller checked the five view shapes against production by hand and found no divergence; nothing automated covers it.
+
+**The SECURITY DEFINER to `security_invoker` flip is not observed flipping.** The container never carried the definer version, because the repo's reconstruction restores `security_invoker` at Task 1. So Step 6 proves the invoker form works, not that the transition from the definer form works.
 
 ---
 
@@ -959,6 +1062,8 @@ git commit -m "docs: describe listings and the asset layer"
 
 **Spec coverage.** Every phase 1 item in the spec maps to a task: the renames and the capture comment to Task 3; the three new tables with RLS and grants to Task 4; the uniqueness assertion, backfill and `not null` to Task 5; the `ingest_capture` reordering, the slug fallback, the return contract and `set_capture_logo` to Task 6; the view recreation, the additive `listing_id` and `asset_id`, the retired-asset exclusion and the grant assertion to Task 7; the branch-database requirement and the whole phase 1 verification list to Tasks 2 and 8.
 
+**One spec requirement is not met.** "Phase 1 runs on a Supabase branch database first" is unmet because the project does not have branching. Task 8 records it as a deviation, substitutes a local Postgres container carrying production's roles, and lists what the substitution cannot reach. It is not closed by anything in this plan; the "After this merges" sequence is what carries it.
+
 Two spec items are deliberately not here because they belong to phase 2: `v_listing_passport` and `v_asset_evidence`, and the `search_blob` and array-containment facet work. The spec assigns all of them to phase 2.
 
 One spec claim is corrected by this plan: the spec says the harvest scripts consume `asset_id` from the ingest result. They do not. Verified across every `.mjs`: they read `status`, `reach` and `risk` only. The return key is still kept and given its new meaning, for the reason stated in Task 6 Step 3.
@@ -968,3 +1073,23 @@ One spec claim is corrected by this plan: the spec says the harvest scripts cons
 **Placeholder scan.** No TBD, no "handle errors appropriately", no "similar to Task N". Two steps deliberately instruct the implementer to work from a live dump rather than from pasted SQL: Task 1 Step 1 and Task 7 Step 1. That is not a placeholder, it is the only correct source, because the repo's copies of those objects are known to be stale and pasting them here would bake the staleness in.
 
 **Type consistency.** `v_listing`, `v_asset`, `v_new_listing` and `v_slug_fallback` are declared in Task 6 Step 2 and used in Steps 2 and 3. `listing.asset_id` is created in Task 5 and read by Task 6 and Task 7. `asset.primary_listing_id` is created in Task 4, populated in Task 5 and Task 6. The ingest return keys named in Task 6 Step 3 match those documented in Task 9 Step 3.
+
+---
+
+## After this merges
+
+Task 9 ends the implementation. Nothing above proves the claim phase 1 exists to prove, that the registry after phase 1 is exactly the registry before it, because the container Task 8 uses holds a four-row seed rather than production's data. That evidence comes only from running the harness against production after the merge, and with no branch database in the picture this sequence is now the whole of the production-shaped verification rather than a second pass over it. In order:
+
+1. Quiesce the capture worker before the push. Each migration file is its own transaction, so a harvest landing between the rename and the function rewrite fails with `relation "asset" does not exist`, and the `add column` in the backfill migration takes an ACCESS EXCLUSIVE lock that would queue behind an open ingest.
+
+2. Re-capture the baseline immediately before the push: `npm run verify:baseline` against production. So drift in `captures`, `changes` and `last_captured_at` between when the baseline was last written and when the migrations actually land does not produce failures someone has to reason away afterward.
+
+3. Run `npm run verify:asset-layer` against production. Every check must pass, with no expected-failure list: production has data, so nothing here is vacuous. The thirteen expected failures the old Task 8 listed belonged to a data-less branch database that no longer exists in this plan.
+
+4. Run `npm run test:parity`, since `registry_search` joins on `asset_id` and that column changed meaning: it named a listing before this phase and names a real product after it.
+
+5. Confirm `v_logo_status` returns a non-zero count to both `anon` and `service_role`, **and that `logo_url` is populated on the rows that should have one**. The definer-to-invoker flip in Task 7 is production-only, since the container never carried the SECURITY DEFINER version to flip. Its failure mode for `service_role` is a missing grant on `listing`, `capture_extract` or `capture_link`, which is `42501` and loud, not silence: `service_role` is BYPASSRLS, so RLS cannot quietly empty a view for it. For `anon`, both signatures are live, and the one a row count misses is `capture_link` becoming unreadable, which leaves every row in place with a null `logo_url`. Check the column, not just the count. Task 8 proved the invoker form works for both roles, which is the strongest available evidence short of watching the flip itself.
+
+6. Re-run the Supabase linter and confirm the `v_logo_status` SECURITY DEFINER error has cleared.
+
+7. Render the app against production. Point `.env.local` at production, run `npm run dev`, open `/registry` and one `/agent/<source_product_id>` page, and confirm both render exactly as they did before the merge. Nothing before this step renders a page: Task 8's container was never served to a browser and holds four seeded rows rather than a product id anyone can navigate to. This is what catches a view column the app reads that quietly changed name.

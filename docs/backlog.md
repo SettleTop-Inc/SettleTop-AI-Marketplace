@@ -59,7 +59,7 @@ hotlinked image can be swapped or deleted under us and cannot be hashed.
 
 ## 4. Make change history visible
 
-`asset_change` is populated on every re-capture and nothing in the UI shows it.
+`listing_change` is populated on every re-capture and nothing in the UI shows it.
 This is the product's differentiator sitting unused. Minimum: a "What changed"
 strip on the passport, and a `/changes` feed page reading `v_asset_change_feed`.
 
