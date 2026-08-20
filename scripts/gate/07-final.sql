@@ -110,6 +110,18 @@ begin
   perform gate.check_view_options('7. final read, after every write');
   perform gate.check_cert_group_coherent('7. final read, after every write');
   perform gate.check_passport_group_coherent('7. final read, after every write');
+
+  -- registry_search, after the third capture of seed-alpha and after step 5 has
+  -- moved a listing between assets and put it back. Both are why these run
+  -- again rather than being taken on trust from step 3: the blob is rebuilt
+  -- from the current capture on every read, and 5u wrote to the column that
+  -- decides which asset a listing belongs to.
+  perform gate.check_search_total('7. final read, after every write');
+  perform gate.check_search_term('7. final read, after every write', 'invoices', 'seed-beta');
+  perform gate.check_search_term('7. final read, after every write', 'triage', 'seed-gamma');
+  perform gate.check_search_escape('7. final read, after every write');
+  perform gate.check_search_source('7. final read, after every write');
+  perform gate.check_search_sort('7. final read, after every write');
 end $$;
 
 \pset format aligned

@@ -585,6 +585,369 @@ begin
   values (p_step, 'anon', 'v_asset_passport (group coherence)', n_rows, v, note);
 end $fn$;
 
+-- registry_search over the whole asset ---------------------------------------
+--
+-- registry_search had no gate coverage at all before phase 2 task 3. It is the
+-- only call the registry page makes, and every property it has was resting on
+-- lib/registry-search.parity.test.ts, which can only run against production.
+--
+-- Five checks. Every one of them reads its EXPECTATION as postgres, before the
+-- role is switched to anon, and compares it against what anon actually gets
+-- back. That ordering is the whole design: an assertion that derived both sides
+-- from the same anon read would be perfectly green against a registry that
+-- returns nothing at all. 5q drops the marketplace policy to prove each of
+-- these can in fact go red, rather than leaving it argued here.
+--
+-- Two of the four properties task 3 changed are invisible under 1:1, because
+-- "the asset's marketplaces" and "the primary listing's marketplace" are the
+-- same thing while every asset has one listing. 5u gives one asset two
+-- listings on two marketplaces, for exactly as long as it takes to assert
+-- them, and puts it back.
+
+-- total is a count of ASSETS. registry_search reads v_registry_card, which
+-- check_card_asset independently proves is one row per live asset, so this
+-- compares against the card and reports the listing count beside it: the two
+-- are equal under 1:1 and diverge the moment an asset has a second listing,
+-- which is when this assertion starts discriminating.
+create or replace function gate.check_search_total(p_step text, p_expect text default 'green')
+returns void language plpgsql as $fn$
+declare n_cards bigint; n_listings bigint; j jsonb; t bigint; n_returned int;
+        ok boolean; v text; note text := '';
+begin
+  begin
+    select count(*) into n_cards    from v_registry_card;
+    select count(*) into n_listings from listing;
+    set role anon;
+    j := registry_search(p_limit => 100000);
+    reset role;
+    t := (j ->> 'total')::bigint;
+    n_returned := jsonb_array_length(j -> 'rows');
+    ok := n_cards > 0 and t = n_cards and n_returned = n_cards;
+    v := gate.expect(ok, p_expect);
+    note := format('total %s, rows returned %s, card rows %s, listings %s',
+                   t, n_returned, n_cards, n_listings);
+  exception when others then
+    reset role; v := 'ERROR ' || sqlstate; note := sqlerrm;
+  end;
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (p_step, 'anon', 'registry_search (total)', t, v, note);
+end $fn$;
+
+-- A term that appears in exactly one listing, in a field only search_blob
+-- carries, still finds the product it belongs to.
+--
+-- p_pid is the source_product_id of the CARD expected back, which is the
+-- product's PRIMARY listing. Under 1:1 that is the listing the term came from.
+-- Under 5u it is not, and that is the assertion phase 3 exists for: the term
+-- lives on the secondary listing and the card that answers for it names the
+-- primary one.
+create or replace function gate.check_search_term(p_step text, p_term text, p_pid text,
+                                                  p_expect text default 'green')
+returns void language plpgsql as $fn$
+declare j jsonb; t bigint; pid text; ok boolean; v text; note text := '';
+begin
+  begin
+    set role anon;
+    j := registry_search(p_q => p_term, p_limit => 100000);
+    reset role;
+    t   := (j ->> 'total')::bigint;
+    pid := j -> 'rows' -> 0 ->> 'source_product_id';
+    ok  := t = 1 and pid = p_pid;
+    v := gate.expect(ok, p_expect);
+    note := format('q %L: total %s, first source_product_id %L, expected %L',
+                   p_term, t, coalesce(pid, '(none)'), p_pid);
+  exception when others then
+    reset role; v := 'ERROR ' || sqlstate; note := sqlerrm;
+  end;
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (p_step, 'anon', 'registry_search (free text)', t, v, note);
+end $fn$;
+
+-- The needle escaping, asserted through registry_search itself rather than
+-- through a copy of its logic.
+--
+-- gate.like_literal already proves the escaping RULE. This proves the rule is
+-- still wired into the function, which is a different thing and is easy to
+-- break while editing the CTE around it.
+--
+-- Every expected count is computed with strpos() over search_blob, read as
+-- postgres. strpos has no pattern language at all, so the expectation cannot
+-- be wrong in the same way the thing it is checking can. Hardcoding the
+-- answers instead is not just brittle, it is the wrong kind of brittle: the
+-- first version of this check asserted "the underscore matches exactly
+-- seed-alpha" and went red the moment 06-sentinel.sql added a fourth listing
+-- whose tagline names ingest_capture, which is a correct extra match.
+--
+--   ''        every card, so nothing below is being compared against an empty
+--             registry.
+--   'seed'    the cards whose blob really contains it, and more than none.
+--             This is the positive control: it goes through the LIKE, so if
+--             the predicate matched nothing at all the wildcard assertions
+--             would pass for entirely the wrong reason.
+--   '%'       the cards whose blob really contains a percent sign, which is
+--             none of them. Unescaped this is the pattern '%%%' and matches
+--             the whole registry. This is "100% managed" in one character.
+--   '_'       the cards whose blob really contains an underscore. Unescaped
+--             this is '%_%' and matches every non-empty blob.
+--   backslash the cards whose blob really contains one, which is seed-alpha
+--             alone. This is the case that goes wrong when the backslash is
+--             not DOUBLED: the pattern degenerates into a wildcard followed by
+--             a literal percent and matches nothing, so this one reads too FEW
+--             where the other two read too many.
+--
+-- Each of the last three also requires its expected count to be below the card
+-- count, or the comparison would be satisfied by a function that matched
+-- everything. seed-alpha is additionally required to be among the rows for the
+-- two adversarial needles, because its publisher was seeded with a literal
+-- backslash and underscore for exactly this, and a count alone cannot tell
+-- the right rows from the wrong ones.
+--
+-- The backslash is written as chr(92) so this file stays ASCII and so the test
+-- cannot be broken by the same escaping confusion it is looking for.
+create or replace function gate.check_search_escape(p_step text, p_expect text default 'green')
+returns void language plpgsql as $fn$
+declare bs text := chr(92);
+        n_cards bigint; n_seed bigint; n_pct bigint; n_und bigint; n_bs bigint;
+        j jsonb; t_all bigint; t_seed bigint; t_pct bigint; t_und bigint; t_bs bigint;
+        a_und boolean; a_bs boolean;
+        ok boolean; v text; note text := '';
+begin
+  begin
+    select count(*),
+           count(*) filter (where strpos(search_blob, 'seed') > 0),
+           count(*) filter (where strpos(search_blob, '%')    > 0),
+           count(*) filter (where strpos(search_blob, '_')    > 0),
+           count(*) filter (where strpos(search_blob, bs)     > 0)
+      into n_cards, n_seed, n_pct, n_und, n_bs
+      from v_registry_card;
+
+    set role anon;
+    t_all  := (registry_search(p_limit => 0) ->> 'total')::bigint;
+    t_seed := (registry_search(p_q => 'seed', p_limit => 0) ->> 'total')::bigint;
+    t_pct  := (registry_search(p_q => '%',    p_limit => 0) ->> 'total')::bigint;
+    j := registry_search(p_q => '_', p_limit => 100000);
+    t_und := (j ->> 'total')::bigint;
+    select count(*) > 0 into a_und from jsonb_array_elements(j -> 'rows') e
+     where e.value ->> 'source_product_id' = 'seed-alpha';
+    j := registry_search(p_q => bs, p_limit => 100000);
+    t_bs := (j ->> 'total')::bigint;
+    select count(*) > 0 into a_bs from jsonb_array_elements(j -> 'rows') e
+     where e.value ->> 'source_product_id' = 'seed-alpha';
+    reset role;
+
+    ok := n_cards > 0
+      and t_all  = n_cards
+      and t_seed = n_seed and n_seed > 0
+      and t_pct  = n_pct  and n_pct  < n_cards
+      and t_und  = n_und  and n_und  > 0 and n_und < n_cards and a_und
+      and t_bs   = n_bs   and n_bs   > 0 and n_bs  < n_cards and a_bs;
+    v := gate.expect(ok, p_expect);
+    note := format('%s cards: empty %s; seed %s of %s; percent %s of %s; underscore %s of %s, seed-alpha among them %s; backslash %s of %s, seed-alpha among them %s',
+                   n_cards, t_all, t_seed, n_seed, t_pct, n_pct,
+                   t_und, n_und, coalesce(a_und::text, 'no rows'),
+                   t_bs, n_bs, coalesce(a_bs::text, 'no rows'));
+  exception when others then
+    reset role; v := 'ERROR ' || sqlstate; note := sqlerrm;
+  end;
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (p_step, 'anon', 'registry_search (needle escaping)', n_cards, v, note);
+end $fn$;
+
+-- The source facet: names not ids, one count per marketplace, and a filter that
+-- matches ANY of the asset's marketplaces.
+--
+-- The expectation is built from listing and marketplace directly, never from
+-- v_registry_card.marketplace_ids, so this cross-checks the array task 2 built
+-- rather than agreeing with it. An asset is expected under EVERY marketplace it
+-- has a listing on, which is what makes the counts sum to more than total once
+-- an asset is multi-listed.
+--
+-- Four separate things are asserted and each has its own failure:
+--
+--   1. the facet's (value, count) pairs equal the expectation exactly, which
+--      covers a missing value, an extra value and a wrong count in one
+--      comparison;
+--   2. every value is a real marketplace NAME, so an id can never leak into the
+--      rail;
+--   3. the counts sum to the number of (asset, marketplace) pairs;
+--   4. filtering by each name returns that count, and every card it returns
+--      really does have a listing on that marketplace.
+--
+-- And two zero assertions. Filtering by the raw marketplace IDS must return
+-- nothing, which is the ids-versus-names question stated as a test: a function
+-- that compared p_source against marketplace_ids would pass every count above
+-- and fail here, because the rail would be showing names the filter could never
+-- match. Filtering by a value that is neither returns nothing too, which is the
+-- control for that one: it proves an empty result is not simply what this
+-- function does with every array it is handed.
+create or replace function gate.check_search_source(p_step text, p_expect text default 'green')
+returns void language plpgsql as $fn$
+declare
+  j jsonb; t bigint; facet jsonb; expected text[]; actual text[];
+  n_not_a_name int; sum_counts bigint; sum_expected bigint;
+  r record; n_off int; n_filter_bad int := 0;
+  ids text[]; t_by_id bigint; t_bogus bigint;
+  ok boolean; v text; note text := '';
+begin
+  begin
+    select array_agg(x.name || '=' || x.n order by x.name) into expected
+      from (select m.name, count(distinct c.asset_id) as n
+              from v_registry_card c
+              join listing l     on l.asset_id = c.asset_id
+              join marketplace m on m.id = l.marketplace_id
+             group by m.name) x;
+    select count(*) into sum_expected
+      from (select distinct c.asset_id, l.marketplace_id
+              from v_registry_card c
+              join listing l on l.asset_id = c.asset_id) pairs;
+    select array_agg(m.id order by m.id) into ids from marketplace m;
+
+    set role anon;
+    j := registry_search(p_limit => 0);
+    reset role;
+    t     := (j ->> 'total')::bigint;
+    facet := j -> 'facets' -> 'source';
+
+    select array_agg((e.value ->> 'value') || '=' || (e.value ->> 'count')
+                     order by e.value ->> 'value')
+      into actual from jsonb_array_elements(facet) e;
+    select coalesce(sum((e.value ->> 'count')::bigint), 0) into sum_counts
+      from jsonb_array_elements(facet) e;
+    select count(*) into n_not_a_name
+      from jsonb_array_elements(facet) e
+     where not exists (select 1 from marketplace m where m.name = e.value ->> 'value');
+
+    for r in select m.name, count(distinct c.asset_id) as n
+               from v_registry_card c
+               join listing l     on l.asset_id = c.asset_id
+               join marketplace m on m.id = l.marketplace_id
+              group by m.name
+    loop
+      set role anon;
+      j := registry_search(p_source => array[r.name], p_limit => 100000);
+      reset role;
+      if (j ->> 'total')::bigint is distinct from r.n then
+        n_filter_bad := n_filter_bad + 1;
+      end if;
+      select count(*) into n_off
+        from jsonb_array_elements(j -> 'rows') e
+       where not exists (
+               select 1 from listing l join marketplace m on m.id = l.marketplace_id
+                where l.asset_id = (e.value ->> 'asset_id')::uuid and m.name = r.name);
+      n_filter_bad := n_filter_bad + n_off;
+    end loop;
+
+    set role anon;
+    t_by_id := (registry_search(p_source => ids, p_limit => 0) ->> 'total')::bigint;
+    t_bogus := (registry_search(p_source => array['definitely-not-a-marketplace'],
+                                p_limit => 0) ->> 'total')::bigint;
+    reset role;
+
+    ok := t > 0
+      and actual is not distinct from expected
+      and n_not_a_name = 0
+      and sum_counts = sum_expected
+      and n_filter_bad = 0
+      and t_by_id = 0 and t_bogus = 0;
+    v := gate.expect(ok, p_expect);
+    note := format('total %s; facet %s vs expected %s; non-name values %s; counts sum %s vs %s asset-marketplace pairs; filter mismatches %s; by raw id %s (must be 0); bogus %s (must be 0)',
+                   t,
+                   coalesce(array_to_string(actual, ', '), '(none)'),
+                   coalesce(array_to_string(expected, ', '), '(none)'),
+                   n_not_a_name, sum_counts, sum_expected, n_filter_bad,
+                   t_by_id, t_bogus);
+  exception when others then
+    reset role; v := 'ERROR ' || sqlstate; note := sqlerrm;
+  end;
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (p_step, 'anon', 'registry_search (source facet)', t, v, note);
+end $fn$;
+
+-- The eight sort orders, checked as PROPERTIES rather than against a second
+-- copy of the ORDER BY.
+--
+-- Rebuilding the expected order with the same window function would assert only
+-- that two identical expressions agree. These four properties are independent
+-- of how the ordering is written, and between them they pin the three things
+-- the comment in registry_search says the ordering has to do:
+--
+--   the page is complete    every card comes back, exactly once
+--   the key is monotonic    in the direction asked for, which is what catches a
+--                           p_dir that stopped being read
+--   nulls are last in BOTH  no row with a null key precedes a row with one, in
+--     directions            desc or in asc. A missing rating is not a rating of
+--                           zero. rating is null on two of the three seeds, so
+--                           this is live rather than theoretical.
+--   ties break by asset_id  ascending, whichever way the key sorts, without
+--                           which a row can straddle a page boundary
+--
+-- The key expression is spliced per sort because reach and rating are numeric,
+-- captured is a timestamp and name sorts under registry_name_ci; comparing them
+-- all as text would silently make the numeric checks lexicographic.
+create or replace function gate.check_search_sort(p_step text, p_expect text default 'green')
+returns void language plpgsql as $fn$
+declare
+  sorts text[] := array['reach','rating','captured','name'];
+  dirs  text[] := array['desc','asc'];
+  s text; d text; j jsonb; n_cards bigint; keyx text; viol text; t bigint;
+  n_rows int; n_distinct int; n_mono int; n_null_early int; n_tie int;
+  bad text := ''; ok boolean; v text; note text := '';
+begin
+  begin
+    select count(*) into n_cards from v_registry_card;
+    foreach s in array sorts loop
+      keyx := case s
+                when 'reach'    then '(e.value ->> ''reach'')::numeric'
+                when 'rating'   then '(e.value ->> ''rating'')::numeric'
+                when 'captured' then '(e.value ->> ''last_captured_at'')::timestamptz'
+                else                 '(e.value ->> ''name'') collate registry_name_ci'
+              end;
+      foreach d in array dirs loop
+        viol := case when d = 'desc' then 'k > pk' else 'k < pk' end;
+        set role anon;
+        j := registry_search(p_sort => s, p_dir => d, p_limit => 100000);
+        reset role;
+        t := (j ->> 'total')::bigint;
+        execute format($q$
+          with r as (
+            select (e.value ->> 'asset_id')::uuid as aid, %s as k, e.ord as ord
+              from jsonb_array_elements($1 -> 'rows') with ordinality e(value, ord)
+          ), w as (
+            select aid, k, ord,
+                   lag(k)   over (order by ord) as pk,
+                   lag(aid) over (order by ord) as paid
+              from r
+          )
+          select count(*)::int,
+                 count(distinct aid)::int,
+                 count(*) filter (where ord > 1 and k is not null and pk is not null and (%s))::int,
+                 count(*) filter (where ord > 1 and k is not null and pk is null)::int,
+                 count(*) filter (where ord > 1 and k is not distinct from pk and aid < paid)::int
+            from w
+        $q$, keyx, viol)
+        into n_rows, n_distinct, n_mono, n_null_early, n_tie
+        using j;
+
+        if not (n_cards > 0 and t = n_cards and n_rows = n_cards
+                and n_distinct = n_rows and n_mono = 0
+                and n_null_early = 0 and n_tie = 0) then
+          bad := bad || format('%s %s (total %s, rows %s, distinct %s, out of order %s, null before a value %s, tie not broken by asset_id %s); ',
+                               s, d, t, n_rows, n_distinct, n_mono, n_null_early, n_tie);
+        end if;
+      end loop;
+    end loop;
+    ok := n_cards > 0 and bad = '';
+    v := gate.expect(ok, p_expect);
+    note := format('%s cards, 8 orderings: %s', n_cards,
+                   coalesce(nullif(bad, ''),
+                            'all complete, monotonic, nulls last both ways, ties by asset_id'));
+  exception when others then
+    reset role; v := 'ERROR ' || sqlstate; note := sqlerrm;
+  end;
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (p_step, 'anon', 'registry_search (sort order)', n_cards, v, note);
+end $fn$;
+
 do $$
 begin
   perform gate.check_rows('3f. anon reads the phase 2 views', 'anon', 'v_registry_card');
@@ -601,6 +964,18 @@ begin
   perform gate.check_view_options('3h. all seven views are security_invoker');
   perform gate.check_cert_group_coherent('3i. the certification group agrees with itself');
   perform gate.check_passport_group_coherent('3i. the certification group agrees with itself');
+
+  -- registry_search. 'invoices' is in seed-beta's tagline and nowhere else in
+  -- any blob field: its overview_text mentions invoices too, but overview_text
+  -- is not one of the nine. 'triage' is in seed-gamma's tagline alone. Both
+  -- would fail if the match had been left on the card's own columns and the
+  -- tagline had stopped being part of what search reads.
+  perform gate.check_search_total('3j. registry_search counts assets, not listings');
+  perform gate.check_search_term('3j. a term only in a tagline finds its asset', 'invoices', 'seed-beta');
+  perform gate.check_search_term('3j. a term only in a tagline finds its asset', 'triage', 'seed-gamma');
+  perform gate.check_search_escape('3k. the needle is escaped, so % is not a wildcard');
+  perform gate.check_search_source('3l. the source facet is names, sums, and matches any marketplace');
+  perform gate.check_search_sort('3m. the eight sort orders are unchanged');
 end $$;
 
 \pset format aligned
