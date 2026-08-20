@@ -54,34 +54,60 @@
 
 -- Two rules shared by both asset keyed views ---------------------------------
 --
--- 1. certification resolves as ANY listing, not the primary one. If one
+-- 1. THE QUALIFYING LISTING, and the whole group of fields that comes from it.
+--
+--    certification resolves as ANY listing, not the primary one. If one
 --    marketplace certifies a product and another does not, the product is
 --    certified; that is already what v_registry_stats.certified says with its
 --    count(distinct asset_id), and the card and the passport now agree with it.
---    provenance, evidence_tier, risk and cert_label follow the listing that
---    qualified, not the primary one, because all four are derived from that
---    listing's certification at ingest and reading them off a different listing
---    would state a tier the certification does not support.
 --
---    THIS IS UNTESTABLE TODAY AND DELIBERATELY SO. Under 1:1 every asset has
---    exactly one listing, so "any listing" and "the primary listing" select the
---    same row and no assertion anywhere can tell the two rules apart. It is
---    written as "any" because that is the rule; a passing check today is not
---    evidence that it is right. Phase 3, which is what first gives an asset two
---    listings, is the earliest point at which this can be proved.
+--    Everything derived from certification comes from that SAME listing, and
+--    this file guarantees it structurally rather than clerically. The `cert`
+--    lateral in each view selects the qualifying listing once, with one
+--    ordering and limit 1, and every certification-derived column is read off
+--    that single row. There is no list to keep in step by hand: a field that
+--    belongs to the group is added to that one select list, and it then cannot
+--    come from a different listing than its siblings. The first draft of this
+--    file expressed the same pick as four independent ordered aggregates, and
+--    that shape is exactly what let risk_basis be left out of the group with
+--    nothing noticing.
 --
---    The pick is expressed as (array_agg(col order by <total order>))[1]. All
---    four columns use the SAME ordering, and that ordering is total because
---    l2.id breaks every remaining tie, so all four are guaranteed to come from
---    one listing rather than from four independently chosen ones.
+--    Why each member is in the group. ingest_capture computes four columns of
+--    capture_extract from the certification and stores them:
 --
---    risk_basis is NOT in that list. The spec's rule names four followers and
---    risk_basis is not one of them, so it stays with the primary listing. That
---    is a known wart: risk_basis is the human readable justification for risk,
---    so the day an asset holds two listings with different certifications, a
---    card can show a risk band taken from one listing beside a sentence
---    explaining a different one. Recorded here rather than quietly fixed,
---    because changing the rule is a spec decision and not this migration's.
+--      provenance     registry_provenance(cert) ->> 'provenance'
+--      evidence_tier  registry_provenance(cert) ->> 'tier'
+--      risk           registry_risk(cert, layers) ->> 'risk'
+--      risk_basis     registry_risk(cert, layers) ->> 'basis'
+--
+--    and both views compute a fifth, cert_label, as
+--    registry_provenance(cert) ->> 'label'. risk and risk_basis are two halves
+--    of one registry_risk() call: risk is the band, risk_basis is the sentence
+--    explaining that band, and that sentence opens with the certification's own
+--    label. Reading them off different listings puts "Publisher attested" next
+--    to "No attestation published" on one card, stating a risk and then
+--    explaining a different one.
+--
+--    Nothing else on either view is fed by registry_provenance() or
+--    registry_risk(); those two functions are the whole boundary of the group.
+--    known_layers, layers_known and reach are the nearest thing to a further
+--    member and are deliberately outside it. Certification contributes one of
+--    the twelve layer names ('permission scope', counted only where the listing
+--    is certified or attested), so those three are weakly coupled to it, but
+--    they describe the disclosure of the listing whose overview text the
+--    passport actually renders, and moving them would caption one marketplace's
+--    page with another marketplace's layer count. That leaves one seam, and it
+--    is recorded here rather than hidden: risk_basis ends with "N of M
+--    disclosable layers stated" where N is the qualifying listing's count,
+--    while layers_known beside it is the primary listing's. The two are the
+--    same number under 1:1 and can differ afterwards.
+--
+--    ALL OF THIS IS UNTESTABLE TODAY AND DELIBERATELY SO. Under 1:1 every
+--    asset has exactly one listing, so "any listing" and "the primary listing"
+--    select the same row and no assertion anywhere can tell the two rules
+--    apart. It is written this way because that is the rule; a passing check
+--    today is not evidence that it is right. Phase 3, which is what first gives
+--    an asset two listings, is the earliest point at which it can be proved.
 --
 -- 2. The counts and dates aggregate: last_captured_at is the max across the
 --    asset's listings, capture_count the sum, first_seen_at the min. A product
@@ -110,10 +136,10 @@ select
   x.name, x.publisher, x.tagline,
   x.function_category, x.delivery, x.surfaces,
   x.rating, x.rating_count, x.external_source, x.external_rating,
-  agg.certification,
-  registry_provenance(agg.certification) ->> 'label' as cert_label,
-  agg.provenance, agg.evidence_tier,
-  x.reach, agg.risk, x.risk_basis,
+  cert.certification,
+  registry_provenance(cert.certification) ->> 'label' as cert_label,
+  cert.provenance, cert.evidence_tier,
+  x.reach, cert.risk, cert.risk_basis,
   x.price_band, x.price_note,
   x.listing_version, x.listing_updated,
   x.known_layers,
@@ -127,6 +153,27 @@ from asset a
 join listing l         on l.id = a.primary_listing_id and l.asset_id = a.id
 join marketplace m     on m.id = l.marketplace_id
 join capture_extract x on x.capture_id = l.current_capture_id
+-- The qualifying listing. One row, one ordering, and every field the
+-- certification derives is read off it, so the group cannot come apart. See
+-- rule 1 at the top of this file. The ordering is total, because l2.id breaks
+-- every remaining tie, so this picks the same listing on every execution rather
+-- than whichever one the planner happened to reach first.
+cross join lateral (
+  select x2.certification, x2.provenance, x2.evidence_tier, x2.risk, x2.risk_basis
+    from listing l2
+    left join capture_extract x2 on x2.capture_id = l2.current_capture_id
+   where l2.asset_id = a.id
+   order by case x2.certification
+              when 'microsoft_365_certified' then 0
+              when 'publisher_attestation'   then 1
+              when 'none'                    then 2
+              when 'not_eligible'            then 3
+              else                                4   -- no extract, so nothing stated
+            end,
+            (l2.id = a.primary_listing_id) desc,
+            l2.id
+   limit 1
+) cert
 cross join lateral (
   select
     max(l2.last_captured_at)                                as last_captured_at,
@@ -138,14 +185,6 @@ cross join lateral (
     -- same product under two ids and a merge joining them is allowed. A
     -- repeated id in this array would be noise in a source facet, so distinct.
     array_agg(distinct m2.id order by m2.id)                as marketplace_ids,
-    (array_agg(x2.certification
-       order by o.cert_rank, o.is_primary desc, l2.id))[1]  as certification,
-    (array_agg(x2.provenance
-       order by o.cert_rank, o.is_primary desc, l2.id))[1]  as provenance,
-    (array_agg(x2.evidence_tier
-       order by o.cert_rank, o.is_primary desc, l2.id))[1]  as evidence_tier,
-    (array_agg(x2.risk
-       order by o.cert_rank, o.is_primary desc, l2.id))[1]  as risk,
     -- search_blob: the same nine fields, in the same order, as searchBlob() in
     -- lib/registry-query.ts and as registry_search's own concat_ws, but
     -- concatenated across EVERY listing of the asset rather than one.
@@ -165,6 +204,13 @@ cross join lateral (
     -- marketplace name and a "No attestation published" label from
     -- registry_provenance(null), which is text no marketplace ever published.
     --
+    -- Each listing contributes its OWN cert label here, not the qualifying
+    -- listing's. This is a search index over what the marketplaces published,
+    -- one entry per page, and it is the one place in these views where the
+    -- certification group deliberately does not resolve to a single listing:
+    -- a visitor searching for the words on the AWS page should find the
+    -- product whether or not the Microsoft page carries the same words.
+    --
     -- coalesce to '' rather than leaving null, so a search predicate over this
     -- column never has to reason about three-valued logic.
     coalesce(string_agg(
@@ -181,27 +227,18 @@ cross join lateral (
           nullif(array_to_string(x2.surfaces, ' '), '')
         )), '')
       end,
-      ' ' order by o.is_primary desc, m2.name, l2.id), '')   as search_blob
+      ' ' order by (l2.id = a.primary_listing_id) desc, m2.name, l2.id), '') as search_blob
   from listing l2
   join marketplace m2          on m2.id = l2.marketplace_id
   -- LEFT, so listing_count and marketplace_ids count a listing that has no
   -- capture yet. The card's own columns come from the primary listing, which
   -- the inner join above proves has one.
   left join capture_extract x2 on x2.capture_id = l2.current_capture_id
-  cross join lateral (select
-      case x2.certification
-        when 'microsoft_365_certified' then 0
-        when 'publisher_attestation'   then 1
-        when 'none'                    then 2
-        when 'not_eligible'            then 3
-        else                                4   -- no extract, so no stated certification
-      end                              as cert_rank,
-      (l2.id = a.primary_listing_id)   as is_primary) o
   where l2.asset_id = a.id
 ) agg;
 
 comment on view v_registry_card is
-  'One row per product at its primary listing''s latest capture, sized for the registry grid. asset_id is the product; listing_id is the listing the headline fields came from. last_captured_at, capture_count, marketplace_ids, listing_count and search_blob span every listing of the product; certification and the four fields derived from it resolve as any listing. Does not carry overview text.';
+  'One row per product at its primary listing''s latest capture, sized for the registry grid. asset_id is the product; listing_id is the listing the headline fields came from. last_captured_at, capture_count, marketplace_ids, listing_count and search_blob span every listing of the product; certification, cert_label, provenance, evidence_tier, risk and risk_basis all come from the qualifying listing, which need not be the primary one. Does not carry overview text.';
 
 grant select on public.v_registry_card to anon, authenticated;
 
@@ -210,8 +247,9 @@ grant select on public.v_registry_card to anon, authenticated;
 --
 -- Appends listings, and nothing else. The 61 columns above it keep their
 -- names, types and positions; asset_id, first_seen_at, last_captured_at,
--- capture_count, certification, cert_label, provenance, evidence_tier and risk
--- change what they are sourced from and stay exactly where they sit.
+-- capture_count and the six of the certification group (certification,
+-- cert_label, provenance, evidence_tier, risk, risk_basis) change what they
+-- are sourced from and stay exactly where they sit.
 --
 -- listings is what the page renders as one panel per marketplace. The fields
 -- it carries are the ones the spec says must never be flattened: price,
@@ -242,14 +280,14 @@ select
   x.listing_version, x.listing_updated,
   x.rating, x.rating_count, x.native_rating, x.native_count,
   x.external_source, x.external_rating, x.external_count,
-  agg.certification,
-  registry_provenance(agg.certification) ->> 'label' as cert_label,
+  cert.certification,
+  registry_provenance(cert.certification) ->> 'label' as cert_label,
   x.cert_url, x.cert_hosting, x.cert_data_location, x.cert_data_handling,
   x.cert_developer_updated, x.cert_page_updated,
   x.function_category, x.delivery, x.price_band, x.price_note,
   x.known_layers, cardinality(x.known_layers) as layers_known,
   array_length(registry_layers(), 1)          as layers_tracked,
-  x.reach, agg.provenance, agg.evidence_tier, agg.risk, x.risk_basis,
+  x.reach, cert.provenance, cert.evidence_tier, cert.risk, cert.risk_basis,
   (select coalesce(jsonb_object_agg(kind, vals), '{}'::jsonb) from (
      select e.kind::text as kind, jsonb_agg(e.value order by e.value) as vals
        from capture_evidence e
@@ -294,35 +332,37 @@ join listing l         on l.id = a.primary_listing_id and l.asset_id = a.id
 join marketplace m     on m.id = l.marketplace_id
 join capture c         on c.id = l.current_capture_id
 join capture_extract x on x.capture_id = c.id
+-- The qualifying listing, written identically to the card's, for the same
+-- reason. See rule 1 at the top of this file.
+cross join lateral (
+  select x2.certification, x2.provenance, x2.evidence_tier, x2.risk, x2.risk_basis
+    from listing l2
+    left join capture_extract x2 on x2.capture_id = l2.current_capture_id
+   where l2.asset_id = a.id
+   order by case x2.certification
+              when 'microsoft_365_certified' then 0
+              when 'publisher_attestation'   then 1
+              when 'none'                    then 2
+              when 'not_eligible'            then 3
+              else                                4   -- no extract, so nothing stated
+            end,
+            (l2.id = a.primary_listing_id) desc,
+            l2.id
+   limit 1
+) cert
+-- The dates and counts need nothing but listing, so this one does not touch
+-- capture_extract at all.
 cross join lateral (
   select
-    min(l2.first_seen_at)                                   as first_seen_at,
-    max(l2.last_captured_at)                                as last_captured_at,
-    sum(l2.capture_count)::integer                          as capture_count,
-    (array_agg(x2.certification
-       order by o.cert_rank, o.is_primary desc, l2.id))[1]  as certification,
-    (array_agg(x2.provenance
-       order by o.cert_rank, o.is_primary desc, l2.id))[1]  as provenance,
-    (array_agg(x2.evidence_tier
-       order by o.cert_rank, o.is_primary desc, l2.id))[1]  as evidence_tier,
-    (array_agg(x2.risk
-       order by o.cert_rank, o.is_primary desc, l2.id))[1]  as risk
+    min(l2.first_seen_at)          as first_seen_at,
+    max(l2.last_captured_at)       as last_captured_at,
+    sum(l2.capture_count)::integer as capture_count
   from listing l2
-  left join capture_extract x2 on x2.capture_id = l2.current_capture_id
-  cross join lateral (select
-      case x2.certification
-        when 'microsoft_365_certified' then 0
-        when 'publisher_attestation'   then 1
-        when 'none'                    then 2
-        when 'not_eligible'            then 3
-        else                                4
-      end                              as cert_rank,
-      (l2.id = a.primary_listing_id)   as is_primary) o
   where l2.asset_id = a.id
 ) agg;
 
 comment on view v_asset_passport is
-  'Everything the agent passport renders, one row per product. The headline fields come from the primary listing''s latest capture; the dates and counts span every listing; certification and what it derives resolve as any listing. listings carries one entry per marketplace with the four fields marketplaces are allowed to disagree about. evidence carries verified rows only.';
+  'Everything the agent passport renders, one row per product. The headline fields come from the primary listing''s latest capture; the dates and counts span every listing; certification, cert_label, provenance, evidence_tier, risk and risk_basis all come from the qualifying listing, which need not be the primary one. listings carries one entry per marketplace with the four fields marketplaces are allowed to disagree about. evidence carries verified rows only.';
 
 grant select on public.v_asset_passport to anon, authenticated;
 
@@ -339,6 +379,12 @@ grant select on public.v_asset_passport to anon, authenticated;
 -- with no aggregation and no listings column. asset_id is already the first
 -- column and already the product's own uuid, so the "add asset_id so a caller
 -- can get back to the product" requirement is met by not removing it.
+--
+-- The certification group is deliberately NOT resolved here. This view's whole
+-- job is to say what one marketplace published, so certification and the five
+-- fields derived from it all come off this listing's own extract, exactly as
+-- they did before phase 2. There is no `cert` lateral, and that absence is the
+-- point rather than an omission.
 
 create or replace view v_listing_passport
 with (security_invoker = true) as
