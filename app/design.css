@@ -990,7 +990,7 @@ details[open] > .st-disclosure::before { content: "− "; }
    or merged value anywhere in it. */
 .st-listings {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: var(--s4);
 }
 .st-listing {
@@ -1020,6 +1020,9 @@ details[open] > .st-disclosure::before { content: "− "; }
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--s3) var(--s4);
+}
+@media (max-width: 720px) {
+  .st-listing__fields { grid-template-columns: 1fr; }
 }
 .st-listing__field {
   display: flex;

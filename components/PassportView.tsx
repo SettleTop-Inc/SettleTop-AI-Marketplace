@@ -128,9 +128,14 @@ function descriptionSource(a: Passport): string {
  * at all (phase 1), there is only one candidate and this returns the same
  * name descriptionSource() does.
  *
- * Matches the resolver's own tie-break: prefer the primary listing when its
- * certification already equals the resolved value, otherwise take the first
- * listing whose own certification agrees with it.
+ * Prefers the primary listing when its certification already equals the
+ * resolved value, matching the SQL resolver's own tie-break. Past that, this
+ * walks `listings` in the array's own order (primary first, then by
+ * marketplace_name), while the resolver's own tie-break past the primary is
+ * by listing_id. Those two orderings can only ever disagree with three or
+ * more non-primary candidates tied on certification tier, so with at most
+ * two listings total (today's ceiling) they always agree. If it ever
+ * matters, listing_id is the one to match, not marketplace_name.
  */
 function certificationSource(a: Passport): string {
   const listings = a.listings ?? [];
