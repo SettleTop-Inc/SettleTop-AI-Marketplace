@@ -551,6 +551,160 @@ test("the listing version is copied only where AWS publishes one delivery option
   assert.equal(toPayload({ record: both, capturedAt: "2026-08-20T00:00:00.000Z" }).extract.version, null);
 });
 
+// ------------------------------------------------------- delivery_ids ------
+
+test("delivery_ids carries the fulfilment type ID, and acquire_using carries the name", () => {
+  // Both fixtures state one option, and the two fields answer different
+  // questions off the same node: the id is what registry_delivery() switches
+  // on, the name is what a reader is shown.
+  const mcp = toPayload({
+    record: parseProductPage(MCP).record,
+    capturedAt: "2026-08-20T00:00:00.000Z",
+  }).extract;
+  assert.deepEqual(mcp.delivery_ids, ["API"]);
+  assert.equal(mcp.acquire_using, "API-Based Agents & Tools");
+
+  const rated = toPayload({
+    record: parseProductPage(RATED).record,
+    capturedAt: "2026-08-20T00:00:00.000Z",
+  }).extract;
+  assert.deepEqual(rated.delivery_ids, ["SAAS"]);
+  assert.equal(rated.acquire_using, "SaaS");
+
+  // The display name never leaks into the key the derivation reads. AWS
+  // renders "API-Based Agents & Tools" through the page's UI translation
+  // table and is free to reword it; "API" is the machine value.
+  for (const e of [mcp, rated]) {
+    for (const id of e.delivery_ids) {
+      assert.match(id, /^[A-Z0-9_]+$/);
+      assert.equal(id === e.acquire_using, false);
+    }
+  }
+});
+
+test("delivery_ids is distinct, so three AMIs are one delivery method", () => {
+  // A multi-version AMI listing publishes one fulfilment option per version,
+  // every one of them AMAZON_MACHINE_IMAGE. Repeating the id would say nothing
+  // extra and would make the array's length look like a fact about the
+  // listing.
+  const three = rebuild(MCP, (ctx) => {
+    for (const q of ctx.dehydratedState.queries) {
+      const f = q?.state?.data?.listingDetail?.usage?.fulfillmentOptions;
+      if (!f?.length) continue;
+      const ami = (n, date) => ({
+        ...f[0],
+        fulfillmentOptionId: `ami-${n}`,
+        fulfillmentOptionType: {
+          fulfillmentOptionTypeId: "AMAZON_MACHINE_IMAGE",
+          fulfillmentOptionTypeName: "Amazon Machine Image",
+        },
+        fulfillmentOptionVersion: `1.${n}`,
+        creationDate: date,
+      });
+      f.length = 0;
+      f.push(ami(1, "2026-01-01T00:00:00.000Z"));
+      f.push(ami(2, "2026-02-01T00:00:00.000Z"));
+      f.push(ami(3, "2026-03-01T00:00:00.000Z"));
+    }
+  });
+  const { record } = parseProductPage(three);
+  assert.equal(record.fulfillment_options.length, 3);
+  const e = toPayload({ record, capturedAt: "2026-08-20T00:00:00.000Z" }).extract;
+  assert.deepEqual(e.delivery_ids, ["AMAZON_MACHINE_IMAGE"]);
+  // acquire_using deduplicates on the same rule, so the two stay in step.
+  assert.equal(e.acquire_using, "Amazon Machine Image");
+});
+
+test("delivery_ids order is AWS's newest-first, not the blob's array order", () => {
+  // Two different types, with the CONTAINER option stated later in the array
+  // and created more recently. fulfillmentOptions() sorts on creationDate, a
+  // value AWS publishes, so the order is a consequence of AWS's own data
+  // rather than of where an entry happens to sit.
+  const mixed = rebuild(MCP, (ctx) => {
+    for (const q of ctx.dehydratedState.queries) {
+      const f = q?.state?.data?.listingDetail?.usage?.fulfillmentOptions;
+      if (!f?.length) continue;
+      const base = f[0];
+      f.length = 0;
+      f.push({
+        ...base,
+        fulfillmentOptionId: "helm-1",
+        fulfillmentOptionType: {
+          fulfillmentOptionTypeId: "HELM",
+          fulfillmentOptionTypeName: "Helm Chart",
+        },
+        creationDate: "2024-01-01T00:00:00.000Z",
+      });
+      f.push({
+        ...base,
+        fulfillmentOptionId: "ctr-1",
+        fulfillmentOptionType: {
+          fulfillmentOptionTypeId: "CONTAINER",
+          fulfillmentOptionTypeName: "Container Image",
+        },
+        creationDate: "2026-05-01T00:00:00.000Z",
+      });
+    }
+  });
+  const { record } = parseProductPage(mixed);
+  const e = toPayload({ record, capturedAt: "2026-08-20T00:00:00.000Z" }).extract;
+  assert.deepEqual(e.delivery_ids, ["CONTAINER", "HELM"]);
+
+  // And it is stable: the same page read twice gives the same array. The order
+  // carries no weight in the derivation either way, because the SQL tries the
+  // ids in a fixed literal precedence rather than reading position 0.
+  const again = toPayload({
+    record: parseProductPage(mixed).record,
+    capturedAt: "2026-08-20T00:00:00.000Z",
+  }).extract;
+  assert.deepEqual(again.delivery_ids, e.delivery_ids);
+});
+
+test("a listing with no fulfilment option states no delivery id, and says so as an empty array", () => {
+  // Empty is not the same as absent, and both have to be survivable. Here the
+  // adapter states []; on a Microsoft or DRAI payload the key is not emitted at
+  // all. The write path reads it with the coalesce(array(...), '{}') shape it
+  // already uses for surfaces, so both arrive as an empty text[] and no branch
+  // of registry_delivery() can match on them.
+  const none = rebuild(MCP, (ctx) => {
+    for (const q of ctx.dehydratedState.queries) {
+      const u = q?.state?.data?.listingDetail?.usage;
+      if (u?.fulfillmentOptions) u.fulfillmentOptions = [];
+    }
+  });
+  const { record } = parseProductPage(none);
+  assert.deepEqual(record.fulfillment_options, []);
+  const e = toPayload({ record, capturedAt: "2026-08-20T00:00:00.000Z" }).extract;
+  assert.deepEqual(e.delivery_ids, []);
+  assert.equal(e.acquire_using, null);
+  assert.equal(e.version, null);
+});
+
+test("an option AWS states with no type id contributes nothing rather than a blank", () => {
+  // An empty string in delivery_ids would be a value the derivation has to
+  // reject, and it would count towards the array's length. Dropped instead.
+  const nameless = rebuild(MCP, (ctx) => {
+    for (const q of ctx.dehydratedState.queries) {
+      const f = q?.state?.data?.listingDetail?.usage?.fulfillmentOptions;
+      if (!f?.length) continue;
+      f[0] = {
+        ...f[0],
+        fulfillmentOptionType: {
+          fulfillmentOptionTypeId: null,
+          fulfillmentOptionTypeName: "Something AWS has not named",
+        },
+      };
+    }
+  });
+  const { record } = parseProductPage(nameless);
+  assert.equal(record.fulfillment_options.length, 1);
+  assert.equal(record.fulfillment_options[0].type_id, null);
+  const e = toPayload({ record, capturedAt: "2026-08-20T00:00:00.000Z" }).extract;
+  assert.deepEqual(e.delivery_ids, []);
+  // The name AWS did state still reaches the reader.
+  assert.equal(e.acquire_using, "Something AWS has not named");
+});
+
 test("a term stating more rate cards than it carries is an omission, not a plan list", () => {
   // Unobserved: totalRateCards, rateCardCount and the array agreed on every
   // page sampled, including terms of 984 and 710 cards. Reading only the array

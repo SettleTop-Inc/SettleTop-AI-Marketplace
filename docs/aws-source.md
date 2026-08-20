@@ -208,6 +208,10 @@ agent or an MCP server. **It is closed now.** `prodview-4jqih5hzoxv3a`, DoiT
 MCP, is an `API-Based Agents & Tools` listing inside the category, and both
 nodes are still null on it. The fixture and the test are in the repo.
 
+`surfaces` being empty is what `delivery_ids` exists to answer. AWS states a
+fulfilment option type instead, and that id is what `registry_delivery()` reads
+for an AWS listing. See "Delivery" below.
+
 `works_with` being empty matters more than it looks: it lights the
 `integrations` layer with no evidence row behind it
 (`supabase/migrations/20260819100300_asset_layer_write_path.sql:214-215`), so
@@ -471,6 +475,13 @@ supplies. They must never be presented as AWS statements.
   only be answered from a GUID table we would build. Deriving it later is
   possible from the observed parent GUID `48bf064f`, and it must then be
   labelled ours.
+- **The mapping from a fulfilment option type id onto a delivery value.** The
+  INPUT is AWS's, the id it publishes at
+  `fulfillmentOptions[].fulfillmentOptionType.fulfillmentOptionTypeId`, copied
+  verbatim into `extract.delivery_ids` and never parsed. The OUTPUT is the
+  registry's own vocabulary, and five of the ten observed ids are left unmapped
+  rather than given a label that would misdescribe them. The table is under
+  "Delivery" below.
 - `function_category`, `delivery`, `price_band`, `risk`, `reach`, `provenance`,
   as for every source.
 - Any cross-marketplace identity between an AWS listing and a Microsoft one.
@@ -483,32 +494,86 @@ field, so even Microsoft's single populated key has no counterpart, and it
 publishes no integration or protocol taxonomy on an ordinary listing, so the two
 chips the spec declined do not exist to be tempted by.
 
-## Known consequence: `registry_delivery()` returns `Unknown`
+## Delivery: `delivery_ids`, and the mapping onto the registry's own values
 
-`registry_delivery(surfaces, cert_hosting)` decides delivery from the surface
-chips first and falls back to certification hosting. AWS listings have neither,
-for the reasons above, so **every AWS listing derives delivery `Unknown` as the
-function is written today**.
+`registry_delivery()` used to read `surfaces` first and fall back to
+`cert_hosting`, and AWS publishes neither, so **every AWS listing derived
+delivery `Unknown`**. That is discharged by
+`supabase/migrations/20260820140000_registry_delivery_aws.sql`, which gives the
+function a third parameter and an AWS branch. The follow-up note at the end of
+`20260820120000_add_aws_marketplace.sql` is the note that migration answers. It
+is left as written because production stores a migration's full text in
+`supabase_migrations.schema_migrations.statements`, so editing an already
+applied file would put the repo out of step with the record of what ran.
 
-What AWS states instead is the fulfilment option type id, which the adapter
-carries verbatim into `extract.acquire_using` and keeps in `raw`. An AWS branch
-of that function would switch on the id, never on the display name. It is not
-written in this branch on purpose: `registry_delivery` is shared with Microsoft,
-so changing it is a schema change needing its own review and its own migration.
-The follow-up and the ten ids are recorded at the end of
-`supabase/migrations/20260820120000_add_aws_marketplace.sql`.
+`extract.delivery_ids` is the new key: a string array of the **distinct
+fulfilment option type ids**. The name is deliberately source neutral.
+`registry_delivery()` is shared with Microsoft and DRAI, and a shared function
+reaching into AWS-shaped JSON would be a source switch inside the derivation.
+Microsoft and DRAI emit no such key, so it arrives absent, reads as an empty
+`text[]` in the write path, and cannot reach the AWS branch at all.
 
-**That migration goes first.** `ingest_capture()` inserts into `listing`, whose
-`marketplace_id` is a foreign key, so until the `aws` row exists every AWS
-capture fails on the reference. `npm run harvest` runs `aws-ingest.mjs` with no
-flags, which is the live path, so the first harvest after this branch merges
-produces a wall of failures and exit 1 unless the migration has been applied.
-Nothing is corrupted either way: the failures are per record and caught.
+**Ids, never display names.** AWS publishes both, side by side:
+`fulfillmentOptionTypeId` `AMAZON_MACHINE_IMAGE` against
+`fulfillmentOptionTypeName` `Amazon Machine Image`. The id is the stable machine
+value. The name is a rendered label, already localised through the page's UI
+translation table, and a CASE written against it would fall quietly to
+`Unknown` the day AWS reworded one, with nothing failing and the column simply
+ceasing to fill. The names are not lost: `extract.acquire_using` carries them
+verbatim and joined, and that is what a reader sees. `delivery_ids` is only what
+the derivation switches on.
 
-Until it lands, `Unknown` is a true statement about what that function can read,
-not a defect in the adapter. This is the asymmetry issue #43 is about: **AWS
-listings will know fewer layers than Microsoft ones, and that is a true
-statement about what AWS publishes.**
+**Order and precedence.** `delivery_ids` is in AWS's own order, newest delivery
+option first, deduplicated by first occurrence, the same shape `acquire_using`
+uses. That order carries no weight in the result: the SQL tries the ids in a
+fixed literal precedence and takes the first match, so a listing carrying
+several fulfilment options resolves identically whatever order they arrive in.
+Checked over every permutation of a two-option listing.
+
+**The mapping is ours, not AWS's**, as every value in the delivery column always
+has been. It stays inside the set the function already returns, which is the set
+the facet rail offers.
+
+| Fulfilment type id | Delivery | Why |
+| --- | --- | --- |
+| `AMAZON_MACHINE_IMAGE` | Virtual machine | An AMI boots as an EC2 instance. Microsoft's `Virtual Machines` surface chip already maps here. |
+| `CONTAINER` | Container | Direct. |
+| `HELM` | Container | A Helm chart is a Kubernetes package of container images, and containers are what the buyer runs. |
+| `SAAS` | SaaS | Direct. |
+| `API` | SaaS | Reached over the network on infrastructure the seller runs, which is what SaaS means in this column. It collapses two ids AWS keeps apart, in the same way the Microsoft branch collapses twelve surface chips into `Microsoft 365 app`. `acquire_using` still says "API-Based Agents & Tools" in AWS's own words. |
+| `CLOUDFORMATION_TEMPLATE` | Unknown | A template deployed into the buyer's own AWS account. Its structural counterpart in the set is `Azure application`, and naming Azure on an AWS listing would be false. |
+| `SAGEMAKER_MODEL` | Unknown | Container packaging is an implementation detail the listing does not state, so `Container` would be our inference presented as AWS's. |
+| `SAGEMAKER_ALGORITHM` | Unknown | The same. |
+| `DATA_EXCHANGE` | Unknown | A data product, not a software delivery method. No value in the set describes it. |
+| `PROFESSIONAL_SERVICES` | Unknown | A human engagement. Nothing is delivered to run. |
+
+Five of the ten stay `Unknown` on purpose. The value set is Microsoft-shaped,
+and widening it to hold "deployed from a template into your own cloud account",
+"machine learning model", "data product" and "professional services" touches the
+facet rail and every card, so it is a separate change with its own review.
+Until it happens, `Unknown` is a true statement about what this function can
+say, and `acquire_using` carries AWS's own words for all ten regardless.
+
+**What this does not fix.** Microsoft listings mostly still derive `Unknown`,
+for two causes that have nothing to do with this function: `microsoft.mjs` reads
+a products field that is a bitmask object rather than an array, so `surfaces`
+arrives empty, and `cert_hosting` is null because the certification pass has not
+been run over the catalogue. Neither is touched here, and a reader finding
+Microsoft still mostly `Unknown` is looking at those two rather than at a
+regression.
+
+The asymmetry issue #43 is about still stands: **AWS listings will know fewer
+layers than Microsoft ones, and that is a true statement about what AWS
+publishes.**
+
+**The migration ordering note survives unchanged.**
+`20260820120000_add_aws_marketplace.sql` still goes first. `ingest_capture()`
+inserts into `listing`, whose `marketplace_id` is a foreign key, so until the
+`aws` row exists every AWS capture fails on the reference. `npm run harvest`
+runs `aws-ingest.mjs` with no flags, which is the live path, so the first
+harvest after this branch merges produces a wall of failures and exit 1 unless
+the migration has been applied. Nothing is corrupted either way: the failures
+are per record and caught.
 
 ## Still open
 
