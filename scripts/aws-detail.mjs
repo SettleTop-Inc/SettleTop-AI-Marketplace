@@ -2,8 +2,8 @@
 /**
  * AWS pass 2 of 3: read each product page, and filter.
  *
- *   node scripts/aws-detail.mjs --limit 200
- *   node scripts/aws-detail.mjs                 # capped, see DEFAULT_LIMIT
+ *   node scripts/aws-detail.mjs                 # capped at DEFAULT_LIMIT pages
+ *   node scripts/aws-detail.mjs --limit 2000    # one larger run, deliberately
  *   AWS_FULL_SWEEP=1 node scripts/aws-detail.mjs
  *
  * This is the expensive pass and it is the only place the category filter can
@@ -46,6 +46,7 @@ import {
   PRODUCT_URL,
   PREDICATE_VERSION,
   RECORD_VERSION,
+  REVERSES_A_KEEP,
   parseProductPage,
 } from "./lib/sources/aws.mjs";
 
@@ -90,12 +91,19 @@ const THROTTLE_STOP = 20;
  * first sweep a nightly run only has the sitemap delta to read and never comes
  * near the cap at all.
  *
- * Set AWS_FULL_SWEEP=1 to remove it. That is the opt-in the recon asks for when
- * it says to stage the first sweep at 2,000, then 5,000, then the rest:
- * discovering a throttle at request 2,000 costs two minutes, and discovering it
+ * Set AWS_FULL_SWEEP=1 to remove it, or pass --limit for one larger run. That
+ * is the opt-in the recon asks for when it says to stage the sweep rather than
+ * start it: discovering a throttle at request 200 costs seconds, discovering it
  * at request 40,000 costs the run.
+ *
+ * WHY THE DEFAULT IS THE PILOT SIZE AND NOT THE STAGING SIZE. 2,000 was the
+ * first figure here, and it is a reasonable second stage, but it is not a safe
+ * default: `npm run harvest` passes no flags, so whatever this number says is
+ * what an unattended run fetches from AWS with nobody asking for it. The
+ * sanctioned pilot budget is 200 pages, so 200 is the number that may fire by
+ * accident. Raising it is a decision, and a decision should be typed.
  */
-const DEFAULT_LIMIT = 2000;
+const DEFAULT_LIMIT = 200;
 const FULL_SWEEP = process.env.AWS_FULL_SWEEP === "1";
 
 const { limit: limitFlag } = parseCliArgs({ numbers: ["limit"] });
@@ -152,7 +160,7 @@ if (!limitFlag && !FULL_SWEEP && backlog > DEFAULT_LIMIT) {
   console.log(
     `Capped at the ${DEFAULT_LIMIT.toLocaleString()} page default. Reading all ${backlog.toLocaleString()} ` +
       "would be about 45 minutes and 4.8 GB.\nThis pass resumes, so re-running works through the rest " +
-      `${DEFAULT_LIMIT.toLocaleString()} at a time. AWS_FULL_SWEEP=1 removes the cap.\n`
+      `${DEFAULT_LIMIT.toLocaleString()} at a time. --limit N raises it for one run, AWS_FULL_SWEEP=1 removes it.\n`
   );
 }
 if (!todo.length) {
@@ -175,29 +183,40 @@ async function flush() {
 
 const started = Date.now();
 
-await pool(
-  todo,
-  CONCURRENCY,
-  async ({ id }) => {
-    if (stopped) return;
+/**
+ * One id, from request to ledger row. Never throws to pool().
+ *
+ * pool() catches every worker exception into its results array
+ * (marketplace.mjs:129-133) and this pass never reads that array, so an
+ * exception escaping here would write no file, increment no tally and name no
+ * problem. The run would print a healthy-looking report over a silently
+ * smaller number of pages: `read` is the sum of the tally, so a shape change
+ * that made the parser throw on 160 of 2,000 pages would simply print 1,840
+ * pages read, with every other line looking fine and the backlog figure
+ * indistinguishable from ordinary remaining work.
+ */
+async function readOne(id) {
+  const prior = ledger.get(id);
+  const attempts = (prior?.attempts ?? 0) + 1;
+  // Declared before the try so the catch below can still file a ledger row.
+  let res = { ok: false, status: 0, url: null, html: null };
 
-    const prior = ledger.get(id);
-    const attempts = (prior?.attempts ?? 0) + 1;
-    const res = await fetchText(PRODUCT_URL(id));
+  const note = (outcome, extra = {}) => {
+    ledger.set(id, {
+      id,
+      outcome,
+      checked_at: new Date().toISOString(),
+      predicate_version: PREDICATE_VERSION,
+      final_url: res.url ?? null,
+      status: res.status ?? 0,
+      attempts,
+      ...extra,
+    });
+    tally[outcome] = (tally[outcome] ?? 0) + 1;
+  };
 
-    const note = (outcome, extra = {}) => {
-      ledger.set(id, {
-        id,
-        outcome,
-        checked_at: new Date().toISOString(),
-        predicate_version: PREDICATE_VERSION,
-        final_url: res.url ?? null,
-        status: res.status ?? 0,
-        attempts,
-        ...extra,
-      });
-      tally[outcome] = (tally[outcome] ?? 0) + 1;
-    };
+  try {
+    res = await fetchText(PRODUCT_URL(id));
 
     if (!res.ok) {
       // 403, 429 and 5xx already exhausted fetchText's retries by the time they
@@ -222,6 +241,31 @@ await pool(
 
     const parsed = parseProductPage({ id, html: res.html, url: res.url });
 
+    /**
+     * A VERDICT THAT REVERSES REMOVES THE RECORD THE LAST RUN WROTE.
+     *
+     * details.jsonl is rewritten from the keepers map, and aws-ingest.mjs
+     * reads that file and applies no membership test of its own beyond the
+     * stamps a kept row carries. Without this line a listing kept on an
+     * earlier run and rejected on a later one would keep its row: the ledger
+     * would say out_of_category, the summary would print a correct-looking
+     * reject count, and ingest would still load the listing with a fresh
+     * captured_at, asserting a current in-category observation of a product
+     * AWS had delisted or moved out. Nothing on screen would contradict it,
+     * and the file the operator would check says the opposite of the file
+     * ingest reads.
+     *
+     * Not hypothetical. Bumping RECORD_VERSION or widening the predicate,
+     * both of which this design plans for and one of which has already
+     * happened, marks every keeper stale and so sends every keeper back
+     * through here.
+     *
+     * Which outcomes reverse a keep is the adapter's vocabulary, not this
+     * script's, so the set lives beside the outcomes themselves. It excludes
+     * `unreadable` on purpose.
+     */
+    if (REVERSES_A_KEEP.has(parsed.outcome)) keepers.delete(id);
+
     if (parsed.outcome === "kept") {
       keepers.set(id, parsed.record);
       note("kept");
@@ -234,9 +278,37 @@ await pool(
     } else if (parsed.outcome === "unreadable") {
       note("unreadable", { reason: parsed.reason, http_bytes: res.html.length });
       problems.push({ id, outcome: "unreadable", reason: parsed.reason });
+    } else if (parsed.outcome === "out_of_category") {
+      /**
+       * The categories the verdict was reached on are stored WITH the verdict.
+       *
+       * These rows are permanent and a full sweep makes roughly 38,000 of
+       * them. The predicate stamp exists so the owner can widen the filter and
+       * re-read, but a row saying only "no" cannot answer which rejections a
+       * proposed wider predicate would flip without fetching all 38,000 pages
+       * again. The names cost a few bytes a row and make the reject set
+       * auditable offline, which is the argument this file already makes for
+       * keeping a ledger at all. parseProductPage has always returned them.
+       */
+      note("out_of_category", { categories: parsed.categories ?? [] });
     } else {
       note(parsed.outcome, { reason: parsed.reason });
     }
+  } catch (e) {
+    // Retryable, like any other unreadable: an exception is a fact about our
+    // reading, not about the product. Named in the summary rather than lost.
+    const reason = `threw: ${e.message}`.slice(0, 300);
+    note("unreadable", { reason });
+    problems.push({ id, outcome: "unreadable", reason });
+  }
+}
+
+await pool(
+  todo,
+  CONCURRENCY,
+  async ({ id }) => {
+    if (stopped) return;
+    await readOne(id);
 
     // The worker returns nothing on purpose. pool() keeps every return value
     // for the whole run in an array as long as the input, so a worker returning
@@ -284,3 +356,21 @@ if (tally.unreadable) {
 
 const left = ids.filter(({ id }) => isStale(ledger.get(id))).length;
 if (left) console.log(`\n${left.toLocaleString()} ids still to read. Re-run, or raise --limit.`);
+
+/**
+ * A run AWS refused is a FAILED run, and it has to exit saying so.
+ *
+ * harvest.mjs treats any zero exit as `{ok: true}` and moves straight on
+ * (harvest.mjs:57-59), so returning 0 here after twenty refusals would print
+ * "aws ok" and then run aws-ingest.mjs live against whatever partial
+ * details.jsonl the run managed to write. aws-ingest.mjs already ends with
+ * process.exit(failures.length ? 1 : 0), so the convention exists in this
+ * source; this pass was simply not following it.
+ *
+ * Only the throttle stop is fatal. Ordinary unreadable rows are the normal
+ * cost of reading 43,104 pages and are retried on the next run by design.
+ */
+if (stopped) {
+  console.log("\nAWS refused this run, so it is not a complete pass. Re-run later.");
+  process.exit(1);
+}

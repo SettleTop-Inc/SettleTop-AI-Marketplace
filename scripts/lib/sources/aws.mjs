@@ -53,11 +53,12 @@ export const PRODUCT_URL = (id) => `${ORIGIN}/marketplace/pp/${id}`;
 export const CATEGORY = "f1d47436-8a98-40db-b687-696723ec32cb";
 export const CATEGORY_LABEL = "AI Agents & Tools";
 
-/**
- * The human address of the category. A citation, not a source: the page is a
- * client-rendered shell carrying zero prodview ids, so nothing is read from it.
- */
-export const CATEGORY_URL = `${ORIGIN}/marketplace/b/${CATEGORY}`;
+// The human address of the category is https://aws.amazon.com/marketplace/b/
+// followed by the GUID. It is written here as a citation and deliberately NOT
+// as a constant: the page is a client-rendered shell carrying zero prodview
+// ids, nothing is ever read from it, and an exported URL constant reads like a
+// fetch target. The only two addresses this source can build are the sitemap
+// and /marketplace/pp/<id>.
 
 /**
  * Stamped on every ledger row in data/aws/seen.jsonl.
@@ -80,16 +81,23 @@ export const PREDICATE_VERSION = "category-parent-v1";
  * drai-detail.mjs already follows with its currentShape() check.
  *
  * Deliberately separate from PREDICATE_VERSION, because the two say different
- * things and carry different weight. A stale predicate means the listing may
- * not belong in the category at all, which is a membership error, so
- * aws-ingest.mjs refuses to load such a row. A stale record version means a
- * real in-category listing was read by an older extractor, so the row is still
- * a true observation and is simply re-read on the next detail run.
+ * things: a stale predicate means the listing may not belong in the category at
+ * all, a stale record version means a real in-category listing was read by an
+ * older extractor. aws-ingest.mjs REFUSES BOTH, and the reason it refuses this
+ * one is what v2 demonstrated. A parser is not only ever widened: v1 emitted
+ * AWS's own premium support URL among the publisher's product links, so a v1
+ * row is not "a true observation read by an older reader", it is a row carrying
+ * a value that is not the publisher's. Loading it would put that URL in front
+ * of a reader as the publisher's channel. Ingest therefore refuses any row that
+ * a superseded parser wrote, and the detail pass re-reads it on its next run.
  *
  * v2: product_links no longer carries AWS's own premium support link, and a
  *     LINK resource with no resourceName keeps a null label.
+ * v3: identifiers.product_id is selected by having a productId rather than by
+ *     array index, reviews carries every syndication provider rather than the
+ *     first, and a page stating no id of its own is refused as unreadable.
  */
-export const RECORD_VERSION = "aws-record-v2";
+export const RECORD_VERSION = "aws-record-v3";
 
 /**
  * Rate cards stored as plans, per pricing term.
@@ -124,10 +132,21 @@ export const PLAN_RATE_CARD_LIMIT = 50;
  *
  * Copying it is defensible, because the value is taken verbatim from a named
  * AWS field and nothing is inferred. Calling it "updated" is the part that is
- * ours. The switch is here so the owner can decline it in one line; either way
- * every option's creationDate stays in raw, so declining loses nothing.
+ * ours, and it is DECLINED. The write path stores extract.updated as
+ * listing_updated (20260819100300_asset_layer_write_path.sql:251) and the site
+ * prints it as "Listing updated <date>" while flipping the field to Disclosed
+ * purely because the value is non-null. On prodview-g232pyu6l55l4 that sentence
+ * would read "Listing updated 2016-09-23", which is the creation date of the
+ * listing's one SAAS delivery option and not an updated date AWS ever
+ * published. Putting one field's value under another field's name is the exact
+ * substitution this registry exists to refuse.
+ *
+ * Nothing is lost by declining: every option's creationDate stays in raw, and
+ * created_max and created_min stay on the record. If a differently named column
+ * ever exists, the value is already captured and waiting for it. Turn this back
+ * on only together with a column that says what the date actually is.
  */
-export const UPDATED_FROM_FULFILLMENT_CREATION_DATE = true;
+export const UPDATED_FROM_FULFILLMENT_CREATION_DATE = false;
 
 // ------------------------------------------------------------- sitemap ----
 
@@ -374,10 +393,26 @@ function readPlans(pricing) {
 
     const cards = arr(term?.rateCards);
     // AWS states the count itself, at totalRateCards and rateCardCount, which
-    // agreed with each other and with the array on every page sampled.
+    // agreed with each other and with the array on every page sampled: 20
+    // rate-card-bearing terms on 40 pages, including terms of 984, 710, 585, 62
+    // and 52 cards.
     const stated = Number(term?.totalRateCards ?? term?.rateCardCount ?? cards.length);
-    if (cards.length > PLAN_RATE_CARD_LIMIT) {
-      omitted.push({ term_type: type, rate_cards: Number.isFinite(stated) ? stated : cards.length });
+    const count = Number.isFinite(stated) ? stated : cards.length;
+
+    // TWO WAYS A TERM'S PLANS GO UNSTORED, and the second is the one the count
+    // is read for. Either the term publishes more rate cards than are kept, or
+    // AWS states a count larger than the array it embedded. The second has not
+    // been observed, and reading only the array length would make it silent: a
+    // term stating 1,540 cards and embedding 20 would store those 20 as if they
+    // were the plan list, which is the partial price table this file already
+    // refuses to present as a claim AWS made.
+    if (cards.length > PLAN_RATE_CARD_LIMIT || count > cards.length) {
+      omitted.push({
+        term_type: type,
+        rate_cards: count,
+        embedded: cards.length,
+        reason: cards.length > PLAN_RATE_CARD_LIMIT ? "above_limit" : "fewer_embedded_than_stated",
+      });
       continue;
     }
 
@@ -432,11 +467,29 @@ function readReviews(reviews) {
     .filter((s) => s.count > 0);
 
   return {
+    // AWS's own numbers, copied without adjustment, INCLUDING the zero it
+    // states for a listing with no reviews. The record is what AWS said. The
+    // coercion of that zero to null belongs to toPayload, where the column's
+    // cross-source meaning is settled, and is commented there.
     rating: reviews.AverageCustomerRating ?? null,
     count: reviews.TotalReviews ?? 0,
     native_rating: native?.AverageRating ?? null,
     native_count: native?.Count ?? null,
     reviews_url: text(native?.Url),
+    /**
+     * EVERY provider, not just the one the extract has room for.
+     *
+     * The extract carries a single external_source, external_rating and
+     * external_count, so one provider is chosen for it. That choice must not
+     * also lose the others from the record: raw is the place a second provider
+     * survives, and PeerSpot is named in AWS's own translation table beside G2,
+     * so the multi-provider case is expected rather than hypothetical.
+     */
+    syndicated,
+    // THE SELECTION RULE, stated because it is ours: the first provider in
+    // AWS's own key order. AWS publishes no ranking between providers and this
+    // picks no winner on merit; it is arbitrary but stable, and every provider
+    // it passes over is still in `syndicated` above.
     external: syndicated[0] ?? null,
     external_total: reviews.ExternalReviewsCount ?? 0,
   };
@@ -463,6 +516,22 @@ function readReviews(reviews) {
  * parse failure. That is exactly the class of error this registry exists to
  * avoid, so it is retryable and counted separately.
  */
+/**
+ * The outcomes that CONTRADICT an earlier keep.
+ *
+ * Each is terminal and each says the listing does not belong in
+ * details.jsonl any more: AWS moved it out of the category, AWS serves no
+ * listing for the id at all, or the page that answered is a different
+ * product. A re-read reaching one of these must remove the record the
+ * previous run wrote, or ingest keeps loading a listing the marketplace has
+ * stopped agreeing with. aws-detail.mjs is the caller that does the removing.
+ *
+ * `unreadable` is deliberately absent. It means a network failure or a
+ * template change, which is a fact about our reading rather than about the
+ * product, and discarding a good record on a transient 503 would lose it.
+ */
+export const REVERSES_A_KEEP = new Set(["out_of_category", "gone", "identity_mismatch"]);
+
 export function parseProductPage({ id, html, url = null }) {
   const ctx = extractPageContext(html);
   if (!ctx) return { outcome: "unreadable", reason: "no vike_pageContext in response" };
@@ -488,6 +557,20 @@ export function parseProductPage({ id, html, url = null }) {
   if (statedId && statedId !== id) {
     return { outcome: "identity_mismatch", reason: `page states ${statedId}`, stated_id: statedId };
   }
+  /**
+   * A page stating no id at all is refused too, adopting the rest of the
+   * Microsoft rule at microsoft.mjs:366 rather than only its first half. There
+   * is nothing left to match against, so accepting it would file the record
+   * under whatever id the caller happened to pass, on the strength of a
+   * redirect alone.
+   *
+   * Retryable rather than terminal, because data.id was present on 40 of 40
+   * pages read: an absent one means the template changed, which is a fact about
+   * AWS's HTML and not a statement about the product, and permanently excluding
+   * a real listing on a parse failure is the error this ledger is shaped to
+   * avoid.
+   */
+  if (!statedId) return { outcome: "unreadable", reason: "Detail query states no id" };
 
   const overview = detail.listingDetail?.overview;
   if (!overview) {
@@ -604,9 +687,24 @@ export function parseProductPage({ id, html, url = null }) {
       vendor_insight: overview.vendorInsight ?? null,
 
       identifiers: {
-        // The strongest candidate for collapsing listing variants: several
-        // prodview ids can share one prod- id.
-        product_id: text(overview.associatedEntities?.[0]?.product?.productId),
+        /**
+         * The strongest candidate for collapsing listing variants: several
+         * prodview ids can share one product id.
+         *
+         * Selected by carrying a productId, never by array index, which is the
+         * rule listingQuery() follows for the same reason. associatedEntities
+         * is variable length and every entry carries a manufacturer beside its
+         * product, so index 0 would choose arbitrarily the day a second entry
+         * appears.
+         *
+         * NOT always a prod- prefixed id, despite the shape of the common case:
+         * across the 195 listings kept in the pilot, 188 read "prod-j4mno5fang7zo"
+         * and 7 read a bare UUID such as "62a72dd8-0ffa-4e90-8ab5-223bd635fbef".
+         * Copied either way, and nothing is parsed out of it.
+         */
+        product_id: text(
+          arr(overview.associatedEntities).find((e) => e?.product?.productId)?.product?.productId
+        ),
         creator_id: text(overview.creator?.creatorId),
         offer_id: text(pricing?.summary?.offerId),
         stated_id: statedId,
@@ -676,7 +774,6 @@ function supportText(lines) {
 
 export function toPayload({ record, capturedAt }) {
   const options = arr(record.fulfillment_options);
-  const latest = options[0] ?? null;
 
   const missing = [];
   if (!record.pricing_published) {
@@ -695,8 +792,11 @@ export function toPayload({ record, capturedAt }) {
   }
   for (const o of arr(record.plans_omitted)) {
     missing.push(
-      `plans: ${o.term_type} publishes ${o.rate_cards} rate cards, above the ` +
-        `${PLAN_RATE_CARD_LIMIT} stored per term, so none of them are stored`
+      o.reason === "fewer_embedded_than_stated"
+        ? `plans: ${o.term_type} states ${o.rate_cards} rate cards and the page carries ` +
+            `${o.embedded}, so none of them are stored`
+        : `plans: ${o.term_type} publishes ${o.rate_cards} rate cards, above the ` +
+            `${PLAN_RATE_CARD_LIMIT} stored per term, so none of them are stored`
     );
   }
 
@@ -709,10 +809,26 @@ export function toPayload({ record, capturedAt }) {
       source_product_id: record.id,
       listing_url: PRODUCT_URL(record.id),
       captured_at_utc: capturedAt,
-      // A professional services listing with no price is not a failed capture.
-      // It is a complete capture of everything AWS publishes, and `missing`
-      // says which of the registry's fields AWS leaves unstated.
-      capture_complete: missing.length === 0,
+      /**
+       * WHETHER ANYTHING WAS DROPPED, not whether every column is filled.
+       *
+       * A professional services listing with no price is a COMPLETE capture
+       * of everything AWS publishes, so it must not carry the "Partial
+       * capture" tag PassportView renders off this flag (PassportView.tsx:225).
+       * That tag asserts the harvest failed, and it did not. `missing` already
+       * carries the nuance in words, naming which of the registry's fields AWS
+       * leaves unstated.
+       *
+       * The same reading as microsoft.mjs:92, where capture_complete is
+       * `!!detail`, a fact about whether the fetch succeeded rather than about
+       * how much the publisher chose to say. A Microsoft listing with no price
+       * is complete, so an AWS one must be too, or one column means two things
+       * depending on which marketplace a row came from.
+       *
+       * plans_omitted is the genuine incompleteness and the only one: data AWS
+       * did publish was read and then deliberately not stored.
+       */
+      capture_complete: arr(record.plans_omitted).length === 0,
       missing,
       // The address aws-catalog actually read. NOT a /marketplace/search URL,
       // which robots.txt disallows, and not the category page, which renders
@@ -757,7 +873,31 @@ export function toPayload({ record, capturedAt }) {
       pricing: null,
       acquire_using:
         [...new Set(options.map((o) => o.type_name).filter(Boolean))].join(", ") || null,
-      version: latest?.version ?? null,
+      /**
+       * The delivery option's own fulfillmentOptionVersion, copied verbatim,
+       * and ONLY where AWS publishes exactly one delivery option.
+       *
+       * With one option there is no choice to make: its version string is the
+       * only version the listing states. With several, choosing which one
+       * speaks for the listing is ours, and it goes wrong in a way a reader
+       * cannot see. fulfillmentOptionVersion is free text: on a SageMaker
+       * Model page the two options read "GPU" and "CPU", so a newest-first
+       * pick would store listing_version = "GPU" and PassportView.tsx:333
+       * would mark the field Disclosed on the strength of it.
+       *
+       * Filtering instead to values that "look like a version" was rejected.
+       * Across the 195 listings kept in the pilot the real strings include
+       * "TetherfiMXDocker_3.2", "Production-ready Qwen 3.6 35B-A3B" and
+       * "pdf-insights dedicated server updated 6 18 26", every one of them the
+       * publisher's own words, and a regex would discard them to catch a case
+       * it cannot tell apart. A count can be checked; a shape is an opinion.
+       *
+       * Ten of the 195 carry more than one option and so state no version
+       * here. Every option's version stays in raw, newest first, so nothing is
+       * lost and a later rule can be written against the record rather than
+       * against AWS.
+       */
+      version: options.length === 1 ? (options[0].version ?? null) : null,
       updated: UPDATED_FROM_FULFILLMENT_CREATION_DATE
         ? (record.created_max ? record.created_max.slice(0, 10) : null)
         : null,
@@ -765,9 +905,38 @@ export function toPayload({ record, capturedAt }) {
       // The cap has never bitten: the longest seen is 4,495 characters.
       overview_text: record.long_description ? record.long_description.slice(0, 6000) : null,
       support: supportText(record.support),
-      rating: reviews?.rating ?? null,
+      /**
+       * AWS'S ZERO IS A SENTINEL, NOT A SCORE, and it is stored as null.
+       *
+       * A listing AWS has no reviews for states TotalReviews 0 and
+       * AverageCustomerRating 0 together: 102 of the 195 listings kept in the
+       * pilot. Storing that 0 would put it in the same column as the seven
+       * carrying a real average, and the other two adapters do not do it:
+       * microsoft.mjs:111 writes `tile.AverageRating || null` and drai.mjs:456
+       * writes null with the note that null there is a fact.
+       *
+       * The consequence is in ordering rather than on screen. Registry search
+       * sorts ratings NULLS LAST in both directions because "a missing rating
+       * is not a rating of zero and must never outrank a stated one"
+       * (20260818134538_registry_search.sql:109). A stored 0.00 is not null, so
+       * every unreviewed AWS listing would sort above every genuinely rated one
+       * ascending, and above the nulls descending, while the card still printed
+       * "Not rated" because 0 is falsy in JavaScript. Invisible, and wrong.
+       *
+       * The COUNT is the test, never the score, so a genuine average of zero
+       * would still be stored if AWS ever published one over real reviews.
+       * record.reviews keeps AWS's literal figures in raw either way.
+       *
+       * WHAT THIS COLUMN MEANS FOR AWS differs from Microsoft, and that is
+       * AWS's doing rather than ours: AverageCustomerRating is the BLENDED
+       * average including syndicated reviews, while native_rating is the
+       * AWS-only score. On prodview-g232pyu6l55l4 they are 5 and 4.5 over the
+       * same 35 reviews. microsoft.mjs:111-113 fills both from one native
+       * score. Recorded in docs/aws-source.md under "Ours, not AWS's".
+       */
+      rating: reviews?.count > 0 ? (reviews.rating ?? null) : null,
       rating_count: reviews?.count ?? 0,
-      native_rating: reviews?.native_rating ?? null,
+      native_rating: reviews?.native_count > 0 ? (reviews.native_rating ?? null) : null,
       native_count: reviews?.native_count ?? null,
       external_source: reviews?.external?.source ?? null,
       external_rating: reviews?.external?.rating ?? null,
@@ -785,10 +954,29 @@ export function toPayload({ record, capturedAt }) {
       cert_url: PRODUCT_URL(record.id),
       cert_detail: certDetail(record),
       plans: arr(record.plans),
-      product_links: [
-        ...arr(record.product_links).filter((l) => l.url),
-        ...(reviews?.reviews_url ? [{ label: "Customer reviews", url: reviews.reviews_url }] : []),
-      ],
+      /**
+       * The publisher's links, and only theirs.
+       *
+       * AWS's reviews page USED TO BE APPENDED HERE under the label "Customer
+       * reviews". It is not any more, for the reason linksFrom() already gives
+       * for leaving a null resourceName null: a label of ours on a link of
+       * theirs is an invention in a field a reader takes for the publisher's
+       * own words. The URL is AWS's too, from ProviderSummaries[AWSMP].Url,
+       * and the write path files every entry here as capture_link kind
+       * 'product', indistinguishable from a link the publisher offered. It
+       * reached 109 of the 195 pilot listings. The address stays in raw at
+       * record.reviews.reviews_url, ready for a field that says what it is.
+       *
+       * The customer-connect demo and private-offer links DO stay, and the
+       * difference from AWS's premiumsupport URL is not the hostname. That one
+       * is byte-identical on every listing carrying it, so it says nothing
+       * about the product and describes AWS's own infrastructure support.
+       * These carry the listing's own prodview id and route a buyer to THIS
+       * publisher, so they are that publisher's channel expressed through
+       * AWS's plumbing. Their label stays null, because AWS states no
+       * resourceName for them and we do not supply one.
+       */
+      product_links: arr(record.product_links).filter((l) => l.url),
       // type is AWS's own word, StandardEula or CustomEula. There is no privacy
       // policy and no refund policy URL to add beside it.
       legal_links: arr(record.legal_documents)

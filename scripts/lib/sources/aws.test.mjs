@@ -54,6 +54,7 @@ import {
   PREDICATE_VERSION,
   PRODUCT_URL,
   RECORD_VERSION,
+  REVERSES_A_KEEP,
   SITEMAP_URL,
   extractPageContext,
   inCategory,
@@ -396,7 +397,14 @@ test("a listing AWS does not price is a complete capture that says so", () => {
   assert.deepEqual(record.plans, []);
 
   const payload = toPayload({ record, capturedAt: "2026-08-20T00:00:00.000Z" });
-  assert.equal(payload.capture_meta.capture_complete, false);
+  // COMPLETE, and this is the whole point of the test's name. PassportView
+  // renders a "Partial capture" tag off this flag, asserting the harvest
+  // failed. Nothing failed: AWS publishes no price for a professional services
+  // engagement, and every AWS PROFESSIONAL_SERVICES listing would carry that
+  // tag. microsoft.mjs:92 reads the column the same way, as a fact about the
+  // fetch rather than about how much the publisher chose to say.
+  assert.equal(payload.capture_meta.capture_complete, true);
+  // The nuance is in `missing`, in words, which is where it belongs.
   assert.deepEqual(payload.capture_meta.missing, [
     "price: AWS publishes no pricing for this listing",
   ]);
@@ -425,7 +433,12 @@ test("a rate card table too large to be a plan list is omitted and the omission 
   const { record } = parseProductPage(many);
   assert.deepEqual(record.plans, []);
   assert.deepEqual(record.plans_omitted, [
-    { term_type: "UsageBasedPricingTerm", rate_cards: PLAN_RATE_CARD_LIMIT + 1 },
+    {
+      term_type: "UsageBasedPricingTerm",
+      rate_cards: PLAN_RATE_CARD_LIMIT + 1,
+      embedded: PLAN_RATE_CARD_LIMIT + 1,
+      reason: "above_limit",
+    },
   ]);
 
   const payload = toPayload({ record, capturedAt: "2026-08-20T00:00:00.000Z" });
@@ -434,6 +447,245 @@ test("a rate card table too large to be a plan list is omitted and the omission 
   assert.match(payload.capture_meta.missing[0], /UsageBasedPricingTerm publishes 51 rate cards/);
 });
 
+
+// -------------------------------------------- what is copied and what is not
+
+test("AWS states zero reviews and zero stars together, and the zero is not a score", () => {
+  const { record } = parseProductPage(MCP);
+  // AWS's own words, kept in the record and therefore in raw. This is what a
+  // listing with no reviews looks like: a count of zero and an average of zero
+  // stated side by side, on 102 of the 195 listings the pilot kept.
+  assert.equal(record.reviews.count, 0);
+  assert.equal(record.reviews.rating, 0);
+  assert.equal(record.reviews.native_count, 0);
+  assert.equal(record.reviews.native_rating, 0);
+
+  const e = toPayload({ record, capturedAt: "2026-08-20T00:00:00.000Z" }).extract;
+  // Null in the extract, because the column is a rating and this is a sentinel.
+  // The registry sorts ratings NULLS LAST in both directions precisely so a
+  // missing rating never outranks a stated one, and a stored 0.00 is not null.
+  assert.equal(e.rating, null);
+  assert.equal(e.native_rating, null);
+  // The count is still AWS's, and it is what says why the rating is null.
+  assert.equal(e.rating_count, 0);
+});
+
+test("a rating over real reviews is copied, blended and native alike", () => {
+  const { record } = parseProductPage(RATED);
+  const e = toPayload({ record, capturedAt: "2026-08-20T00:00:00.000Z" }).extract;
+  // The count is the test, never the score, so nothing here is coerced.
+  assert.equal(e.rating, 5);
+  assert.equal(e.native_rating, 4.5);
+  assert.equal(e.rating_count, 35);
+});
+
+test("every syndication provider survives onto the record, not just the first", () => {
+  // The extract has room for one external source. The record must not lose the
+  // others: AWS's own translation table names PeerSpot beside G2, so a second
+  // provider is expected rather than hypothetical, and which one comes first is
+  // decided by JSON key order rather than by anything AWS states.
+  const two = rebuild(RATED, (ctx) => {
+    for (const q of ctx.dehydratedState.queries) {
+      const s = q?.state?.data?.SyndicatedReviews;
+      if (!s?.G2) continue;
+      s.PeerSpot = { ...s.G2, AverageCustomerRating: 4.2, TotalReviews: 9 };
+    }
+  });
+  const { record } = parseProductPage(two);
+  assert.deepEqual(record.reviews.syndicated.map((s) => s.source), ["G2", "PeerSpot"]);
+  // And the single-valued extract still carries exactly one, by the stated rule.
+  const e = toPayload({ record, capturedAt: "2026-08-20T00:00:00.000Z" }).extract;
+  assert.equal(e.external_source, "G2");
+});
+
+test("AWS's reviews page is not filed among the publisher's links", () => {
+  const { record } = parseProductPage(RATED);
+  // AWS does publish the address, and it is kept where it is AWS's own.
+  assert.match(record.reviews.reviews_url, /aws\.amazon\.com\/marketplace\/reviews\//);
+
+  const e = toPayload({ record, capturedAt: "2026-08-20T00:00:00.000Z" }).extract;
+  // The write path files every entry in product_links as capture_link kind
+  // 'product'. A label of ours on a link of AWS's would read there as the
+  // publisher's own words, which is the reason linksFrom leaves an unnamed
+  // link unnamed.
+  assert.equal(e.product_links.some((l) => l.url === record.reviews.reviews_url), false);
+  assert.equal(e.product_links.some((l) => l.label === "Customer reviews"), false);
+});
+
+test("no fulfilment option creation date is presented as a listing-updated date", () => {
+  const { record } = parseProductPage(MCP);
+  // AWS publishes the date and it is captured, verbatim, on the record.
+  assert.equal(record.created_max, "2025-12-16T08:26:46.009Z");
+  assert.equal(record.fulfillment_options[0].creation_date, record.created_max);
+
+  const e = toPayload({ record, capturedAt: "2026-08-20T00:00:00.000Z" }).extract;
+  // It does not become extract.updated, which the write path stores as
+  // listing_updated and the site prints as "Listing updated <date>" while
+  // marking the field Disclosed. That sentence would be ours, not AWS's: what
+  // AWS stated is when a delivery option was created.
+  assert.equal(e.updated, null);
+});
+
+test("the listing version is copied only where AWS publishes one delivery option", () => {
+  const { record } = parseProductPage(MCP);
+  assert.equal(record.fulfillment_options.length, 1);
+  const e = toPayload({ record, capturedAt: "2026-08-20T00:00:00.000Z" }).extract;
+  assert.equal(e.version, record.fulfillment_options[0].version);
+
+  // With two options, choosing which one speaks for the listing is ours, and
+  // fulfillmentOptionVersion is free text: on a SageMaker Model page the two
+  // values are "GPU" and "CPU". Storing either as the listing version would
+  // flip the field to Disclosed on a word that is not a version.
+  const two = rebuild(MCP, (ctx) => {
+    for (const q of ctx.dehydratedState.queries) {
+      const f = q?.state?.data?.listingDetail?.usage?.fulfillmentOptions;
+      if (!f?.length) continue;
+      f.push({ ...f[0], fulfillmentOptionVersion: "GPU", creationDate: "2026-01-01T00:00:00.000Z" });
+      f[0] = { ...f[0], fulfillmentOptionVersion: "CPU" };
+    }
+  });
+  const both = parseProductPage(two).record;
+  assert.equal(both.fulfillment_options.length, 2);
+  assert.deepEqual(both.fulfillment_options.map((o) => o.version), ["GPU", "CPU"]);
+  // Both stay in raw, newest first. Neither is presented as the listing's.
+  assert.equal(toPayload({ record: both, capturedAt: "2026-08-20T00:00:00.000Z" }).extract.version, null);
+});
+
+test("a term stating more rate cards than it carries is an omission, not a plan list", () => {
+  // Unobserved: totalRateCards, rateCardCount and the array agreed on every
+  // page sampled, including terms of 984 and 710 cards. Reading only the array
+  // length would make the day they disagree silent, and a partial price table
+  // presented as a plan list is a claim AWS never made.
+  const short = rebuild(RATED, (ctx) => {
+    for (const q of ctx.dehydratedState.queries) {
+      const terms = q?.state?.data?.summary?.terms;
+      if (!terms) continue;
+      for (const t of terms) {
+        if (t.termType !== "UsageBasedPricingTerm") continue;
+        t.totalRateCards = 1540;
+        t.rateCardCount = 1540;
+      }
+    }
+  });
+  const { record } = parseProductPage(short);
+  assert.deepEqual(record.plans, []);
+  assert.deepEqual(record.plans_omitted, [
+    {
+      term_type: "UsageBasedPricingTerm",
+      rate_cards: 1540,
+      embedded: 13,
+      reason: "fewer_embedded_than_stated",
+    },
+  ]);
+  const payload = toPayload({ record, capturedAt: "2026-08-20T00:00:00.000Z" });
+  assert.match(
+    payload.capture_meta.missing[0],
+    /states 1540 rate cards and the page carries 13/
+  );
+});
+
+test("the product id is chosen by carrying one, never by array position", () => {
+  // associatedEntities is variable length and every entry carries a
+  // manufacturer beside its product, so index 0 chooses arbitrarily the day a
+  // second entry appears.
+  const shifted = rebuild(MCP, (ctx) => {
+    for (const q of ctx.dehydratedState.queries) {
+      const o = q?.state?.data?.listingDetail?.overview;
+      if (!o?.associatedEntities?.length) continue;
+      o.associatedEntities.unshift({ manufacturer: { manufacturerId: "m-1" } });
+    }
+  });
+  const { record } = parseProductPage(shifted);
+  assert.equal(record.identifiers.product_id, "prod-j4mno5fang7zo");
+});
+
+test("a page that states no id of its own is refused, as Microsoft refuses one", () => {
+  // microsoft.mjs:366 returns a failure for a page stating no ID, with the
+  // rationale that there is nothing left to match against and accepting it
+  // would file the record under whatever id the caller happened to pass, on
+  // the strength of a redirect alone. That argument transfers unchanged.
+  const noId = rebuild(MCP, (ctx) => {
+    for (const q of ctx.dehydratedState.queries) {
+      if (q?.queryKey?.[2]?.queryName === "Detail") q.state.data.id = null;
+    }
+  });
+  const r = parseProductPage({ ...noId, id: "prodview-aaaaaaaaaaaaa" });
+  // Retryable rather than terminal: data.id was present on 40 of 40 pages, so
+  // an absent one means the template changed, and permanently excluding a real
+  // listing on a parse failure is the error this ledger is shaped to avoid.
+  assert.equal(r.outcome, "unreadable");
+  assert.equal(r.record, undefined);
+});
+
+// ------------------------------------------------- reversing an earlier keep
+
+test("a verdict that reverses an earlier keep removes the record it wrote", () => {
+  // The detail pass rewrites details.jsonl from a map of keepers, and
+  // aws-ingest.mjs reads that file and applies no membership test of its own.
+  // A first run keeps a listing; a later run, triggered by a version bump or a
+  // widened predicate, re-reads it and reverses the verdict. If the record
+  // stays, ingest loads a listing AWS has delisted or moved out of the
+  // category, with a fresh captured_at, while the summary prints it as a
+  // reject. This walks that sequence with the real parser.
+  const keepers = new Map();
+  const resolve = (page) => {
+    const parsed = parseProductPage(page);
+    if (REVERSES_A_KEEP.has(parsed.outcome)) keepers.delete(page.id);
+    if (parsed.outcome === "kept") keepers.set(page.id, parsed.record);
+    return parsed.outcome;
+  };
+
+  assert.equal(resolve(MCP), "kept");
+  assert.equal(keepers.size, 1);
+
+  // AWS recategorises it: the same page, with its one in-category parent
+  // replaced by a category that has nothing to do with the GUID.
+  const moved = rebuild(MCP, (ctx) => {
+    for (const q of ctx.dehydratedState.queries) {
+      const cats = q?.state?.data?.listingDetail?.overview?.categories;
+      if (!cats) continue;
+      for (const c of cats) c.parentCategoryId = "00000000-0000-0000-0000-000000000000";
+    }
+  });
+  assert.equal(resolve({ ...moved, id: MCP.id }), "out_of_category");
+  assert.equal(keepers.size, 0, "the record kept by the first run must not survive the second");
+});
+
+test("a delisted product also removes its record, and an unreadable page does not", () => {
+  const keepers = new Map();
+  const resolve = (page) => {
+    const parsed = parseProductPage(page);
+    if (REVERSES_A_KEEP.has(parsed.outcome)) keepers.delete(page.id);
+    if (parsed.outcome === "kept") keepers.set(page.id, parsed.record);
+    return parsed.outcome;
+  };
+
+  resolve(MCP);
+  assert.equal(keepers.size, 1);
+
+  // A page that cannot be read is a fact about our reading, not about the
+  // product, so a transient failure must not throw away a good record.
+  const broken = { ...MCP, html: "<html><body>nothing here</body></html>" };
+  assert.equal(resolve(broken), "unreadable");
+  assert.equal(keepers.size, 1);
+
+  // AWS serving no listing for the id is terminal, and it does remove it.
+  const gone = rebuild(MCP, (ctx) => {
+    ctx.pageId = "/lib/frontend/pages/ppV2/default";
+    ctx.dehydratedState.queries = [];
+  });
+  assert.equal(resolve({ ...gone, id: MCP.id }), "gone");
+  assert.equal(keepers.size, 0);
+});
+
+test("unreadable is deliberately absent from the reversal set", () => {
+  assert.deepEqual(
+    [...REVERSES_A_KEEP].sort(),
+    ["gone", "identity_mismatch", "out_of_category"]
+  );
+  assert.equal(REVERSES_A_KEEP.has("unreadable"), false);
+  assert.equal(REVERSES_A_KEEP.has("kept"), false);
+});
 // ------------------------------------------------------------- the refusals
 
 test("no blob at all is unreadable, not out of category", () => {

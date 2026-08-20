@@ -27,7 +27,7 @@
  * can be improved and re-loaded without fetching a single AWS page again.
  */
 import { readJsonl, supabaseEnv, rpc, pool, dataPath, parseCliArgs } from "./lib/marketplace.mjs";
-import { ID, CATEGORY_LABEL, PREDICATE_VERSION, toPayload } from "./lib/sources/aws.mjs";
+import { ID, CATEGORY_LABEL, PREDICATE_VERSION, RECORD_VERSION, toPayload } from "./lib/sources/aws.mjs";
 
 const DETAILS = dataPath(ID, "details.jsonl");
 const CONCURRENCY = 4;
@@ -44,29 +44,64 @@ if (!records.length) {
 }
 
 /**
- * Records written by an older predicate are not ingested.
+ * BOTH STAMPS ARE ENFORCED, and a row failing either is not ingested.
  *
- * A kept row carries the stamp of the predicate that admitted it. If that
- * predicate has since changed, this record was admitted by a rule the registry
- * no longer applies, and loading it would put a listing in the category on the
- * strength of a decision nobody would make today. The detail pass re-reads
- * those rows on its next run, so refusing here costs a re-run and not a manual
- * delete, the same way drai-detail.mjs handles an older parse shape.
+ * A kept row carries the predicate that admitted it and the extractor that
+ * read it. Each has its own way of being wrong and neither is survivable here.
+ *
+ * An older PREDICATE means the listing was admitted by a rule the registry no
+ * longer applies, so loading it would put a listing in the category on the
+ * strength of a decision nobody would make today. That is a membership error.
+ *
+ * An older RECORD VERSION means the row was written by a parser that has since
+ * been corrected, and the correction is the point: a parser is not only ever
+ * widened. aws-record-v1 put AWS's own https://aws.amazon.com/premiumsupport/
+ * into extract.product_links, which v2 removed because it is AWS's
+ * infrastructure support rather than the publisher's channel and a reader
+ * seeing it among a product's links would take it for one. The write path
+ * turns each entry there into a capture_link of kind 'product', so loading a
+ * v1 row would put that URL in front of a reader as the publisher's, with
+ * nothing on screen or in this summary saying so. Measured on the pilot
+ * corpus: 109 of 195 v1 records carry it.
+ *
+ * The cost of refusing is a re-run and never a manual delete: aws-detail.mjs
+ * treats a keeper carrying either older stamp as stale and re-reads it, which
+ * is the rule drai-detail.mjs already follows for an older parse shape. The
+ * cost of NOT refusing is silent, which is the deciding difference.
  */
-const stale = records.filter((r) => r.predicate_version !== PREDICATE_VERSION);
-let work = records.filter((r) => r.predicate_version === PREDICATE_VERSION);
+const current = (r) =>
+  r.predicate_version === PREDICATE_VERSION && r.record_version === RECORD_VERSION;
+const stalePredicate = records.filter((r) => r.predicate_version !== PREDICATE_VERSION);
+const staleRecord = records.filter(
+  (r) => r.predicate_version === PREDICATE_VERSION && r.record_version !== RECORD_VERSION
+);
+let work = records.filter(current);
 if (limit) work = work.slice(0, limit);
 
 const complete = work.filter((r) => r.pricing_published).length;
 console.log(
   `${records.length} kept listings in ${CATEGORY_LABEL} | ${work.length} to load | ` +
     `${complete} publish a price, ${work.length - complete} do not` +
-    (stale.length ? ` | ${stale.length} skipped: older predicate` : "") +
+    (stalePredicate.length ? ` | ${stalePredicate.length} skipped: older predicate` : "") +
+    (staleRecord.length ? ` | ${staleRecord.length} skipped: older record version` : "") +
     (dry ? " | DRY RUN" : "") +
     "\n"
 );
-if (stale.length) {
+// Named, never merely counted. A skipped row is work the operator has to ask
+// for, and a number with no instruction beside it reads like a note.
+if (stalePredicate.length) {
   console.log(`predicate is now ${PREDICATE_VERSION}. Re-run scripts/aws-detail.mjs to re-read the rest.\n`);
+}
+if (staleRecord.length) {
+  console.log(
+    `${staleRecord.length} rows were written by an older extractor. The parser is now ` +
+      `${RECORD_VERSION}, so those rows are not loaded: re-run scripts/aws-detail.mjs, which ` +
+      "re-reads them, then run this again.\n"
+  );
+}
+if (!work.length) {
+  console.log("Nothing current to load. Re-read first.");
+  process.exit(0);
 }
 
 const tally = { created: 0, updated: 0, unchanged: 0, already_ingested: 0, failed: 0, rejected: 0, changes: 0, logos: 0 };

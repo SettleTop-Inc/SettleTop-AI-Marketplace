@@ -38,7 +38,7 @@ on conflict (id) do nothing;
 -- the delivery facet. What AWS states instead is a fulfilment option type, at
 -- fulfillmentOptions[].fulfillmentOptionType.fulfillmentOptionTypeId, and the
 -- adapter carries it verbatim into extract.acquire_using and keeps the machine
--- value in raw. Nine ids have been observed on live pages:
+-- value in raw. Ten ids have been observed on live pages:
 --
 --   AMAZON_MACHINE_IMAGE      Amazon Machine Image
 --   CONTAINER                 Container Image

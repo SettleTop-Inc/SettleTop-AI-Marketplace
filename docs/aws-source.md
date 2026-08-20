@@ -105,6 +105,18 @@ broken. Every one of them was hit or nearly hit during research.
 - **A `LINK` resource can have a null `resourceName`.** The customer-connect
   demo and private-offer links on a SaaS listing are exactly that. The label
   stays null rather than being filled in.
+- **The customer-connect links stay, and the premiumsupport link does not**,
+  and the difference is not the hostname. `premiumsupport` is byte-identical on
+  every listing carrying it, so it says nothing about the product and describes
+  AWS's own infrastructure support. The customer-connect links carry the
+  listing's own `prodview-` id and route a buyer to **this** publisher, so they
+  are that publisher's channel expressed through AWS's plumbing.
+- **AWS's reviews page is not a product link.** `ProviderSummaries[AWSMP].Url`
+  is AWS's address and the only label available for it would be words of ours.
+  The write path files every `product_links` entry as a `capture_link` of kind
+  `'product'`, indistinguishable from a link the publisher offered, so it is
+  left in `raw` at `record.reviews.reviews_url` until a field exists that says
+  what it is.
 
 ## Blocks that must never be read
 
@@ -143,10 +155,22 @@ on every page, ISO 8601. What it does not publish is a listing-*updated* stamp:
 this is the creation date of a **delivery option**. On a multi-version AMI the
 maximum is the publish date of the newest version and it agrees with the version
 string; on SaaS and Professional Services there is one option and the date reads
-as first-published. `extract.updated` carries `max(creationDate)` behind the
-switch `UPDATED_FROM_FULFILLMENT_CREATION_DATE`, and every option's date stays
-in `raw` either way. **Copying the value is AWS's; calling it "updated" is
-ours.**
+as first-published.
+
+**`extract.updated` is null, and the switch `UPDATED_FROM_FULFILLMENT_CREATION_DATE`
+is off.** Copying the value would be AWS's; calling it "updated" is ours, and the
+name is where the harm is. The write path stores `extract.updated` as
+`listing_updated`, `LandingApp.tsx:400` prints `Listing updated <date>`, and
+`PassportView.tsx:333` marks the field **Disclosed** purely because the value is
+non-null. On `prodview-g232pyu6l55l4` the site would state "Listing updated
+2016-09-23" and vouch for it, when what AWS published is the creation date of
+that listing's one SAAS delivery option. Putting one field's value under another
+field's name is exactly the substitution this registry exists to refuse.
+
+Nothing is lost by declining. Every option's `creationDate` stays in `raw`, and
+`created_max` and `created_min` stay on the record, so a column that says what
+the date actually is would find the value already captured. Turn the switch back
+on only alongside such a column.
 
 Two other real dates exist and neither may become `updated`:
 `Pricing.summary.authoredDate` is when the current offer was authored, a pricing
@@ -243,8 +267,20 @@ all. Rounding would be a number of ours.
 
 Professional Services listings have no `Pricing.summary` key at all: AWS
 publishes no price for an engagement. That is a **complete** capture of what AWS
-publishes, recorded as `capture_complete: false` with an explicit `missing`
-entry, exactly as DRAI marks an agent with no launch post.
+publishes, so `capture_complete` stays **true** and the `missing` array carries
+the nuance in words: `price: AWS publishes no pricing for this listing`.
+
+`capture_complete` is a fact about whether the capture succeeded, never about
+how much the publisher chose to say. `PassportView.tsx:225` renders a **Partial
+capture** tag off that flag, which asserts the harvest failed, and every AWS
+`PROFESSIONAL_SERVICES` listing would carry it otherwise. `microsoft.mjs:92`
+reads the column the same way (`capture_complete: !!detail`), so a Microsoft
+listing with no price is complete and an AWS one must be too, or one column
+means two things depending on which marketplace the row came from.
+
+**The one incomplete case is `plans_omitted`**, where data AWS did publish was
+read and then deliberately not stored. That is a real gap and it is marked as
+one.
 
 ### The rate card volume problem
 
@@ -301,7 +337,7 @@ Outcome vocabulary, terminal outcomes skipped on resume:
 | outcome | terminal | meaning |
 |---|---|---|
 | `kept` | yes | in category |
-| `out_of_category` | yes | categories read, predicate said no |
+| `out_of_category` | yes | categories read, predicate said no. The row stores the category **names** it was judged on |
 | `gone` | yes | 200 with the default `pageId` |
 | `identity_mismatch` | yes | the page states a different product |
 | `unreadable` | **no** | network failure, no blob, unparseable blob, or a real page missing Detail, overview or categories |
@@ -317,11 +353,19 @@ category. `record_version` says which extractor read it. A row can be stale in
 one sense and current in the other, and the two carry different weight:
 
 - **Stale predicate**: the listing may not belong in the category at all. That
-  is a membership error, so `aws-ingest.mjs` **refuses to load such a row** and
-  says so.
-- **Stale record version**: a real in-category listing was read by an older
-  extractor. The row is still a true observation, so it is simply re-read on the
-  next detail run and ingest is unaffected.
+  is a membership error.
+- **Stale record version**: the row was written by a parser that has since been
+  corrected, and a parser is not only ever widened. `aws-record-v1` put AWS's own
+  `https://aws.amazon.com/premiumsupport/` into `extract.product_links`; v2 cut
+  it because it is AWS's infrastructure support rather than the publisher's
+  channel. 109 of the 195 rows the pilot kept carry it.
+
+**`aws-ingest.mjs` refuses a row failing either stamp**, names how many it
+skipped and why, and tells the operator to re-read. The detail pass treats both
+kinds of staleness as a reason to re-fetch, so refusing costs a re-run rather
+than a manual delete, which is the rule `drai-detail.mjs` already follows for an
+older parse shape. Loading a superseded row would instead be silent, and that
+asymmetry is what decides it.
 
 **`predicate_version` is not optional.** Roughly 38,000 rows will carry a
 permanent `out_of_category` decision made by one predicate on one day. Widen the
@@ -351,16 +395,27 @@ grinding through 43,000 backoffs.
 Projected full sweep: about 45 to 60 minutes, about 4.8 GB on the wire (gzip),
 about 19 GB parsed, under 30 MB kept.
 
-**A run with no `--limit` is capped at 2,000 pages**, and says so. Unlike every
+**A run with no `--limit` is capped at 200 pages**, and says so. Unlike every
 other stage in this repo, an unbounded AWS detail run reads the whole
 marketplace, and `npm run harvest` would start one with no flags and no one
 asking. The pass resumes, so repeated runs converge, and after the first sweep a
 nightly run only has the sitemap delta and never approaches the cap.
-`AWS_FULL_SWEEP=1` removes it.
 
-The cap is also the staging the measurements ask for: 2,000, then 5,000, then
-the rest. Discovering a throttle at request 2,000 costs two minutes; discovering
-it at 40,000 costs the run.
+**200 rather than 2,000 because the default is what fires by accident.** 2,000
+is a sensible second stage, but the driver passes no flags, so whatever this
+number says is what an unattended run fetches from AWS with nobody asking. 200
+is the sanctioned pilot budget. `--limit N` raises it for one run and
+`AWS_FULL_SWEEP=1` removes it entirely; both are decisions, and a decision
+should be typed.
+
+The cap is also the staging the measurements ask for: 200, then 2,000, then
+5,000, then the rest. Discovering a throttle at request 200 costs seconds;
+discovering it at 40,000 costs the run.
+
+**A run AWS refuses exits non-zero.** `harvest.mjs` treats any zero exit as a
+successful stage and runs the next one, so a throttle-stopped detail pass would
+otherwise be reported as `aws ok` and followed by a live ingest of whatever
+partial file the run wrote.
 
 ## Ours, not AWS's, and never in `stated`
 
@@ -376,8 +431,41 @@ supplies. They must never be presented as AWS statements.
   Learning"), so a grandchild of the GUID would be missed. None was seen, so
   whether one exists is unverified either way.
 - **`PLAN_RATE_CARD_LIMIT`**, and the omission it produces.
-- **Calling `fulfillmentOptions[].creationDate` "updated"**, as above.
-- **Substituting `product.productId` for `CanonicalListingReference`.**
+- **Calling `fulfillmentOptions[].creationDate` "updated"**, which is why the
+  switch is off and `extract.updated` is null.
+- **Substituting `product.productId` for `CanonicalListingReference`.** Note the
+  value is not always a `prod-` prefixed id: 188 of the 195 pilot listings read
+  `prod-j4mno5fang7zo`, and 7 read a bare UUID. It is copied either way and
+  nothing is parsed out of it.
+- **Choosing which delivery option speaks for the listing.** So
+  `extract.version` is filled only where AWS publishes exactly **one** option,
+  which is 185 of the 195 pilot listings. `fulfillmentOptionVersion` is free
+  text: on a SageMaker Model page the two options read "GPU" and "CPU", and a
+  newest-first pick would store `listing_version = "GPU"` and mark the field
+  Disclosed. Filtering instead to values that look like versions was rejected,
+  because the real strings include "TetherfiMXDocker_3.2" and "Production-ready
+  Qwen 3.6 35B-A3B", every one the publisher's own words. A count can be
+  checked; a shape is an opinion. Every option's version stays in `raw`.
+- **Reading AWS's zero as "no rating" rather than as a score.** A listing with
+  no reviews states `TotalReviews 0` and `AverageCustomerRating 0` together:
+  102 of the 195 pilot listings. `extract.rating` and `extract.native_rating`
+  are null when the matching count is zero, which is how `microsoft.mjs:111`
+  and `drai.mjs:456` already write the column, and the registry sorts ratings
+  NULLS LAST in both directions on the stated rule that a missing rating must
+  never outrank a stated one. The counts stay AWS's, and `raw` keeps the
+  literal zeros.
+- **Which syndication provider reaches `external_source`.** The extract holds
+  one; AWS publishes no ranking between providers, so the first in AWS's own
+  key order is taken. Every provider stays on the record at
+  `record.reviews.syndicated`.
+- **Nothing about the primary rating column, and that is worth stating.** AWS's
+  `AverageCustomerRating` is the **blended** average including syndicated
+  reviews, while `native_rating` is the AWS-only score: 5 against 4.5 over the
+  same 35 reviews on `prodview-g232pyu6l55l4`. `microsoft.mjs:111-113` fills
+  both from one native score. Each value is copied verbatim, so nothing is
+  invented, but the column means blended-with-syndication for AWS and
+  native-only for Microsoft, and `lib/present.ts:48-52` renders both in one
+  line.
 - **`industries` left empty.** AWS's Industries branch children arrive in the
   same `categories` array with no branch label, so "is this an industry" can
   only be answered from a GUID table we would build. Deriving it later is
@@ -410,6 +498,13 @@ so changing it is a schema change needing its own review and its own migration.
 The follow-up and the ten ids are recorded at the end of
 `supabase/migrations/20260820120000_add_aws_marketplace.sql`.
 
+**That migration goes first.** `ingest_capture()` inserts into `listing`, whose
+`marketplace_id` is a foreign key, so until the `aws` row exists every AWS
+capture fails on the reference. `npm run harvest` runs `aws-ingest.mjs` with no
+flags, which is the live path, so the first harvest after this branch merges
+produces a wall of failures and exit 1 unless the migration has been applied.
+Nothing is corrupted either way: the failures are per record and caught.
+
 Until it lands, `Unknown` is a true statement about what that function can read,
 not a defect in the adapter. This is the asymmetry issue #43 is about: **AWS
 listings will know fewer layers than Microsoft ones, and that is a true
@@ -417,6 +512,11 @@ statement about what AWS publishes.**
 
 ## Still open
 
+- **Whether a term can state more rate cards than it embeds.** `totalRateCards`,
+  `rateCardCount` and the array agreed on every page sampled, including terms of
+  984, 710 and 585 cards. `readPlans` treats a disagreement as an omission
+  anyway, because a partial price table presented as a plan list is a claim AWS
+  never made, but the branch is unexercised by live data.
 - **Whether AI Agents & Tools has grandchild categories.** If one exists, the
   two-level predicate misses it. Bumping `PREDICATE_VERSION` is how a widened
   predicate would be rolled out.
