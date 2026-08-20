@@ -187,5 +187,248 @@ begin
   perform gate.check_rows('4b. informational: service_role on the other views', 'service_role', 'v_registry_stats', 'info');
 end $$;
 
+
+-- Phase 2: the asset-keyed read surface --------------------------------------
+--
+-- Every assertion below is on a value, never on a bare row count. Three of the
+-- four views reach at least one source by something other than an inner join:
+-- v_registry_card builds marketplace_ids, listing_count and search_blob in a
+-- lateral over every listing, and both passports reach plans, links, media,
+-- permissions, compliance and evidence through correlated subqueries. Only
+-- v_asset_evidence is inner joins the whole way down, which makes its count
+-- sound; it is asserted on values anyway, because a count that is sound today
+-- stops being sound the moment somebody adds an outer join to the view.
+--
+-- Each check takes p_expect. 'green' means the assertion must hold, 'red' means
+-- it must NOT, which is what step 5's deliberate breakages are for. Phase 1
+-- kept its breakages out of the verdict by naming them in run.sh's EXCLUDED
+-- list. Stating the expectation instead is stricter: a breakage that fails to
+-- break is then a FAIL rather than a line nobody reads, and run.sh does not
+-- have to learn a new step name every time a check is added.
+
+create or replace function gate.expect(p_ok boolean, p_expect text) returns text
+language sql immutable as $fn$
+  select case when p_expect = 'red'
+    then case when p_ok then 'FAIL: breakage did not go red' else 'PASS: red as designed' end
+    else case when p_ok then 'PASS' else 'FAIL: value assertion' end
+  end
+$fn$;
+
+-- v_registry_card is one row per live asset, and search_blob really carries the
+-- product's own words. The lowercase assertion is not decoration: the client
+-- lowercases the needle before matching, so a blob that kept its capitals would
+-- match nothing while looking perfectly healthy.
+create or replace function gate.check_card_asset(p_step text, p_pid text, p_expect text default 'green')
+returns void language plpgsql as $fn$
+declare n_rows bigint; n_assets bigint; hit boolean;
+        mids text[]; lcount int; blob text; nm text; pub text; mkt text;
+        ok boolean; v text; note text := '';
+begin
+  begin
+    select count(*) into n_assets from asset where merged_into is null;
+    set role anon;
+    select count(*) into n_rows from v_registry_card;
+    select c.marketplace_ids, c.listing_count, c.search_blob,
+           lower(c.name), lower(c.publisher), lower(c.marketplace_name)
+      into mids, lcount, blob, nm, pub, mkt
+      from v_registry_card c where c.source_product_id = p_pid;
+    hit := found;
+    reset role;
+    ok := n_rows = n_assets and n_rows > 0 and hit
+      and coalesce(array_length(mids, 1), 0) > 0
+      and lcount >= 1
+      and coalesce(blob, '') <> ''
+      and blob = lower(blob)
+      and blob like '%' || nm  || '%'
+      and blob like '%' || pub || '%'
+      and blob like '%' || mkt || '%';
+    v := gate.expect(ok, p_expect);
+    note := format('%s card rows vs %s live assets; %s: marketplace_ids %s, listing_count %s, search_blob %s chars, name %s, publisher %s, marketplace %s, lowercase %s',
+                   n_rows, n_assets, p_pid,
+                   coalesce(array_length(mids, 1), 0), coalesce(lcount, 0),
+                   coalesce(length(blob), 0),
+                   coalesce((blob like '%' || nm  || '%')::text, 'no row'),
+                   coalesce((blob like '%' || pub || '%')::text, 'no row'),
+                   coalesce((blob like '%' || mkt || '%')::text, 'no row'),
+                   coalesce((blob = lower(blob))::text, 'no row'));
+  exception when others then
+    reset role; v := 'ERROR ' || sqlstate; note := sqlerrm;
+  end;
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (p_step, 'anon', 'v_registry_card (values)', n_rows, v, note);
+end $fn$;
+
+-- v_asset_passport is one row per live asset and its listings array is not
+-- empty. Under 1:1 that array has exactly one element and it is the primary,
+-- which is what is asserted; the day a merge gives an asset two, the first
+-- element is still the primary because the aggregate orders on it.
+create or replace function gate.check_passport_listings(p_step text, p_pid text, p_expect text default 'green')
+returns void language plpgsql as $fn$
+declare n_rows bigint; n_assets bigint; hit boolean; ls jsonb; head jsonb;
+        ok boolean; v text; note text := '';
+begin
+  begin
+    select count(*) into n_assets from asset where merged_into is null;
+    set role anon;
+    select count(*) into n_rows from v_asset_passport;
+    select p.listings into ls from v_asset_passport p where p.source_product_id = p_pid;
+    hit := found;
+    reset role;
+    head := ls -> 0;
+    ok := n_rows = n_assets and n_rows > 0 and hit
+      and jsonb_typeof(ls) = 'array'
+      and jsonb_array_length(ls) > 0
+      and (head ->> 'is_primary') = 'true'
+      and nullif(head ->> 'marketplace_id', '') is not null;
+    v := gate.expect(ok, p_expect);
+    note := format('%s passport rows vs %s live assets; %s: listings %s, first is_primary %s, first marketplace_id %s',
+                   n_rows, n_assets, p_pid,
+                   case when jsonb_typeof(ls) = 'array'
+                        then jsonb_array_length(ls)::text
+                        else coalesce(jsonb_typeof(ls), 'absent') end,
+                   coalesce(head ->> 'is_primary', '-'),
+                   coalesce(head ->> 'marketplace_id', '-'));
+  exception when others then
+    reset role; v := 'ERROR ' || sqlstate; note := sqlerrm;
+  end;
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (p_step, 'anon', 'v_asset_passport.listings', n_rows, v, note);
+end $fn$;
+
+-- v_listing_passport keeps the grain the asset passport gave up: one row per
+-- listing, with asset_id pointing back at the product.
+create or replace function gate.check_listing_passport(p_step text, p_expect text default 'green')
+returns void language plpgsql as $fn$
+declare n_rows bigint; n_listings bigint; n_null_asset bigint; n_null_pid bigint;
+        ok boolean; v text; note text := '';
+begin
+  begin
+    select count(*) into n_listings from listing;
+    set role anon;
+    select count(*),
+           count(*) filter (where asset_id is null),
+           count(*) filter (where source_product_id is null)
+      into n_rows, n_null_asset, n_null_pid
+      from v_listing_passport;
+    reset role;
+    ok := n_rows = n_listings and n_rows > 0 and n_null_asset = 0 and n_null_pid = 0;
+    v := gate.expect(ok, p_expect);
+    note := format('%s rows vs %s listings, %s null asset_id, %s null source_product_id',
+                   n_rows, n_listings, n_null_asset, n_null_pid);
+  exception when others then
+    reset role; v := 'ERROR ' || sqlstate; note := sqlerrm;
+  end;
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (p_step, 'anon', 'v_listing_passport (values)', n_rows, v, note);
+end $fn$;
+
+-- The same six correlated subqueries the asset passport carries, in the
+-- listing-grained view. check_passport asserts these on v_asset_passport; this
+-- is its twin, and it exists because a policy failure hollows both and the row
+-- count sees neither.
+create or replace function gate.check_listing_passport_sections(p_step text, p_pid text, p_expect text default 'green')
+returns void language plpgsql as $fn$
+declare r record; hit boolean; ok boolean; v text; note text := '';
+begin
+  begin
+    set role anon;
+    select jsonb_array_length(p.plans)                    as plans,
+           jsonb_array_length(p.product_links)            as product_links,
+           jsonb_array_length(p.legal_links)              as legal_links,
+           jsonb_array_length(p.media)                    as media,
+           coalesce(array_length(p.graph_permissions, 1), 0) as perms,
+           coalesce(array_length(p.compliance, 1), 0)     as compliance,
+           (select count(*) from jsonb_object_keys(p.evidence)) as evidence_kinds
+      into r
+      from v_listing_passport p
+     where p.source_product_id = p_pid;
+    hit := found;
+    reset role;
+    ok := hit and r.plans > 0 and r.product_links > 0 and r.legal_links > 0
+      and r.media > 0 and r.perms > 0 and r.compliance > 0 and r.evidence_kinds > 0;
+    v := gate.expect(ok, p_expect);
+    note := format('%s: plans %s, product_links %s, legal_links %s, media %s, graph_permissions %s, compliance %s, evidence kinds %s',
+                   p_pid, r.plans, r.product_links, r.legal_links, r.media,
+                   r.perms, r.compliance, r.evidence_kinds);
+  exception when others then
+    reset role; v := 'ERROR ' || sqlstate; note := sqlerrm;
+  end;
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (p_step, 'anon', 'v_listing_passport (sections)', null, v, note);
+end $fn$;
+
+-- v_asset_evidence is one row per capture, keyed by asset. content_hash is the
+-- whole point of the view: it is what says two observations were the same
+-- observation, so a null one is an evidence row that proves nothing. has_raw
+-- is asserted non-zero because a view that reported "no source material held"
+-- for every capture would look identical to a working one otherwise.
+create or replace function gate.check_asset_evidence(p_step text, p_expect text default 'green')
+returns void language plpgsql as $fn$
+declare n_rows bigint; n_captures bigint; n_null_hash bigint; n_null_asset bigint; n_raw bigint;
+        ok boolean; v text; note text := '';
+begin
+  begin
+    select count(*) into n_captures from capture;
+    set role anon;
+    select count(*),
+           count(*) filter (where content_hash is null),
+           count(*) filter (where asset_id is null),
+           count(*) filter (where has_raw)
+      into n_rows, n_null_hash, n_null_asset, n_raw
+      from v_asset_evidence;
+    reset role;
+    ok := n_rows = n_captures and n_rows > 0
+      and n_null_hash = 0 and n_null_asset = 0 and n_raw > 0;
+    v := gate.expect(ok, p_expect);
+    note := format('%s rows vs %s captures, %s null content_hash, %s null asset_id, %s with raw',
+                   n_rows, n_captures, n_null_hash, n_null_asset, n_raw);
+  exception when others then
+    reset role; v := 'ERROR ' || sqlstate; note := sqlerrm;
+  end;
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (p_step, 'anon', 'v_asset_evidence (values)', n_rows, v, note);
+end $fn$;
+
+-- All seven views exist and every one of them is security_invoker. Without it
+-- a view runs as its owner, which here means RLS is evaluated against postgres
+-- rather than against the visitor, and every policy in this database stops
+-- being load bearing. v_logo_status sat in exactly that state on production
+-- until phase 1 closed it.
+create or replace function gate.check_view_options(p_step text) returns void
+language plpgsql as $fn$
+declare n_views int; bad text; ok boolean; v text; note text := '';
+  seven text[] := array['v_registry_card','v_asset_passport','v_listing_passport',
+                        'v_asset_evidence','v_asset_change_feed','v_registry_stats','v_logo_status'];
+begin
+  select count(*) into n_views
+    from pg_class c join pg_namespace nsp on nsp.oid = c.relnamespace
+   where nsp.nspname = 'public' and c.relkind = 'v' and c.relname = any(seven);
+  select string_agg(c.relname || ' -> ' || coalesce(array_to_string(c.reloptions, ','), '(none)'), ', ')
+    into bad
+    from pg_class c join pg_namespace nsp on nsp.oid = c.relnamespace
+   where nsp.nspname = 'public' and c.relkind = 'v' and c.relname = any(seven)
+     and not coalesce(c.reloptions, '{}') @> array['security_invoker=true'];
+  ok := n_views = 7 and bad is null;
+  v := gate.expect(ok, 'green');
+  note := format('%s of 7 views present; not security_invoker: %s', n_views, coalesce(bad, 'none'));
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (p_step, 'postgres', 'pg_class.reloptions', n_views, v, note);
+end $fn$;
+
+do $$
+begin
+  perform gate.check_rows('3f. anon reads the phase 2 views', 'anon', 'v_registry_card');
+  perform gate.check_rows('3f. anon reads the phase 2 views', 'anon', 'v_asset_passport');
+  perform gate.check_rows('3f. anon reads the phase 2 views', 'anon', 'v_listing_passport');
+  perform gate.check_rows('3f. anon reads the phase 2 views', 'anon', 'v_asset_evidence');
+
+  perform gate.check_card_asset('3g. v_registry_card is asset-keyed and its blob is real', 'seed-alpha');
+  perform gate.check_passport_listings('3g. v_asset_passport is asset-keyed and carries listings', 'seed-alpha');
+  perform gate.check_listing_passport('3g. v_listing_passport is listing-keyed');
+  perform gate.check_listing_passport_sections('3g. v_listing_passport carries its sections', 'seed-alpha');
+  perform gate.check_asset_evidence('3g. v_asset_evidence is capture-keyed');
+  perform gate.check_view_options('3h. all seven views are security_invoker');
+end $$;
+
 \pset format aligned
 select step, as_role, object, n_rows, verdict, note from gate.result order by seq;

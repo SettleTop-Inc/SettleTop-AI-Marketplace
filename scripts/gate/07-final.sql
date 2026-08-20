@@ -96,6 +96,18 @@ begin
   perform gate.check_stats('7. final read, after every write');
   perform gate.check_logo_status('7. final read, after every write');
   perform gate.check_passport('7. final read, after every write', 'seed-alpha');
+
+  -- Phase 2. The re-ingest above landed a third capture on seed-alpha, so the
+  -- card's capture_count and last_captured_at are aggregates over a listing
+  -- that has actually moved since step 3, not over a static seed.
+  perform gate.check_rows('7. final read, after every write', 'anon', 'v_listing_passport');
+  perform gate.check_rows('7. final read, after every write', 'anon', 'v_asset_evidence');
+  perform gate.check_card_asset('7. final read, after every write', 'seed-alpha');
+  perform gate.check_passport_listings('7. final read, after every write', 'seed-alpha');
+  perform gate.check_listing_passport('7. final read, after every write');
+  perform gate.check_listing_passport_sections('7. final read, after every write', 'seed-alpha');
+  perform gate.check_asset_evidence('7. final read, after every write');
+  perform gate.check_view_options('7. final read, after every write');
 end $$;
 
 \pset format aligned
@@ -119,12 +131,13 @@ select c.relname as tbl, c.relrowsecurity as rls,
  where n.nspname = 'public' and c.relkind = 'r'
  order by c.relname;
 
--- 9. Nothing named for the old asset survives, other than the two views that
--- are deliberately named that way.
+-- 9. Nothing named for the old asset survives, other than the views that are
+-- deliberately named that way. v_asset_evidence joined that list in phase 2.
 select 'leftover asset-named object' as finding, c.relname
   from pg_class c join pg_namespace n on n.oid = c.relnamespace
  where n.nspname = 'public' and c.relname like '%asset%'
    and c.relname not in ('asset','asset_slug','asset_merge','v_asset_passport','v_asset_change_feed',
+                         'v_asset_evidence',
                          'asset_merge_id_seq','asset_merged_into_idx','asset_slug_one_canonical',
                          'asset_slug_asset_idx','asset_merge_into_idx','asset_pkey','asset_slug_pkey',
                          'asset_merge_pkey','listing_asset_idx')
