@@ -1,8 +1,44 @@
 # AWS Marketplace source design
 
-**Status:** approved for implementation
+**Status:** implemented, with section 1 reversed
 **Issue:** #59. Implementation follows in #60, #61, #62.
 **Date all measurements were taken:** 2026-08-20
+
+> ## AMENDMENT, 2026-08-20: the keyless route is the chosen one
+>
+> **This document originally chose the authenticated AWS Marketplace Discovery
+> API. That is no longer the mechanism. The owner declined to make the registry
+> depend on holding an AWS credential**, and the keyless route this document
+> records as a rejected alternative is what was built.
+>
+> Read `docs/aws-source.md` before this file. It is the implemented design and
+> it is written from live pages. This file remains valuable for two things: the
+> Discovery API details in section 1, which are still accurate and are the
+> obvious route back if the decision is ever revisited, and the reasoning in
+> sections 4, 5 and 6, which survives the change of mechanism intact.
+>
+> **What the reversal changes, section by section:**
+>
+> | section | status |
+> |---|---|
+> | 1, How AWS is read | **reversed.** The API is now the documented alternative, not the choice. The sitemap is the enumeration source and the product page blob is the record. See the amendment note inside section 1. |
+> | 2, Pagination | **does not apply.** There is no `NextToken` on this route. Enumeration is one sitemap request. |
+> | 2, Category | **holds**, and the predicate is now known exactly: the GUID is a PARENT and matches through `parentCategoryId`. |
+> | 2, `AGENTIC_TYPE` | **unreachable.** It is an API facet and does not survive into the page blob. The 21 agentic listings outside the category cannot be found. |
+> | 3, Field mapping | **three claims are wrong.** AWS does publish a date; it does publish separate native and external review scores; and `surfaces` and `works_with` have no source at all. Corrected in `docs/aws-source.md`. |
+> | 3, `cert_detail` | **stricter.** All eight keys are null, not six. There is no public Vendor Insights badge in the blob. |
+> | 4, `stated` stays empty | **holds, and is stronger.** The two chips it declined do not exist on the keyless route. |
+> | 5, asymmetry | **holds.** |
+> | 6, our classification | **holds**, with additions listed in `docs/aws-source.md`. |
+> | 7, Stages | **three stages, renamed.** `aws-catalog.mjs`, `aws-detail.mjs`, `aws-ingest.mjs`. The detail pass is also the filter. |
+> | 8, Open questions | **several are answered.** See the note at the end of section 8. |
+> | 9, Rules that do not bend | **holds, all four.** |
+>
+> One rule is worth restating, because the reversal could look like it bends it:
+> section 9 says no reverse-engineered credential enters this repository. The
+> keyless route uses **no credential at all**, and reads only paths `robots.txt`
+> permits. The internal `awsmpdiscovery` proxy this document rejects on conduct
+> grounds is still rejected, and is not what the implementation calls.
 
 AWS Marketplace becomes the registry's third source, after `microsoft` (6,855
 listings) and `drai` (23). The point is not more rows. It is that a product
@@ -16,6 +52,16 @@ read.
 ---
 
 ## 1. How AWS is read
+
+> **REVERSED. See the amendment at the top of this file.** The decision below
+> was taken and then declined by the owner, who did not want the registry to
+> require an AWS credential. Everything in this section about the API is still
+> factually accurate and is kept for that reason. What was built is the keyless
+> route described under "The sitemap" below, corrected by what was later
+> measured: the sitemap **is** usable as a primary source, because the category
+> a listing sits in is stated on the listing's own page, so enumeration does not
+> need to filter and the detail pass filters instead. The implemented design is
+> `docs/aws-source.md`.
 
 **Decision: the AWS Marketplace Discovery API, authenticated with ordinary AWS
 credentials supplied at runtime. Not the website, not a browser, not the
@@ -94,6 +140,26 @@ API reports 43,369.
 count can be judged against a number. It is unusable as a primary source because
 it carries no category, so it cannot filter, and it is slightly stale against
 the API's totals.
+
+> **THIS IS THE ROUTE THAT WAS BUILT, and the objection above is answered rather
+> than refuted.** The sitemap genuinely carries no category, so enumeration
+> genuinely cannot filter. What that costs is not correctness but requests: the
+> detail pass fetches every id and applies the category predicate to each
+> listing's own record, keeping the measured 11.9 percent. About 43,104 fetches
+> for about 5,100 kept rows, roughly 45 minutes and 4.8 GB on the wire, once,
+> and then only the id delta each night.
+>
+> The consequence for design is real and is why `aws-detail.mjs` looks unlike
+> `harvest-detail.mjs`: seven eighths of what it fetches produces no output row,
+> so it cannot resume from its own output and keeps a separate outcome ledger
+> covering every id including the rejects.
+>
+> Two further facts, measured after this document was merged. The sitemap is
+> also reachable at `https://aws.amazon.com/marketplace/sitemap`, without the
+> suffix, which is the form `robots.txt` publishes; the two bodies are
+> byte-identical and neither redirects. And a product page needs no browser and
+> no credential: the whole listing record is embedded as JSON, exactly as the
+> correction at the end of this section says.
 
 ### A correction to what this repo believed
 
@@ -369,6 +435,29 @@ None of these block implementation. All should be resolved by observation during
 - **AWS Foundational Technical Review** appeared on none of the nine pages and in
   no facet, but AWS's own documentation was not exhausted.
 - **The sitemap's 265 shortfall** against `totalResults` is unexplained.
+
+> **ANSWERED, on the keyless route, 2026-08-20.**
+>
+> - **Rate limits.** 36 pages at concurrency 4: 16.6 pages/sec, p50 201 ms, zero
+>   429, zero 503, zero `Retry-After`. Every response a CloudFront MISS with
+>   `no-cache`, so each request is real origin work. Concurrency stays at 4 and
+>   nothing above it has been tested. A 43,104 request sweep has still never
+>   been run, so this predicts little; stage the first one with `--limit`.
+> - **`NextToken` lifetime.** Does not apply. There is no token on this route.
+> - **Whether `AGENTIC_TYPE` is publisher-declared or AWS-assigned.** Still
+>   unverified, and now moot: it is unreachable without the API.
+> - **Discovery API pricing.** Moot for the same reason.
+> - **Absences.** No longer resting on nine listings. Roughly 1,700 product
+>   pages have been read across ten fulfilment types, including the Container,
+>   Helm, CloudFormation and SageMaker shapes this document lists as unread.
+>   The mapping held on all of them.
+> - **AWS Foundational Technical Review.** Answered for the blob: `"FTR"` and
+>   `"Foundational Technical"` occur zero times on any page read.
+>
+> Newly open, and recorded here so they are not lost: whether AI Agents & Tools
+> has grandchild categories, which the verified two-level predicate would miss;
+> and whether the blended and native review scores diverge in a way that matters,
+> given they demonstrably do diverge.
 
 ---
 
