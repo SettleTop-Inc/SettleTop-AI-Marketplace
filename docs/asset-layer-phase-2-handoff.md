@@ -225,7 +225,7 @@ four times and the card moved underneath it. Both are identical today.
 `certified` and `attested` already resolved as any listing before phase 2 and
 still do. `agents` and `marketplaces` never read the card.
 
-## Four smaller things, each correct today and wrong at the first merge
+## Five smaller things, each correct today and wrong at the first merge
 
 **The qualifying-listing ordering prefers `none` over `not_eligible`.** The
 `cert` lateral ranks certifications `microsoft_365_certified` (0),
@@ -258,6 +258,29 @@ TypeScript over the live registry and will start failing at the first merge, not
 because either side is wrong but because they are answering different
 questions. Update the test before phase 3 merges anything, or it fails for the
 right reason at the wrong moment.
+
+**The source facet has the same disease.** `registry_search` matches it
+against the SET of marketplaces an asset is listed on:
+`supabase/migrations/20260820100100_registry_search_asset_keyed.sql` maps
+`v_registry_card.marketplace_ids` to names and tests overlap with `&&`.
+`facetValueOf()` at `lib/registry-query.ts:122` still reads a single
+`marketplace_name` off the row. `runQuery`, which uses `facetValueOf()`, is
+what `lib/registry-search.parity.test.ts` compares the server against, so
+under two listings the two sides answer different questions for the same
+reason `search_blob` does, and the parity test fails at the first merge for a
+correct reason.
+
+Not fixed alongside `search_blob` because there is nothing to fix it with yet:
+`v_registry_card` carries `marketplace_ids` as ids, not names, and the id to
+name mapping is deliberately kept inside `registry_search` rather than added
+as a column, so there is no client-side array of marketplace names for
+`facetValueOf()` to compare against. Inventing one to satisfy a test that is
+not yet failing would be solving a problem phase 2 does not have yet. It is
+also lower stakes than `search_blob` today: `runQuery` is not on a live path
+(`lib/registry.ts:155`, the comment on `getCards`, says so directly, and
+nothing in `app/` or `components/` calls it), so nothing a visitor sees
+diverges before phase 3. Give it the same fix as `search_blob` when phase 3
+takes this up.
 
 **`listing_count` can exceed `jsonb_array_length(listings)`.** `listing_count`
 and `marketplace_ids` count through a LEFT JOIN to `capture_extract`, so they

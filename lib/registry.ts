@@ -490,37 +490,3 @@ export async function getRecentChanges(limit = 12): Promise<ChangeRow[]> {
   }
   return (data ?? []) as ChangeRow[];
 }
-
-/**
- * Every URL an asset answers to, for generating passport routes at build time.
- *
- * Reads asset_slug rather than v_registry_card. Since phase 2, the card emits
- * one row per asset from its primary listing, so a merged-away product's own
- * slug would never appear there and its URL would stop being pre-rendered.
- * asset_slug keeps every slug an asset has ever answered to, canonical or not.
- *
- * Paged the same way fetchAllCards is, for the same reason: PostgREST caps a
- * single request at 1000 rows with no error, and asset_slug can exceed that.
- * De-duplicated for the same reason too. asset_slug is written to as merges
- * happen, so a row inserted ahead of the cursor can shift the rest of the
- * table and cause a page to repeat one this function already returned.
- */
-export async function getAllSlugs(): Promise<string[]> {
-  const all: string[] = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase
-      .from("asset_slug")
-      .select("slug")
-      .order("slug", { ascending: true })
-      .range(from, from + PAGE - 1);
-    if (error) {
-      console.error("getAllSlugs", error.message);
-      return all;
-    }
-    const rows = (data ?? []) as Array<{ slug: string }>;
-    all.push(...rows.map((r) => r.slug));
-    if (rows.length < PAGE) break;
-    if (all.length >= 100_000) break;
-  }
-  return [...new Set(all)];
-}
