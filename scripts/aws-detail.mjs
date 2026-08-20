@@ -3,7 +3,8 @@
  * AWS pass 2 of 3: read each product page, and filter.
  *
  *   node scripts/aws-detail.mjs --limit 200
- *   node scripts/aws-detail.mjs
+ *   node scripts/aws-detail.mjs                 # capped, see DEFAULT_LIMIT
+ *   AWS_FULL_SWEEP=1 node scripts/aws-detail.mjs
  *
  * This is the expensive pass and it is the only place the category filter can
  * live, because a listing's categories are stated only on its own record. It
@@ -40,7 +41,13 @@
  * worst case of a torn checkpoint is a re-fetch rather than a lost keeper.
  */
 import { fetchText, pool, readJsonl, writeJsonl, dataPath, parseCliArgs } from "./lib/marketplace.mjs";
-import { ID, PRODUCT_URL, PREDICATE_VERSION, parseProductPage } from "./lib/sources/aws.mjs";
+import {
+  ID,
+  PRODUCT_URL,
+  PREDICATE_VERSION,
+  RECORD_VERSION,
+  parseProductPage,
+} from "./lib/sources/aws.mjs";
 
 const IDS = dataPath(ID, "ids.jsonl");
 const SEEN = dataPath(ID, "seen.jsonl");
@@ -69,7 +76,30 @@ const CHECKPOINT = 500;
  */
 const THROTTLE_STOP = 20;
 
-const { limit } = parseCliArgs({ numbers: ["limit"] });
+/**
+ * The default cap on one run, and why an unbounded default would be wrong here.
+ *
+ * Every other stage in this repo reads what its catalog enumerated and stops.
+ * This one would read 43,104 product pages: about 45 minutes, about 4.8 GB on
+ * the wire, and roughly 19 GB parsed. That is not a thing to start by accident,
+ * and `npm run harvest` with no arguments would start it, because the driver
+ * runs every source's every stage with no flags.
+ *
+ * So a run with no --limit takes this cap and says so. The pass is fully
+ * resumable, so repeated runs converge on the whole catalogue, and after the
+ * first sweep a nightly run only has the sitemap delta to read and never comes
+ * near the cap at all.
+ *
+ * Set AWS_FULL_SWEEP=1 to remove it. That is the opt-in the recon asks for when
+ * it says to stage the first sweep at 2,000, then 5,000, then the rest:
+ * discovering a throttle at request 2,000 costs two minutes, and discovering it
+ * at request 40,000 costs the run.
+ */
+const DEFAULT_LIMIT = 2000;
+const FULL_SWEEP = process.env.AWS_FULL_SWEEP === "1";
+
+const { limit: limitFlag } = parseCliArgs({ numbers: ["limit"] });
+const limit = limitFlag || (FULL_SWEEP ? 0 : DEFAULT_LIMIT);
 
 const ids = await readJsonl(IDS);
 if (!ids.length) {
@@ -84,10 +114,11 @@ const keepers = new Map((await readJsonl(OUT)).map((r) => [r.id, r]));
  * A keeper written by the parser now in this file, rather than an earlier one.
  *
  * Same job as drai-detail.mjs's currentShape(): correcting the parser should
- * cost a re-run, not a manual delete. term_types was the last field added, so
- * a keeper without it predates the current extraction and is re-read.
+ * cost a re-run, not a manual delete. The stamp is explicit rather than
+ * inferred from whichever field happened to be added last, so bumping it is a
+ * deliberate act taken in the same commit as the parser change.
  */
-const currentShape = (d) => Array.isArray(d?.term_types);
+const currentShape = (d) => d?.record_version === RECORD_VERSION;
 
 /**
  * What still needs fetching.
@@ -114,9 +145,16 @@ const resolved = ids.length - backlog;
 console.log(
   `${ids.length.toLocaleString()} ids | ${resolved.toLocaleString()} already resolved | ` +
     `${backlog.toLocaleString()} to read` +
-    (limit && backlog > limit ? `, capped at ${limit} this run` : "") +
-    `\npredicate ${PREDICATE_VERSION}, concurrency ${CONCURRENCY}\n`
+    (limit && backlog > limit ? `, capped at ${limit.toLocaleString()} this run` : "") +
+    `\npredicate ${PREDICATE_VERSION}, record ${RECORD_VERSION}, concurrency ${CONCURRENCY}\n`
 );
+if (!limitFlag && !FULL_SWEEP && backlog > DEFAULT_LIMIT) {
+  console.log(
+    `Capped at the ${DEFAULT_LIMIT.toLocaleString()} page default. Reading all ${backlog.toLocaleString()} ` +
+      "would be about 45 minutes and 4.8 GB.\nThis pass resumes, so re-running works through the rest " +
+      `${DEFAULT_LIMIT.toLocaleString()} at a time. AWS_FULL_SWEEP=1 removes the cap.\n`
+  );
+}
 if (!todo.length) {
   console.log("nothing to do");
   process.exit(0);

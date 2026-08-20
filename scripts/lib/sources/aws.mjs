@@ -72,6 +72,26 @@ export const CATEGORY_URL = `${ORIGIN}/marketplace/b/${CATEGORY}`;
 export const PREDICATE_VERSION = "category-parent-v1";
 
 /**
+ * Stamped on every record written to data/aws/details.jsonl.
+ *
+ * BUMP THIS WHENEVER parseProductPage CHANGES WHAT IT EXTRACTS, and the detail
+ * pass re-reads every keeper carrying an older stamp. Correcting the parser
+ * then costs a re-run rather than a manual delete, which is the rule
+ * drai-detail.mjs already follows with its currentShape() check.
+ *
+ * Deliberately separate from PREDICATE_VERSION, because the two say different
+ * things and carry different weight. A stale predicate means the listing may
+ * not belong in the category at all, which is a membership error, so
+ * aws-ingest.mjs refuses to load such a row. A stale record version means a
+ * real in-category listing was read by an older extractor, so the row is still
+ * a true observation and is simply re-read on the next detail run.
+ *
+ * v2: product_links no longer carries AWS's own premium support link, and a
+ *     LINK resource with no resourceName keeps a null label.
+ */
+export const RECORD_VERSION = "aws-record-v2";
+
+/**
  * Rate cards stored as plans, per pricing term.
  *
  * OURS, NOT AWS'S, and the most consequential judgement in this file. AWS makes
@@ -502,6 +522,7 @@ export function parseProductPage({ id, html, url = null }) {
       // res.url at marketplace.mjs:88-92.
       fetched_url: url,
       predicate_version: PREDICATE_VERSION,
+      record_version: RECORD_VERSION,
 
       name: text(overview.listingName),
       publisher: text(overview.creator?.creatorName),

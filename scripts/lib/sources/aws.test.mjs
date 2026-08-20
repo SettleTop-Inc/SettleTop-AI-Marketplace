@@ -53,6 +53,7 @@ import {
   PLAN_RATE_CARD_LIMIT,
   PREDICATE_VERSION,
   PRODUCT_URL,
+  RECORD_VERSION,
   SITEMAP_URL,
   extractPageContext,
   inCategory,
@@ -257,6 +258,12 @@ test("the in-category page is transcribed, field for field", () => {
   // AWS states a date on every page, contradicting the spec. It is the creation
   // date of a delivery option, not a listing-updated stamp.
   assert.equal(record.created_max, "2025-12-16T08:26:46.009Z");
+
+  // Both stamps, and they are separate on purpose: a stale predicate means the
+  // listing may not belong in the category at all, a stale record version means
+  // a real listing was read by an older extractor.
+  assert.equal(record.record_version, RECORD_VERSION);
+  assert.notEqual(record.record_version, record.predicate_version);
 
   assert.equal(record.identifiers.product_id, "prod-j4mno5fang7zo");
   assert.equal(record.identifiers.stated_id, "prodview-4jqih5hzoxv3a");
