@@ -72,20 +72,27 @@
 --    that shape is exactly what let risk_basis be left out of the group with
 --    nothing noticing.
 --
---    THE MEMBERSHIP RULE, stated as a closure rather than as a list, because
---    the list was drawn too short three times running:
+--    THE MEMBERSHIP RULE. Three attempts stated it as a downstream cone and
+--    each was short by whatever sat one derivation further out, so it is stated
+--    here as a connected component instead:
 --
---      This lateral carries every column computed from the listing's
---      certification or from its known_layers, transitively. A column derived
---      from either of those belongs here, not in the outer select.
---      layers_tracked is excluded because it is a constant from
---      registry_layers() and describes no listing at all.
+--      Take the relation "is a function of" over this view's columns and treat
+--      it as UNDIRECTED. The certification group is the connected component
+--      containing certification. A column belongs in this lateral if it is
+--      computed from something in the component OR if something in the
+--      component is computed from it. layers_tracked is outside, because it is
+--      a constant from registry_layers() and describes no listing at all.
 --
---    Evaluate that rule against a column rather than trying to remember
---    whether it was on somebody's list. The members below are the consequence
---    of applying it, not the rule itself.
+--    Direction is the whole point of that phrasing, and the reason is in the
+--    next section. A downstream test asks "is this computed from the
+--    certification", which is the question that admitted risk_basis, then
+--    known_layers, then reach, one round at a time. The undirected test also
+--    asks "does the certification's group summarise this", which is the
+--    question none of those three rounds asked.
 --
---    certification    the seed of the whole closure.
+--    Applying it, the nine columns this lateral carries:
+--
+--    certification    the seed of the component.
 --    provenance       registry_provenance(certification) ->> 'provenance'
 --    evidence_tier    registry_provenance(certification) ->> 'tier'
 --    cert_label       registry_provenance(certification) ->> 'label',
@@ -97,28 +104,72 @@
 --    layers_known     cardinality(known_layers)
 --    reach            round(100.0 * cardinality(known_layers) / 12)
 --
---    Why the closure reaches as far as it does, so the second clause is
---    checkable and not merely asserted. registry_cert_only_layers() names
---    hosting, data residency and permission scope; ingest_capture reads the
---    first two out of cert_detail and gates the third on the certification
---    itself; and registry_risk() subtracts exactly those three when working
---    out how much of the build an uncertified listing could possibly have
---    disclosed, which is why one seed listing reads "3 of 9" and the other
---    "7 of 12". A listing's certification and its layer set are the same fact
---    seen twice. layers_known and reach are then that layer set counted and
---    that same count as a percentage, so all three are one number in three
---    presentations. Splitting any of them puts two spellings of one quantity
---    side by side on a card and lets them disagree.
+--    registry_cert_only_layers() names hosting, data residency and permission
+--    scope; ingest_capture reads the first two out of cert_detail and gates the
+--    third on the certification itself; and registry_risk() subtracts exactly
+--    those three when working out how much of the build an uncertified listing
+--    could possibly have disclosed, which is why one seed listing reads "3 of
+--    9" and the other "7 of 12".
 --
---    The rule was reached in three corrections, and the corrections are worth
---    more than the conclusion: risk_basis was omitted first, then
---    known_layers, then reach. Each time the boundary was drawn at the field
---    somebody happened to be thinking about rather than at the derivation, and
---    each omission sat exactly one derivation step further out than the last.
---    That is what a list does and a closure does not.
 --
---    Two things are deliberately outside the closure and neither is an
---    oversight.
+--    THE COMPONENT IS CURRENTLY CUT, AND THAT IS THE OPEN QUESTION OF THIS
+--    PHASE. Read this before adding a column to either side.
+--
+--    known_layers is not a source. It is a twelve-entry summary of twelve
+--    facts, and ELEVEN of those twelve are exact functions of columns these
+--    views still take from the primary listing:
+--
+--      vendor identity   publisher
+--      model             capture_evidence, kind 'model', verified
+--      framework         capture_evidence, kind 'framework', verified
+--      tools and MCP     capture_evidence kind 'tool_mcp', or capture_permission
+--      data sources      capture_evidence, kind 'data_source', verified
+--      integrations      capture_evidence kind 'integration', or works_with
+--      hosting           cert_hosting
+--      data residency    cert_data_location
+--      pricing           pricing, or capture_plan
+--      access model      acquire_using
+--      support channel   support
+--
+--    Only the twelfth, permission scope, is a function of the certification and
+--    travelled into this lateral with it. So the layer COUNT now describes the
+--    qualifying listing while the eleven facts it summarises describe the
+--    primary one, and the undirected rule above is what names that as a cut
+--    rather than as a boundary.
+--
+--    Under two listings the passport can therefore draw a ledger reading "7 of
+--    12 traced" and 58 percent directly above "Hosting: Unknown", "Data
+--    residency: Unknown", no framework and no plans. That is the same
+--    contradiction reach was moved to fix, over eleven columns instead of one.
+--    Reproduced against a container, not predicted: a synthetic two-listing
+--    asset returns layers_known 7 and reach 58 beside a null cert_hosting, a
+--    null cert_data_location, a null acquire_using, a null support, one
+--    evidence kind and zero plans.
+--
+--    NOTHING TODAY IS WRONG. Assets and listings are 1:1, the qualifying
+--    listing is the primary listing, and every column above is that one
+--    listing's own. What is wrong is the rule somebody will apply next.
+--
+--    It is deliberately not closed here, because closing it means choosing
+--    between two options that have never been compared against a real merged
+--    asset, and that comparison belongs to phase 3 with one in front of it:
+--
+--      (a) Move the whole disclosure block into this lateral: publisher,
+--          cert_hosting, cert_data_location, acquire_using, support,
+--          works_with, pricing, plans and the evidence subquery. The passport
+--          then describes the qualifying listing almost entirely, and the
+--          primary listing supplies little more than the name and the URL.
+--
+--      (b) Return known_layers, layers_known and reach to the primary listing
+--          and accept that risk_basis states a layer count belonging to a
+--          different listing, ATTRIBUTED as such in the sentence rather than
+--          left to look like the ledger's own number.
+--
+--    Whichever is chosen, the choice is between two coherent things. What must
+--    not survive phase 3 is the present arrangement, which is neither.
+--
+--
+--    Two things are outside the component and neither is an oversight.
 --
 --    layers_tracked is array_length(registry_layers(), 1), a constant twelve.
 --    It is not computed from any listing, so no listing can disagree about it.
@@ -279,6 +330,28 @@ comment on view v_registry_card is
   'One row per product at its primary listing''s latest capture, sized for the registry grid. asset_id is the product; listing_id is the listing the headline fields came from. last_captured_at, capture_count, marketplace_ids, listing_count and search_blob span every listing of the product; certification, cert_label, provenance, evidence_tier, risk, risk_basis, known_layers, layers_known and reach all come from the qualifying listing, which need not be the primary one. Does not carry overview text.';
 
 grant select on public.v_registry_card to anon, authenticated;
+
+-- What this does to v_registry_stats, which is not recreated here ------------
+--
+-- v_registry_stats reads v_registry_card four times and is untouched by this
+-- file, but two of its numbers change basis anyway, because the card's grain
+-- and sources moved underneath them. Both are identical today under 1:1 and
+-- neither is a defect; they are recorded because a silent change of basis in a
+-- front-page number is exactly the kind of thing nobody finds later.
+--
+--   publishers    count(distinct publisher) over the card, and the card now
+--                 carries one row per asset sourced from its PRIMARY listing.
+--                 A publisher named only on a secondary listing therefore
+--                 stops being counted. The number becomes "publishers we show
+--                 on a product's headline" rather than "publishers named
+--                 anywhere in the registry".
+--
+--   mean_reach    avg(reach) over the card, and reach now comes from the
+--                 QUALIFYING listing. It becomes the mean over qualifying
+--                 listings rather than over every listing.
+--
+-- certified and attested already resolved as any listing before this file and
+-- still do; agents and marketplaces never read the card at all.
 
 
 -- v_asset_passport -----------------------------------------------------------

@@ -220,6 +220,60 @@ begin
   perform gate.check_passport('5n. capture_link restored', 'seed-alpha');
 end $$;
 
+
+-- 5o. A DISCRIMINATING negative test for the coherence check.
+--
+-- 5k already asserts these two red, but only by emptying the view, which
+-- exercises the non-empty guard and nothing else. The comparison logic itself
+-- has never been observed failing, and a comparison that has never failed is
+-- not known to compare anything.
+--
+-- So corrupt one thing and only one thing. Every row's risk_basis keeps its
+-- layer count and loses its label, which leaves reach, layers_known and the
+-- numerator comparison untouched and moves the label comparison alone. If the
+-- check still passes, the label clause is decoration.
+--
+-- This writes to capture_extract rather than dropping a policy, which is a
+-- first for this file. The original values are stashed and restored below, and
+-- 5p asserts the restore rather than assuming it; step 7 would fail loudly
+-- afterwards if it had not worked.
+--
+-- The substitution keeps the separator and the count by replacing exactly the
+-- label prefix: substr past length(label) is ' . N of M disclosable layers
+-- stated'. The replacement text is not any of the four labels
+-- registry_provenance() can return, so no row is left accidentally correct.
+create temp table basis_stash as
+  select capture_id, risk_basis from capture_extract;
+
+update capture_extract e
+   set risk_basis = 'Deliberately wrong label'
+                    || substr(e.risk_basis,
+                              length(registry_provenance(e.certification) ->> 'label') + 1);
+
+do $$
+begin
+  perform gate.check_cert_group_coherent('5o. risk_basis label corrupted: the label clause goes red', 'red');
+  perform gate.check_passport_group_coherent('5o. risk_basis label corrupted: the label clause goes red', 'red');
+  -- And the neighbours must stay green, or the corruption was not surgical and
+  -- the red above proves nothing about the label clause specifically.
+  perform gate.check_card_asset('5o. risk_basis label corrupted: the card is otherwise fine', 'seed-alpha');
+  perform gate.check_listing_passport('5o. risk_basis label corrupted: the listing passport is otherwise fine');
+  perform gate.check_asset_evidence('5o. risk_basis label corrupted: v_asset_evidence is untouched');
+end $$;
+
+update capture_extract e
+   set risk_basis = s.risk_basis
+  from basis_stash s
+ where s.capture_id = e.capture_id;
+
+drop table basis_stash;
+
+do $$
+begin
+  perform gate.check_cert_group_coherent('5p. risk_basis restored');
+  perform gate.check_passport_group_coherent('5p. risk_basis restored');
+end $$;
+
 \pset format aligned
 select step, as_role, object, n_rows, verdict, note
   from gate.result where step like '5%' order by seq;

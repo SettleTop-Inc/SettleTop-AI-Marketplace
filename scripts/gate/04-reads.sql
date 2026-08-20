@@ -214,6 +214,19 @@ language sql immutable as $fn$
   end
 $fn$;
 
+-- Escape a value that is about to be spliced into a LIKE pattern as a literal.
+--
+-- The same three characters registry_search escapes, in the same order and for
+-- the same reason: backslash first so the escapes added after it are not
+-- themselves escaped. Seed data is not a text box, but a seeded name carrying a
+-- percent sign would turn "does the blob contain this name" into "does the blob
+-- contain anything", and the assertion would pass while proving nothing. That
+-- is precisely the vacuous-pass shape the rest of this file exists to hunt.
+create or replace function gate.like_literal(p text) returns text
+language sql immutable as $fn$
+  select replace(replace(replace(p, '\', '\'), '%', '\%'), '_', '\_')
+$fn$;
+
 -- v_registry_card is one row per live asset, and search_blob really carries the
 -- product's own words. The lowercase assertion is not decoration: the client
 -- lowercases the needle before matching, so a blob that kept its capitals would
@@ -234,22 +247,29 @@ begin
       from v_registry_card c where c.source_product_id = p_pid;
     hit := found;
     reset role;
+    -- Escape AFTER reset role, not in the select list above. anon is never
+    -- granted usage on the gate schema, deliberately, so calling
+    -- gate.like_literal() while the role is still switched raises 42501 and
+    -- turns the whole check into an ERROR row. Found by the gate itself.
+    nm  := gate.like_literal(nm);
+    pub := gate.like_literal(pub);
+    mkt := gate.like_literal(mkt);
     ok := n_rows = n_assets and n_rows > 0 and hit
       and coalesce(array_length(mids, 1), 0) > 0
       and lcount >= 1
       and coalesce(blob, '') <> ''
       and blob = lower(blob)
-      and blob like '%' || nm  || '%'
-      and blob like '%' || pub || '%'
-      and blob like '%' || mkt || '%';
+      and blob like '%' || nm  || '%' escape '\'
+      and blob like '%' || pub || '%' escape '\'
+      and blob like '%' || mkt || '%' escape '\';
     v := gate.expect(ok, p_expect);
     note := format('%s card rows vs %s live assets; %s: marketplace_ids %s, listing_count %s, search_blob %s chars, name %s, publisher %s, marketplace %s, lowercase %s',
                    n_rows, n_assets, p_pid,
                    coalesce(array_length(mids, 1), 0), coalesce(lcount, 0),
                    coalesce(length(blob), 0),
-                   coalesce((blob like '%' || nm  || '%')::text, 'no row'),
-                   coalesce((blob like '%' || pub || '%')::text, 'no row'),
-                   coalesce((blob like '%' || mkt || '%')::text, 'no row'),
+                   coalesce((blob like '%' || nm  || '%' escape '\')::text, 'no row'),
+                   coalesce((blob like '%' || pub || '%' escape '\')::text, 'no row'),
+                   coalesce((blob like '%' || mkt || '%' escape '\')::text, 'no row'),
                    coalesce((blob = lower(blob))::text, 'no row'));
   exception when others then
     reset role; v := 'ERROR ' || sqlstate; note := sqlerrm;
@@ -418,29 +438,50 @@ end $fn$;
 -- The certification group, checked for internal agreement rather than for
 -- membership.
 --
--- This is the instrument that would have caught all three of the corrections
--- the group needed, without anyone reasoning about derivations. known_layers,
--- layers_known, reach and the count embedded in risk_basis are one quantity in
--- four presentations:
+-- WHAT THIS COVERS, stated precisely, because an earlier version of this
+-- comment claimed more. The group's nine columns carry two quantities that are
+-- each written down more than once, and this checks that every copy of each
+-- agrees:
 --
---   layers_known           cardinality(known_layers)
---   reach                  round(100.0 * cardinality(known_layers) / 12)
---   risk_basis             '... N of M disclosable layers stated', N = the same
+--   the layer count      layers_known    cardinality(known_layers)
+--                        reach           round(100.0 * that count / 12)
+--                        risk_basis      '... N of M disclosable layers stated'
 --
--- If any of the four is ever sourced from a different listing than the others,
--- these rows disagree and this check goes red. It does not know which columns
--- are in the group and does not need to.
+--   the certification    cert_label      registry_provenance(cert) ->> 'label'
+--                        risk_basis      the sentence opens with that label
 --
--- Only the numerator of risk_basis is compared. The denominator is NOT
+-- Three of the four corrections this group needed are therefore visible to it:
+-- reach split from layers_known, known_layers split from risk_basis's count,
+-- and cert_label split from risk_basis's label, which was round 1's defect and
+-- which the first version of this check could NOT see, because it only ever
+-- compared numbers.
+--
+-- WHAT IT DOES NOT COVER, and this is the important half. The relationship
+-- between known_layers and the eleven columns it summarises is invisible here:
+-- nothing in these views restates "did this listing disclose its hosting" in a
+-- second place that could be compared, so a ledger reading 7 of 12 above a null
+-- cert_hosting is coherent as far as this function can tell. That is the open
+-- cut recorded at length in 20260820100000_asset_keyed_views.sql, and no
+-- assertion in this gate detects it. Do not read a green here as covering it.
+--
+-- Only the NUMERATOR of risk_basis is compared. The denominator is NOT
 -- layers_tracked: registry_risk() subtracts the three certification-only
 -- layers for an unattested listing, so an uncertified row legitimately reads
--- "3 of 9" while layers_tracked is 12.
+-- "3 of 9" while layers_tracked is 12. Comparing denominators would fire on
+-- correct data.
+--
+-- The label is compared by prefix rather than by regex, because
+-- registry_risk() builds the basis as label || ' . ' || count and the separator
+-- is a non-ASCII character this file would rather not carry. Comparing
+-- left(risk_basis, length(cert_label) + 1) against cert_label || ' ' asserts
+-- the same thing and additionally requires the separator to follow, so a label
+-- that is a strict prefix of another cannot pass.
 --
 -- The row count is asserted non-zero as well, or an empty card would satisfy
 -- "no row disagrees" and report PASS while showing nothing at all.
 create or replace function gate.check_cert_group_coherent(p_step text, p_expect text default 'green')
 returns void language plpgsql as $fn$
-declare n_rows bigint; n_reach bigint; n_basis bigint; n_unparsed bigint;
+declare n_rows bigint; n_reach bigint; n_basis bigint; n_label bigint; n_unparsed bigint;
         ok boolean; v text; note text := '';
 begin
   begin
@@ -449,14 +490,16 @@ begin
            count(*) filter (where reach is distinct from round(100.0 * layers_known / layers_tracked)::int),
            count(*) filter (where substring(risk_basis from '([0-9]+) of [0-9]+ disclosable layers stated')::int
                                   is distinct from layers_known),
+           count(*) filter (where left(risk_basis, length(cert_label) + 1)
+                                  is distinct from cert_label || ' '),
            count(*) filter (where substring(risk_basis from '([0-9]+) of [0-9]+ disclosable layers stated') is null)
-      into n_rows, n_reach, n_basis, n_unparsed
+      into n_rows, n_reach, n_basis, n_label, n_unparsed
       from v_registry_card;
     reset role;
-    ok := n_rows > 0 and n_reach = 0 and n_basis = 0 and n_unparsed = 0;
+    ok := n_rows > 0 and n_reach = 0 and n_basis = 0 and n_label = 0 and n_unparsed = 0;
     v := gate.expect(ok, p_expect);
-    note := format('%s card rows; reach disagrees with layers_known on %s, risk_basis layer count disagrees on %s, risk_basis unparsable on %s',
-                   n_rows, n_reach, n_basis, n_unparsed);
+    note := format('%s card rows; reach vs layers_known disagrees on %s, risk_basis count disagrees on %s, risk_basis label disagrees with cert_label on %s, risk_basis unparsable on %s',
+                   n_rows, n_reach, n_basis, n_label, n_unparsed);
   exception when others then
     reset role; v := 'ERROR ' || sqlstate; note := sqlerrm;
   end;
@@ -464,10 +507,11 @@ begin
   values (p_step, 'anon', 'v_registry_card (group coherence)', n_rows, v, note);
 end $fn$;
 
--- The same four, on the passport, which sources them through its own lateral.
+-- The same comparisons on the passport, which sources the group through its
+-- own lateral and could therefore disagree with the card.
 create or replace function gate.check_passport_group_coherent(p_step text, p_expect text default 'green')
 returns void language plpgsql as $fn$
-declare n_rows bigint; n_reach bigint; n_basis bigint;
+declare n_rows bigint; n_reach bigint; n_basis bigint; n_label bigint;
         ok boolean; v text; note text := '';
 begin
   begin
@@ -475,14 +519,16 @@ begin
     select count(*),
            count(*) filter (where reach is distinct from round(100.0 * layers_known / layers_tracked)::int),
            count(*) filter (where substring(risk_basis from '([0-9]+) of [0-9]+ disclosable layers stated')::int
-                                  is distinct from layers_known)
-      into n_rows, n_reach, n_basis
+                                  is distinct from layers_known),
+           count(*) filter (where left(risk_basis, length(cert_label) + 1)
+                                  is distinct from cert_label || ' ')
+      into n_rows, n_reach, n_basis, n_label
       from v_asset_passport;
     reset role;
-    ok := n_rows > 0 and n_reach = 0 and n_basis = 0;
+    ok := n_rows > 0 and n_reach = 0 and n_basis = 0 and n_label = 0;
     v := gate.expect(ok, p_expect);
-    note := format('%s passport rows; reach disagrees on %s, risk_basis layer count disagrees on %s',
-                   n_rows, n_reach, n_basis);
+    note := format('%s passport rows; reach disagrees on %s, risk_basis count disagrees on %s, risk_basis label disagrees on %s',
+                   n_rows, n_reach, n_basis, n_label);
   exception when others then
     reset role; v := 'ERROR ' || sqlstate; note := sqlerrm;
   end;
