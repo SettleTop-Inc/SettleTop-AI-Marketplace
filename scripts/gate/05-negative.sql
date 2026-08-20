@@ -154,6 +154,10 @@ begin
   perform gate.check_passport_listings('5k. capture_extract dropped: passport listings go red', 'seed-alpha', 'red');
   perform gate.check_listing_passport('5k. capture_extract dropped: listing passport goes red', 'red');
   perform gate.check_listing_passport_sections('5k. capture_extract dropped: listing passport sections go red', 'seed-alpha', 'red');
+  -- Coherence over zero rows is vacuously true, so these prove the non-zero
+  -- guard in them is load bearing rather than decorative.
+  perform gate.check_cert_group_coherent('5k. capture_extract dropped: group coherence goes red', 'red');
+  perform gate.check_passport_group_coherent('5k. capture_extract dropped: group coherence goes red', 'red');
 
   perform gate.check_rows('5k. capture_extract dropped: v_asset_evidence never reads it', 'anon', 'v_asset_evidence');
   perform gate.check_asset_evidence('5k. capture_extract dropped: v_asset_evidence values are untouched');
@@ -168,6 +172,8 @@ begin
   perform gate.check_passport_listings('5l. capture_extract restored', 'seed-alpha');
   perform gate.check_listing_passport('5l. capture_extract restored');
   perform gate.check_listing_passport_sections('5l. capture_extract restored', 'seed-alpha');
+  perform gate.check_cert_group_coherent('5l. capture_extract restored');
+  perform gate.check_passport_group_coherent('5l. capture_extract restored');
   perform gate.check_asset_evidence('5l. capture_extract restored');
 end $$;
 

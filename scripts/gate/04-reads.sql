@@ -415,6 +415,81 @@ begin
   values (p_step, 'postgres', 'pg_class.reloptions', n_views, v, note);
 end $fn$;
 
+-- The certification group, checked for internal agreement rather than for
+-- membership.
+--
+-- This is the instrument that would have caught all three of the corrections
+-- the group needed, without anyone reasoning about derivations. known_layers,
+-- layers_known, reach and the count embedded in risk_basis are one quantity in
+-- four presentations:
+--
+--   layers_known           cardinality(known_layers)
+--   reach                  round(100.0 * cardinality(known_layers) / 12)
+--   risk_basis             '... N of M disclosable layers stated', N = the same
+--
+-- If any of the four is ever sourced from a different listing than the others,
+-- these rows disagree and this check goes red. It does not know which columns
+-- are in the group and does not need to.
+--
+-- Only the numerator of risk_basis is compared. The denominator is NOT
+-- layers_tracked: registry_risk() subtracts the three certification-only
+-- layers for an unattested listing, so an uncertified row legitimately reads
+-- "3 of 9" while layers_tracked is 12.
+--
+-- The row count is asserted non-zero as well, or an empty card would satisfy
+-- "no row disagrees" and report PASS while showing nothing at all.
+create or replace function gate.check_cert_group_coherent(p_step text, p_expect text default 'green')
+returns void language plpgsql as $fn$
+declare n_rows bigint; n_reach bigint; n_basis bigint; n_unparsed bigint;
+        ok boolean; v text; note text := '';
+begin
+  begin
+    set role anon;
+    select count(*),
+           count(*) filter (where reach is distinct from round(100.0 * layers_known / layers_tracked)::int),
+           count(*) filter (where substring(risk_basis from '([0-9]+) of [0-9]+ disclosable layers stated')::int
+                                  is distinct from layers_known),
+           count(*) filter (where substring(risk_basis from '([0-9]+) of [0-9]+ disclosable layers stated') is null)
+      into n_rows, n_reach, n_basis, n_unparsed
+      from v_registry_card;
+    reset role;
+    ok := n_rows > 0 and n_reach = 0 and n_basis = 0 and n_unparsed = 0;
+    v := gate.expect(ok, p_expect);
+    note := format('%s card rows; reach disagrees with layers_known on %s, risk_basis layer count disagrees on %s, risk_basis unparsable on %s',
+                   n_rows, n_reach, n_basis, n_unparsed);
+  exception when others then
+    reset role; v := 'ERROR ' || sqlstate; note := sqlerrm;
+  end;
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (p_step, 'anon', 'v_registry_card (group coherence)', n_rows, v, note);
+end $fn$;
+
+-- The same four, on the passport, which sources them through its own lateral.
+create or replace function gate.check_passport_group_coherent(p_step text, p_expect text default 'green')
+returns void language plpgsql as $fn$
+declare n_rows bigint; n_reach bigint; n_basis bigint;
+        ok boolean; v text; note text := '';
+begin
+  begin
+    set role anon;
+    select count(*),
+           count(*) filter (where reach is distinct from round(100.0 * layers_known / layers_tracked)::int),
+           count(*) filter (where substring(risk_basis from '([0-9]+) of [0-9]+ disclosable layers stated')::int
+                                  is distinct from layers_known)
+      into n_rows, n_reach, n_basis
+      from v_asset_passport;
+    reset role;
+    ok := n_rows > 0 and n_reach = 0 and n_basis = 0;
+    v := gate.expect(ok, p_expect);
+    note := format('%s passport rows; reach disagrees on %s, risk_basis layer count disagrees on %s',
+                   n_rows, n_reach, n_basis);
+  exception when others then
+    reset role; v := 'ERROR ' || sqlstate; note := sqlerrm;
+  end;
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (p_step, 'anon', 'v_asset_passport (group coherence)', n_rows, v, note);
+end $fn$;
+
 do $$
 begin
   perform gate.check_rows('3f. anon reads the phase 2 views', 'anon', 'v_registry_card');
@@ -428,6 +503,8 @@ begin
   perform gate.check_listing_passport_sections('3g. v_listing_passport carries its sections', 'seed-alpha');
   perform gate.check_asset_evidence('3g. v_asset_evidence is capture-keyed');
   perform gate.check_view_options('3h. all seven views are security_invoker');
+  perform gate.check_cert_group_coherent('3i. the certification group agrees with itself');
+  perform gate.check_passport_group_coherent('3i. the certification group agrees with itself');
 end $$;
 
 \pset format aligned

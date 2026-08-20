@@ -108,6 +108,8 @@ begin
   perform gate.check_listing_passport_sections('7. final read, after every write', 'seed-alpha');
   perform gate.check_asset_evidence('7. final read, after every write');
   perform gate.check_view_options('7. final read, after every write');
+  perform gate.check_cert_group_coherent('7. final read, after every write');
+  perform gate.check_passport_group_coherent('7. final read, after every write');
 end $$;
 
 \pset format aligned
