@@ -131,9 +131,19 @@ export interface AssetPassport extends RegistryCard {
  * One row per listing, unaggregated: what one marketplace said about one
  * product, with nothing resolved across marketplaces. Mirrors
  * v_listing_passport, which is column-for-column what v_asset_passport was
- * before phase 2, minus the `listings` summary that view now carries.
+ * before phase 2.
+ *
+ * v_asset_passport's SQL appends a `listings` column that AssetPassport never
+ * declared on the TypeScript side, so there is nothing here for Omit to
+ * subtract: the two call sites that read `listings` (app/agent/[id]/page.tsx,
+ * components/PassportView.tsx) type it themselves as
+ * `AssetPassport & { listings?: ListingSummary[] }` rather than through this
+ * interface. ListingPassport is therefore identical to AssetPassport, which
+ * is honest, not an oversight: v_listing_passport really is column-for-column
+ * what v_asset_passport was before phase 2, and phase 2 only ever added
+ * columns.
  */
-export type ListingPassport = Omit<AssetPassport, "listings">;
+export type ListingPassport = AssetPassport;
 
 /** capture.method, named at the row rather than derived. */
 export type CaptureMethod = "browser_dom" | "embedded_state" | "api" | "backfill";

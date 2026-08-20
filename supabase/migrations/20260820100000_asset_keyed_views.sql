@@ -334,10 +334,11 @@ grant select on public.v_registry_card to anon, authenticated;
 -- What this does to v_registry_stats, which is not recreated here ------------
 --
 -- v_registry_stats reads v_registry_card four times and is untouched by this
--- file, but two of its numbers change basis anyway, because the card's grain
--- and sources moved underneath them. Both are identical today under 1:1 and
--- neither is a defect; they are recorded because a silent change of basis in a
--- front-page number is exactly the kind of thing nobody finds later.
+-- file, but three of its numbers change basis anyway, because the card's
+-- grain and sources moved underneath them. All three are identical today
+-- under 1:1 and none is a defect; they are recorded because a silent change
+-- of basis in a front-page number is exactly the kind of thing nobody finds
+-- later.
 --
 --   publishers    count(distinct publisher) over the card, and the card now
 --                 carries one row per asset sourced from its PRIMARY listing.
@@ -350,8 +351,25 @@ grant select on public.v_registry_card to anon, authenticated;
 --                 QUALIFYING listing. It becomes the mean over qualifying
 --                 listings rather than over every listing.
 --
--- certified and attested already resolved as any listing before this file and
--- still do; agents and marketplaces never read the card at all.
+--   attested      count(distinct asset_id) where certification =
+--                 'publisher_attestation', and the card now carries one row
+--                 per asset holding the QUALIFYING listing's certification,
+--                 not every listing's own. certified is unaffected:
+--                 microsoft_365_certified ranks first in the `cert` lateral,
+--                 so any listing that carries it still makes its asset the
+--                 qualifying one, exactly as the any-listing rule intends.
+--                 attested is not: an asset that ALSO holds a Microsoft 365
+--                 certified listing elsewhere now resolves to that listing
+--                 instead, so it stops being counted here even though it
+--                 still carries a publisher_attestation listing somewhere.
+--                 Under the spec's "any listing" rule that asset belongs in
+--                 both counts; now it belongs in only one, so
+--                 certified + attested <= agents holds from this file on,
+--                 where before it could exceed. This is the same failure as
+--                 the certification group above: an enumeration drawn one
+--                 item too small.
+--
+-- agents and marketplaces never read the card at all, so neither is affected.
 
 
 -- v_asset_passport -----------------------------------------------------------

@@ -326,9 +326,9 @@ export async function searchRegistry(c: Criteria): Promise<ReadResult<RegistryPa
 }
 
 /**
- * Compare needs full passports, keyed by asset_id. getPassport() cannot be
- * reused: it returns null for both a missing row and a failed read, so compare
- * would report an agent as "not found" during an outage.
+ * Compare needs full passports, keyed by asset_id. getPassportBySlug() cannot
+ * be reused: it returns null for both a missing row and a failed read, so
+ * compare would report an agent as "not found" during an outage.
  */
 export async function getPassports(
   assetIds: string[]
@@ -346,45 +346,25 @@ export async function getPassports(
 }
 
 /**
- * One passport, with "we could not read" kept distinct from "there is no such
- * record". Collapsing the two is what the comment above getPassports() warns
- * about, and this reader used to do exactly that: it returned null for a failed
- * read, the route called notFound(), and the 404 page told the visitor there is
- * no captured record for that agent and that the registry never invents one to
- * fill a gap. A confident claim of absence, produced by an outage, about a
- * record that exists — and cached by ISR for five minutes after recovery.
- *
- * @deprecated Keyed on source_product_id, which after phase 2 names one
- * listing rather than the product a visitor is looking at. Kept working
- * because the current route still calls it. Use getPassportBySlug(slug)
- * instead, which resolves through asset_slug and survives a merge.
- */
-export async function getPassport(
-  sourceProductId: string
-): Promise<ReadResult<AssetPassport | null>> {
-  const { data, error } = await supabase
-    .from("v_asset_passport")
-    .select("*")
-    .eq("source_product_id", sourceProductId)
-    .maybeSingle();
-  if (error) {
-    console.error("getPassport", error.message);
-    return { ok: false, error: error.message };
-  }
-  return { ok: true, data: (data as AssetPassport) ?? null };
-}
-
-/**
  * One passport, resolved through a URL slug rather than a listing id.
  *
  * Two reads: asset_slug is the only table keyed on the string a visitor
  * typed, and v_asset_passport is keyed on asset_id. A merge can retire a
  * slug's old primary listing without touching the slug row itself, so this
- * keeps resolving after phase 3 the way getPassport() above stopped doing.
+ * keeps resolving after phase 3 even though a lookup keyed on
+ * source_product_id would not: that column names one listing, which after
+ * phase 2 is not what a visitor's URL identifies.
  *
- * Same "failed read" versus "no such record" distinction as getPassport(),
- * kept for the same reason: a 404 page must never claim an outage is an
- * absence.
+ * "We could not read" is kept distinct from "there is no such record" here,
+ * the same way getPassports() above does it. A reader that collapsed the two
+ * used to sit at this name: it returned null for a failed read, the route
+ * called notFound(), and the 404 page told the visitor there is no captured
+ * record for that agent and that the registry never invents one to fill a
+ * gap. A confident claim of absence, produced by an outage, about a record
+ * that exists, and cached by ISR for five minutes after recovery. Task 5
+ * moved the route onto this function instead, and nothing calls the old one
+ * any more, so it was deleted rather than kept as a second reader with the
+ * same bug this one exists to avoid.
  */
 export async function getPassportBySlug(
   slug: string

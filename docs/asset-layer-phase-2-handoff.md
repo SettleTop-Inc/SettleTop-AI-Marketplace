@@ -21,8 +21,8 @@ three downstream misbehaviours this used to list, in `compare/page.tsx`,
 duplicate row to react to. `registry_search` now joins back to
 `v_registry_card` on that same asset-keyed grain
 (`20260820100100_registry_search_asset_keyed.sql`), so its comment calling that
-join "by primary key" is true rather than only true under 1:1. Two items
-remain, because phase 2 did not touch them:
+join "by primary key" is true rather than only true under 1:1. One item
+remains, because phase 2 did not touch it:
 
 **`certified` and `attested` have no `merged_into` guard**, where `agents` does.
 They rely on a merge relocating every listing, which leaves a retired asset with
@@ -31,9 +31,16 @@ constraint tying it to `listing.asset_id`. A merge that sets `merged_into`
 without relocating drops `agents` and leaves the other two, on the same
 front-page strip.
 
-**`certified + attested` can exceed `agents`.** Under the any-listing rule, one
-asset holding a certified listing and an attested one counts in both. Correct by
-the rule, surprising on a proof strip.
+A second item that used to live here is gone, but not because phase 2 closed
+it as a latent bug: **`certified + attested` can no longer exceed `agents`.**
+Before this branch, one asset holding a certified listing and an attested one
+counted in both. The asset-keyed card resolves certification to one
+QUALIFYING listing per asset, and `microsoft_365_certified` outranks
+`publisher_attestation` in the `cert` lateral, so that asset now counts only
+as certified. This is a deliberate consequence of the card becoming
+asset-keyed, not a bug, and it is the same failure as the certification group
+elsewhere in this document: an enumeration drawn one item too small. See
+"Three front-page numbers changed basis" below for the mechanics.
 
 ## One thing that changes for visitors at merge
 
@@ -199,10 +206,10 @@ against its two, which catches a split *within* the group. Nothing in these
 views restates "did this listing disclose its hosting" in a second place, so
 there is nothing to compare. A green coherence check does not cover the cut.
 
-## Two front-page numbers changed basis
+## Three front-page numbers changed basis
 
 `v_registry_stats` was not recreated by phase 2, but it reads `v_registry_card`
-four times and the card moved underneath it. Both are identical today.
+four times and the card moved underneath it. All three are identical today.
 
 - **`publishers`** is `count(distinct publisher)` over the card, and the card is
   now one row per asset sourced from its primary listing. A publisher named
@@ -212,11 +219,24 @@ four times and the card moved underneath it. Both are identical today.
 - **`mean_reach`** is `avg(reach)` over the card, and `reach` now comes from the
   qualifying listing, so it is the mean over qualifying listings rather than
   over every listing.
+- **`attested`** is `count(distinct asset_id)` where `certification =
+  'publisher_attestation'`, and the card now carries one row per asset holding
+  the QUALIFYING listing's certification, not every listing's own.
+  `certified` is unaffected: `microsoft_365_certified` ranks first in the
+  `cert` lateral, so any listing that carries it still makes its asset the
+  qualifying one, exactly as the any-listing rule intends. `attested` is not:
+  an asset that also holds a Microsoft 365 certified listing elsewhere now
+  resolves to that listing instead, so it stops being counted here even
+  though it still carries a `publisher_attestation` listing somewhere. Under
+  the spec's "any listing" rule that asset belonged in both counts before
+  this branch; now it belongs in only one, so `certified + attested <=
+  agents` holds from this branch on, where before it could exceed. This is
+  the same failure as the certification group elsewhere in this document: an
+  enumeration drawn one item too small.
 
-`certified` and `attested` already resolved as any listing before phase 2 and
-still do. `agents` and `marketplaces` never read the card.
+`agents` and `marketplaces` never read the card, so neither is affected.
 
-## Five smaller things, each correct today and wrong at the first merge
+## Six smaller things, most correct today and wrong at the first merge
 
 **The qualifying-listing ordering prefers `none` over `not_eligible`.** The
 `cert` lateral ranks certifications `microsoft_365_certified` (0),
@@ -251,6 +271,20 @@ inherits that same concatenation the moment a card carries it, with nothing to
 update at the first merge. The parity test
 `lib/registry-search.parity.test.ts` compares SQL against TypeScript over the
 live registry and no longer has a reason to fail on this account.
+
+**The parity test no longer proves the blob's field order matches, either.**
+The spec names `lib/registry-search.parity.test.ts` as the proof that the SQL
+blob's field order agrees with `searchBlob()`. It no longer proves that:
+`searchBlob()` now returns `c.search_blob` verbatim (the entry above), so both
+sides of the comparison read the identical string `v_registry_card` produced,
+and the assertion is tautological on that axis: it cannot fail from a field
+reordered on one side and not the other, because there is only one side now.
+The practical consequence is small, since field order only ever mattered for
+a needle spanning a field boundary, but the coverage the spec relies on is
+gone today, not just at the first merge, and nothing recorded that until this
+line. Not a regression to fix, since there is nothing left to compare the
+blob's construction against on the TypeScript side. A note for whoever next
+reads the spec's claim and takes it at face value.
 
 **The source facet still has the disease `search_blob` was cured of.**
 `registry_search` matches it against the SET of marketplaces an asset is
