@@ -12,28 +12,17 @@ here was verified against the code at the time of writing, not guessed.
 These are not bugs today. Each one becomes one the first time a merge gives an
 asset two listings.
 
-**`getPassports(assetIds)` returns more rows than ids given.** `lib/registry.ts`
-selects from `v_asset_passport` with `.in("asset_id", assetIds)`. Two listings
-on one asset means two rows for one id. Three places downstream then misbehave:
-
-- `app/registry/compare/page.tsx:75` detects missing ids with
-  `.some(a => a.asset_id === id)`, which stops detecting anything once ids
-  duplicate.
-- `components/registry/CompareTable.tsx:159,196` keys table cells on
-  `asset_id`, producing duplicate React keys.
-- `lib/registry.ts:126` de-dupes cards by `asset_id`, and
-  `lib/registry-query.ts:156-158` uses it as a sort tie-break with a comment
-  asserting it is unique.
-
-**`registry_search` fans out.** It joins back with
-`v_registry_card v on v.asset_id = p.asset_id` and its comment calls that "by
-primary key". True only under 1:1. Two listings on one asset produce two rows in
-`matched`, distinct `rn` in `ranked`, and a multiplied page.
-
-**`v_registry_card` is still one row per listing.** So a product with two
-listings appears twice in the grid and in search totals, while
-`v_registry_stats.agents` counts it once. No number is wrong today; the day the
-first merge lands, the grid and the banner disagree.
+Phase 2 closed three of the five items that used to live in this section.
+`v_registry_card` and `v_asset_passport` are now one row per asset rather than
+one row per listing (`20260820100000_asset_keyed_views.sql`), so
+`getPassports(assetIds)` no longer returns more rows than ids given, and the
+three downstream misbehaviours this used to list, in `compare/page.tsx`,
+`CompareTable.tsx` and the dedupe in `lib/registry.ts`, no longer have a
+duplicate row to react to. `registry_search` now joins back to
+`v_registry_card` on that same asset-keyed grain
+(`20260820100100_registry_search_asset_keyed.sql`), so its comment calling that
+join "by primary key" is true rather than only true under 1:1. Two items
+remain, because phase 2 did not touch them:
 
 **`certified` and `attested` have no `merged_into` guard**, where `agents` does.
 They rely on a merge relocating every listing, which leaves a retired asset with
@@ -94,15 +83,17 @@ happened during that outage.
 ## Known gaps in the phase 1 gate
 
 `scripts/gate/` is the executable record of how phase 1 was verified, and
-`npm run gate` re-runs it. Two limits worth knowing before relying on it:
+`npm run gate` re-runs it. One limit from phase 1 is closed; one remains:
 
-- Its migration loop globs `*.sql` and skips `2026081910*`, so it applies
-  everything else before the rename. **A phase 2 migration will be mis-ordered**
-  unless the glob is updated. There is a comment at that line saying so.
-- Its negative tests cover `capture_link`, `capture_plan`, `capture_permission`
-  and `capture_compliance`, but not `capture_evidence`, which
-  `check_passport` also reads. The failure class is demonstrated, not covered
-  exhaustively.
+- Phase 2 replaced the glob-and-skip with a filename comparison against the
+  rename migration itself (`scripts/gate/run.sh`, steps 3 and 5), so a phase 2
+  migration lands in its own pass in filename order instead of being
+  mis-applied ahead of the rename. The comment at that line now says why the
+  comparison is written to stay correct for whatever prefix phase 4 uses too.
+- Its negative tests still cover `capture_link`, `capture_plan`,
+  `capture_permission` and `capture_compliance`, but not `capture_evidence`,
+  which `check_passport` also reads. The failure class is demonstrated, not
+  covered exhaustively.
 
 ## Two things phase 1 deliberately did not fix
 
@@ -248,39 +239,41 @@ something to read, and it deliberately does not set `merged_into` so no view's
 counts move. Phase 3 is the first code that can build the state, and it should
 bring the check with it.
 
-**`search_blob` stops being character-identical to `searchBlob()`.** Today it is
-byte-for-byte what `registry_search` builds inline and what
-`lib/registry-query.ts:90-98` produces, verified over every row. Under two
-listings it is the concatenation of one such blob per listing, and
-`searchBlob()` in TypeScript still builds one from the single card row. The
-parity test `lib/registry-search.parity.test.ts` compares SQL against
-TypeScript over the live registry and will start failing at the first merge, not
-because either side is wrong but because they are answering different
-questions. Update the test before phase 3 merges anything, or it fails for the
-right reason at the wrong moment.
+**`search_blob` no longer risks drifting from `searchBlob()`.** Today
+`v_registry_card.search_blob` is byte-for-byte what `registry_search` builds
+inline, verified over every row. Task 4 changed `searchBlob()` in
+`lib/registry-query.ts:98-107` to return `c.search_blob` verbatim when the card
+carries it, falling back to the old nine-field reconstruction only when the
+column is absent, which is a card read from a database before this migration
+deploys. Because the server's blob is already the concatenation of every
+listing's own blob (`20260820100000_asset_keyed_views.sql`), the client
+inherits that same concatenation the moment a card carries it, with nothing to
+update at the first merge. The parity test
+`lib/registry-search.parity.test.ts` compares SQL against TypeScript over the
+live registry and no longer has a reason to fail on this account.
 
-**The source facet has the same disease.** `registry_search` matches it
-against the SET of marketplaces an asset is listed on:
-`supabase/migrations/20260820100100_registry_search_asset_keyed.sql` maps
-`v_registry_card.marketplace_ids` to names and tests overlap with `&&`.
+**The source facet still has the disease `search_blob` was cured of.**
+`registry_search` matches it against the SET of marketplaces an asset is
+listed on: `supabase/migrations/20260820100100_registry_search_asset_keyed.sql`
+maps `v_registry_card.marketplace_ids` to names and tests overlap with `&&`.
 `facetValueOf()` at `lib/registry-query.ts:122` still reads a single
 `marketplace_name` off the row. `runQuery`, which uses `facetValueOf()`, is
 what `lib/registry-search.parity.test.ts` compares the server against, so
-under two listings the two sides answer different questions for the same
-reason `search_blob` does, and the parity test fails at the first merge for a
-correct reason.
+under two listings the two sides will answer different questions for the same
+reason `search_blob` used to, and the parity test will fail at the first merge
+for a correct reason.
 
-Not fixed alongside `search_blob` because there is nothing to fix it with yet:
-`v_registry_card` carries `marketplace_ids` as ids, not names, and the id to
-name mapping is deliberately kept inside `registry_search` rather than added
-as a column, so there is no client-side array of marketplace names for
-`facetValueOf()` to compare against. Inventing one to satisfy a test that is
-not yet failing would be solving a problem phase 2 does not have yet. It is
-also lower stakes than `search_blob` today: `runQuery` is not on a live path
-(`lib/registry.ts:155`, the comment on `getCards`, says so directly, and
-nothing in `app/` or `components/` calls it), so nothing a visitor sees
-diverges before phase 3. Give it the same fix as `search_blob` when phase 3
-takes this up.
+Not cured alongside `search_blob` because there was nothing to cure it with
+yet: `v_registry_card` carries `marketplace_ids` as ids, not names, and the id
+to name mapping is deliberately kept inside `registry_search` rather than
+added as a column, so there is no client-side array of marketplace names for
+`facetValueOf()` to prefer the way `searchBlob()` now prefers `c.search_blob`.
+Inventing one to satisfy a test that is not yet failing would be solving a
+problem phase 2 does not have yet. It is also lower stakes than `search_blob`
+was: `runQuery` is not on a live path (`lib/registry.ts:155`, the comment on
+`getCards`, says so directly, and nothing in `app/` or `components/` calls
+it), so nothing a visitor sees diverges before phase 3. Give it the same fix
+`search_blob` got, when phase 3 takes this up.
 
 **`listing_count` can exceed `jsonb_array_length(listings)`.** `listing_count`
 and `marketplace_ids` count through a LEFT JOIN to `capture_extract`, so they
@@ -288,15 +281,28 @@ include a listing that has no capture yet; `listings` and `search_blob`
 inner-join it, so they exclude one. Production has no such listing today and
 `ingest_capture` cannot create one, since it writes the listing and its capture
 together. It is reachable only if a future write path inserts a listing before
-its first capture. If Task 5 renders "listed on N marketplaces" from
-`listing_count` beside N panels built from `listings`, those two can disagree by
-one.
+its first capture. Task 5's "Listed on N marketplaces" count
+(`components/PassportView.tsx`) reads `listings.length`, not `listing_count`,
+so it cannot disagree with the panels it counts, but the two columns
+themselves still mean slightly different things and a future reader of the raw
+view should not treat them as interchangeable.
 
-## What Task 5 owes the reader
+## What Task 5 delivered for the reader
 
-The spec already requires the passport header to name where its description
-came from. It now also has to name where the certification came from, because
+The spec already required the passport header to name where its description
+came from. It now also had to name where the certification came from, because
 the group can resolve to a listing other than the one whose description is on
-the page. After phase 2 that is not only the certification badge: the layer
-ledger, the reach figure, the risk band and the risk sentence can all come from
-the other marketplace too.
+the page, and after phase 2 that is not only the certification badge: the
+layer ledger, the reach figure, the risk band and the risk sentence can all
+come from the other marketplace too.
+
+`components/PassportView.tsx` carries both attributions: `descriptionSource()`
+returns the primary listing's own `marketplace_name`, rendered as "As
+described on {source}", and `certificationSource()` walks `listings` to name
+whichever one the resolved `certification` actually matched, rendered as
+"Certification per {source}". Because the whole nine-column group resolves
+from that same qualifying listing, one sentence covers the layer ledger, the
+reach figure and the risk band along with the badge, rather than needing four
+separate attributions. `ListingPanels` renders every marketplace's own,
+unresolved account beneath it, so a reader who doubts the resolution can check
+it against the raw listings directly.

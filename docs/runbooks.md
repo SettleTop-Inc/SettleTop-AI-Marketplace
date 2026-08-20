@@ -100,6 +100,18 @@ select name, field, old_value, new_value, observed_at
 -- listings captured more than once, i.e. where change tracking is live
 select source_product_id, capture_count, last_captured_at
   from listing where capture_count > 1 order by capture_count desc;
+
+-- one product, every marketplace's own unresolved account of it: the question
+-- v_listing_passport and v_asset_evidence exist to answer. Swap in a real
+-- slug. Today this returns exactly one row, since every asset still holds one
+-- listing; after the first merge it returns one row per marketplace the
+-- product is actually listed on. v_asset_evidence, keyed the same way on
+-- asset_id, is the capture-by-capture trail behind these rows.
+select marketplace_name, certification, cert_label, reach, risk, risk_basis,
+       last_captured_at
+  from v_listing_passport
+ where asset_id = (select asset_id from asset_slug where slug = 'some-agent-slug')
+ order by marketplace_name;
 ```
 
 ## Recomputing derived values after changing a rule
