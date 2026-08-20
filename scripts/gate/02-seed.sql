@@ -120,6 +120,12 @@ $p$::jsonb) as gamma_capture_1;
 -- 4. Re-ingest seed-alpha with a changed price and a new permission, so the OLD
 --    function writes asset_change rows. Those rows become listing_change rows
 --    at the rename and are what v_asset_change_feed must return afterwards.
+--
+--    The links, media and compliance are repeated verbatim from capture one.
+--    They have to be: the passport reads the CURRENT capture, so a re-ingest
+--    that omits them leaves seed-alpha with an empty plans, product_links and
+--    compliance, and the value assertions in 04-reads.sql would then be
+--    asserting over a listing that had quietly lost half its content.
 select ingest_capture($p$
 {
   "capture_meta": {
@@ -148,6 +154,9 @@ select ingest_capture($p$
     "categories": ["Productivity"],
     "industries": ["Financial services"],
     "works_with": ["SharePoint", "Teams"],
+    "media_image_urls": ["https://img.example/alpha-1.png"],
+    "product_links": [{"label": "Docs", "url": "https://docs.example/alpha"}],
+    "legal_links": [{"label": "Privacy", "url": "https://legal.example/alpha-privacy"}],
     "plans": [{"name": "Standard", "price": "18 dollars", "unit": "user", "billing": "monthly"}],
     "stated": {
       "models": ["GPT-4o"],

@@ -73,6 +73,57 @@ begin
   perform gate.check_rows('5c. restored', 'anon', 'v_logo_status');
   perform gate.check_rows('5c. restored', 'service_role', 'v_logo_status');
   perform gate.check_stats('5f. stats values, restored');
+  perform gate.check_logo_status('5f. logo values, restored');
+  perform gate.check_passport('5f. passport values, restored', 'seed-alpha');
+end $$;
+
+-- 5g. The defect class 3d and 3e exist for, demonstrated.
+--
+-- This breakage is invisible to every row-count assertion in the gate. RLS is
+-- removed from capture_link ONLY. Every view keeps its rows. v_logo_status
+-- returns one row per listing exactly as before, and every one of them now has
+-- a null logo_url and state no_logo_identified, which is every logo on the site
+-- replaced by initials. Before 3d existed the gate called this PASS.
+drop policy capture_link_public_read on public.capture_link;
+
+do $$
+begin
+  -- The row count still passes. That is the point.
+  perform gate.check_rows('5g. capture_link policy dropped: row count still passes', 'anon', 'v_logo_status');
+  -- The value assertion does not.
+  perform gate.check_logo_status('5g. capture_link policy dropped: values go red');
+  perform gate.check_passport('5g. capture_link policy dropped: passport links go red', 'seed-alpha');
+end $$;
+
+create policy capture_link_public_read on public.capture_link
+  for select to anon, authenticated using (true);
+
+do $$
+begin
+  perform gate.check_logo_status('5h. capture_link policy restored');
+  perform gate.check_passport('5h. capture_link policy restored', 'seed-alpha');
+end $$;
+
+-- 5i. The same class through the passport's other correlated subqueries. Every
+-- passport keeps its row and loses its plans, permissions and compliance.
+drop policy capture_plan_public_read       on public.capture_plan;
+drop policy capture_permission_public_read on public.capture_permission;
+drop policy capture_compliance_public_read on public.capture_compliance;
+
+do $$
+begin
+  perform gate.check_rows('5i. plan/permission/compliance policies dropped: row count still passes', 'anon', 'v_asset_passport');
+  perform gate.check_passport('5i. plan/permission/compliance policies dropped: values go red', 'seed-alpha');
+end $$;
+
+create policy capture_plan_public_read       on public.capture_plan       for select to anon, authenticated using (true);
+create policy capture_permission_public_read on public.capture_permission for select to anon, authenticated using (true);
+create policy capture_compliance_public_read on public.capture_compliance for select to anon, authenticated using (true);
+
+do $$
+begin
+  perform gate.check_passport('5j. plan/permission/compliance policies restored', 'seed-alpha');
+  perform gate.check_logo_status('5j. and the logo values, restored');
 end $$;
 
 \pset format aligned

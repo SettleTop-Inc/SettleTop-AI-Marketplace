@@ -52,6 +52,96 @@ begin
   values (p_step, 'anon', 'v_registry_stats (values)', null, v, note);
 end $fn$;
 
+
+-- Steps 3d and 3e: the same defect class as 3c, in two more views.
+--
+-- 3c found that count(*) on v_registry_stats proves nothing, because Postgres
+-- never evaluates a scalar subquery no output column reads. The same shape
+-- applies wherever a view reaches a table through a LEFT JOIN or a correlated
+-- subquery rather than an inner join, because losing that table empties a
+-- COLUMN while leaving the ROW COUNT untouched.
+--
+-- Two views qualify and both are asserted below:
+--
+--   v_logo_status  LEFT JOINs capture_link. Drop capture_link's RLS policy and
+--                  the view still returns one row per listing, every one of
+--                  them with a null logo_url and state no_logo_identified.
+--                  Every logo on the site is gone and the row count says PASS.
+--
+--   v_asset_passport reaches capture_plan, capture_link, capture_permission,
+--                  capture_compliance and capture_evidence through correlated
+--                  subqueries. Drop any of those policies and every passport
+--                  keeps its row and loses that section entirely.
+--
+-- v_registry_card and v_asset_change_feed do NOT qualify: they reach listing,
+-- marketplace, capture and capture_extract through inner joins only, so losing
+-- any of them empties the view and the row count is a sound assertion there.
+
+create or replace function gate.check_logo_status(p_step text) returns void
+language plpgsql as $fn$
+declare n_total int; n_url int; n_arch int; n_urlonly int; n_lying int; n_hollow int;
+        v text; note text := '';
+begin
+  begin
+    set role anon;
+    select count(*),
+           count(*) filter (where logo_url is not null),
+           count(*) filter (where state = 'archived'),
+           count(*) filter (where state = 'url_only_not_archived'),
+           count(*) filter (where logo_url is not null and state = 'no_logo_identified'),
+           count(*) filter (where state = 'archived' and archived_url is null)
+      into n_total, n_url, n_arch, n_urlonly, n_lying, n_hollow
+      from v_logo_status;
+    reset role;
+    if n_total > 0 and n_url > 0 and n_arch > 0 and n_urlonly > 0
+       and n_lying = 0 and n_hollow = 0
+    then v := 'PASS';
+    else v := 'FAIL: logo columns are hollow';
+    end if;
+    note := format('rows %s, with logo_url %s, archived %s, url_only %s, contradictory %s, archived-without-url %s',
+                   n_total, n_url, n_arch, n_urlonly, n_lying, n_hollow);
+  exception when others then
+    reset role;
+    v := 'ERROR ' || sqlstate; note := sqlerrm;
+  end;
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (p_step, 'anon', 'v_logo_status (values)', null, v, note);
+end $fn$;
+
+create or replace function gate.check_passport(p_step text, p_pid text) returns void
+language plpgsql as $fn$
+declare r record; v text; note text := '';
+begin
+  begin
+    set role anon;
+    select jsonb_array_length(p.plans)                as plans,
+           jsonb_array_length(p.product_links)        as product_links,
+           jsonb_array_length(p.legal_links)          as legal_links,
+           jsonb_array_length(p.media)                as media,
+           coalesce(array_length(p.graph_permissions, 1), 0) as perms,
+           coalesce(array_length(p.compliance, 1), 0) as compliance,
+           (select count(*) from jsonb_object_keys(p.evidence)) as evidence_kinds
+      into r
+      from v_asset_passport p
+     where p.source_product_id = p_pid;
+    reset role;
+    if r is null then
+      v := 'FAIL: no passport row at all';
+    elsif r.plans > 0 and r.product_links > 0 and r.legal_links > 0 and r.media > 0
+          and r.perms > 0 and r.compliance > 0 and r.evidence_kinds > 0
+    then v := 'PASS';
+    else v := 'FAIL: a passport section is empty';
+    end if;
+    note := format('%s: plans %s, product_links %s, legal_links %s, media %s, graph_permissions %s, compliance %s, evidence kinds %s',
+                   p_pid, r.plans, r.product_links, r.legal_links, r.media,
+                   r.perms, r.compliance, r.evidence_kinds);
+  exception when others then
+    reset role;
+    v := 'ERROR ' || sqlstate; note := sqlerrm;
+  end;
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (p_step, 'anon', 'v_asset_passport (values)', null, v, note);
+end $fn$;
 do $$
 begin
   -- Step 3: the five views the site reads, as anon.
@@ -74,6 +164,8 @@ begin
   perform gate.check_rows('3b. anon reads the renamed base tables', 'anon', 'capture_link');
 
   perform gate.check_stats('3c. anon reads v_registry_stats values');
+  perform gate.check_logo_status('3d. anon reads v_logo_status values');
+  perform gate.check_passport('3e. anon reads v_asset_passport values', 'seed-alpha');
 
   -- Step 4: v_logo_status as service_role. The views migration flips this view
   -- from SECURITY DEFINER to security_invoker, so from here on service_role has

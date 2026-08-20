@@ -30,15 +30,38 @@ select ingest_capture($p$
     "surfaces": ["Teams", "Outlook"],
     "categories": ["Productivity"],
     "works_with": ["SharePoint", "Teams"],
+    "media_image_urls": ["https://img.example/alpha-1.png"],
+    "product_links": [{"label": "Docs", "url": "https://docs.example/alpha"}],
+    "legal_links": [{"label": "Privacy", "url": "https://legal.example/alpha-privacy"}],
+    "plans": [{"name": "Standard", "price": "22 dollars", "unit": "user", "billing": "monthly"}],
     "stated": {"models": ["GPT-4o"], "frameworks": ["LangChain"], "tools_mcp": ["Microsoft Graph"]},
     "cert_detail": {
       "hosting": "Microsoft Azure",
       "data_location": "European Union",
-      "graph_permissions": ["Mail.Read", "User.Read", "Sites.Read.All", "Calendars.Read"]
+      "graph_permissions": ["Mail.Read", "User.Read", "Sites.Read.All", "Calendars.Read"],
+      "compliance": ["ISO 27001", "SOC 2 Type II"]
     }
   }
 }
 $p$::jsonb) ->> 'status' as reingest_backfilled_listing;
+
+-- A new capture carries no logo link of its own, so the logo is re-set and
+-- re-archived on every harvest. That is what set_capture_logo and
+-- archive-logos.mjs do on production. Skipping it here would leave seed-alpha
+-- at no_logo_identified, which is a state production does not sit in, and the
+-- step 7 logo assertion would then be asserting over a degraded seed.
+--
+-- It also exercises both functions against the renamed schema a second time,
+-- after the write-path migration rather than before it.
+select set_capture_logo('seed-alpha', 'https://img.example/alpha-logo.png', 'microsoft') ->> 'status'
+       as alpha_logo_reset;
+select record_link_archive(
+         (select cl.id from capture_link cl
+            join listing l on l.current_capture_id = cl.capture_id
+           where l.source_product_id = 'seed-alpha' and cl.kind = 'logo'),
+         'https://storage.example/logos/microsoft/seed-alpha.png',
+         'deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
+         2048, 'image/png') ->> 'status' as alpha_logo_rearchived;
 
 reset role;
 
@@ -71,6 +94,8 @@ begin
   perform gate.check_rows('7. final read, after every write', 'anon', 'asset_merge');
   perform gate.check_rows('7. final read, after every write', 'service_role', 'v_logo_status');
   perform gate.check_stats('7. final read, after every write');
+  perform gate.check_logo_status('7. final read, after every write');
+  perform gate.check_passport('7. final read, after every write', 'seed-alpha');
 end $$;
 
 \pset format aligned

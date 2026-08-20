@@ -888,7 +888,11 @@ The spec, `docs/superpowers/specs/2026-08-19-registry-asset-layer-design.md`, sa
 
 **That requirement is not met.** The reason is that branching is not enabled on this project, which was established after the plan was written. The gate below is a substitute, not an equivalent, and the risks it cannot reach are listed at Step 8. Nobody should read a passing container run as the branch verification the spec asked for.
 
-What makes the substitute worth running rather than skipping: the container replays already done during Tasks 1 to 7 covered the DDL, the data logic and the write path, but every one of them ran as the superuser. The layer none of them touched is the one the site actually reads through, which is `anon` and `service_role` against grants and RLS. That layer is plain Postgres rather than anything Supabase adds, so it reproduces locally, and it is exactly where this project's failures have been silent. A missing grant or a missing policy returns an empty result rather than an error, PostgREST answers it with HTTP 200 and `[]`, and `getLogos` in `lib/registry.ts` turns that into initials. That is how all 6,820 logos left the live site once without anything reporting a fault.
+What makes the substitute worth running rather than skipping: the container replays already done during Tasks 1 to 7 covered the DDL, the data logic and the write path, but every one of them ran as the superuser. The layer none of them touched is the one the site actually reads through, which is `anon` and `service_role` against grants and RLS. That layer is plain Postgres rather than anything Supabase adds, so it reproduces locally, and it is exactly where this project's failures have been silent.
+
+Silent in a precise sense, and Step 7 pins down which. **A missing RLS policy is the silent one**: the statement succeeds, the view returns zero rows, PostgREST answers HTTP 200 with `[]`, and nothing anywhere reports a fault. **A missing grant is loud at the database**: a `security_invoker` view checks the caller's own rights against the base table and Postgres raises `42501`. It reaches the site as silence only because `getLogos` in `lib/registry.ts` returns `{}` on any error, which is how all 6,820 logos left the live site once. Two different faults with two different signatures, and a gate that only tests one of them is testing half the surface.
+
+There is a third signature, and it is the worst of the three, because it is silent all the way down and it survives a row count. A view that reaches a table through a LEFT JOIN or a correlated subquery keeps every row when that table becomes unreadable and loses a COLUMN instead. `v_logo_status` and `v_asset_passport` both do this. Step 5 asserts values rather than row counts for exactly that reason.
 
 - [ ] **Step 1: Build the container and create the roles the way Supabase has them**
 
@@ -933,11 +937,17 @@ The backfill migration carries its own `raise exception` if listings, assets and
 
 **A zero-row result is a FAIL, not a pass.** Statement success is not the assertion. A view returning nothing is indistinguishable from a view working unless the count is checked, which is the whole reason this step exists.
 
-Two details that are easy to get wrong:
+**A row count is only a sound assertion for a view whose every source is an inner join.** Three of the five views fail that test, and each needs its values asserted instead. The rule: if a view reaches a table through a LEFT JOIN, a correlated subquery or a scalar subquery, losing that table empties a **column** and leaves the **row count** untouched.
 
-`v_registry_stats` needs a different assertion from the other four. It is nine independent scalar subqueries, so it returns exactly one row whatever happens underneath, and Postgres does not evaluate a scalar subquery that `count(*)` never reads. A row-count assertion on it is vacuous: Step 7 shows it returning 1 while `anon` holds no SELECT on `capture_extract` at all. Its **values** are what has to be asserted, and `gate.check_stats` does that.
+`v_registry_stats` is nine independent scalar subqueries. It returns exactly one row whatever happens underneath, and Postgres does not evaluate a scalar subquery that `count(*)` never reads, so a row-count assertion is vacuous: Step 7 shows it returning 1 while `anon` holds no SELECT on `capture_extract` at all. `gate.check_stats` asserts all nine values.
 
-`asset_merge` is legitimately empty after the backfill and will be empty on production too. An empty table cannot demonstrate that `anon` can read it, so the harness inserts one synthetic row for the read to return. It leaves `merged_into` alone, so no view's counts move.
+`v_logo_status` LEFT JOINs `capture_link`. Make `capture_link` unreadable and the view still returns one row per listing, every one with a null `logo_url` and state `no_logo_identified`. That is every logo on the site replaced by initials, at full row count. `gate.check_logo_status` asserts that rows carrying a logo have a non-null `logo_url`, that both `archived` and `url_only_not_archived` are present, and that no row is internally contradictory.
+
+`v_asset_passport` reaches `capture_plan`, `capture_link`, `capture_permission`, `capture_compliance` and `capture_evidence` through correlated subqueries. Any of those going unreadable leaves every passport with its row and no plans, no links, no permissions or no compliance. `gate.check_passport` asserts each section is non-empty for a named seeded product.
+
+`v_registry_card` and `v_asset_change_feed` do **not** need this. They reach `listing`, `marketplace`, `capture` and `capture_extract` through inner joins only, so losing any of them empties the view and the row count is sound.
+
+One framing detail: `asset_merge` is legitimately empty after the backfill and will be empty on production too. An empty table cannot demonstrate that `anon` can read it, so the harness inserts one synthetic row for the read to return. It leaves `merged_into` alone, so no view's counts move.
 
 - [ ] **Step 6: Read `v_logo_status` as `service_role`, asserting non-zero**
 
@@ -958,6 +968,10 @@ Two breakages, because they do not behave the same way and the difference is the
 **Revoke the SELECT grant.** This is the loud one. The views are `security_invoker`, so `anon`'s own rights are what the underlying scan is checked against, and Postgres refuses with `42501 permission denied for table capture_extract`. Loud at the SQL and HTTP layers, though `getLogos` still swallows it into initials.
 
 Expect the stats view to misbehave in an instructive way under the silent breakage. `agents`, `captures`, `changes`, `marketplaces` and `last_captured_at` are read straight off `listing`, `capture` and `listing_change` and stay correct, while everything sourced through `v_registry_card` collapses to zero or null. The banner would keep claiming agents exist while the list below it showed none.
+
+**Then a third breakage, which neither of the first two reaches.** Drop the RLS policy on `capture_link` alone, leaving its grant intact and every other policy in place. Every view keeps every row. `v_logo_status` returns one row per listing with a null `logo_url` throughout, and `v_asset_passport` loses its `product_links`, `legal_links` and `media`. Confirm the row-count check still reports PASS and that `gate.check_logo_status` and `gate.check_passport` go red, then restore and confirm they go green. Repeat for `capture_plan`, `capture_permission` and `capture_compliance` together, which empties the passport's plans, permissions and compliance.
+
+That third one is the reason Step 5 asserts values. Without it the gate is green in a state where every card on the site shows initials and every passport has no plans, no links, no permissions and no compliance, which is a superset of the outage this gate exists to prevent.
 
 - [ ] **Step 8: Sentinel ingest**
 
@@ -1074,7 +1088,7 @@ Task 9 ends the implementation. Nothing above proves the claim phase 1 exists to
 
 4. Run `npm run test:parity`, since `registry_search` joins on `asset_id` and that column changed meaning: it named a listing before this phase and names a real product after it.
 
-5. Confirm `v_logo_status` returns a non-zero count to both `anon` and `service_role`. The definer-to-invoker flip in Task 7 is production-only, since the container never carried the SECURITY DEFINER version to flip, and its failure mode is silent: a broken invoker view returns an empty result, not an error. Task 8 proved the invoker form works and that both roles can read it, which is the strongest available evidence short of watching the flip itself.
+5. Confirm `v_logo_status` returns a non-zero count to both `anon` and `service_role`, **and that `logo_url` is populated on the rows that should have one**. The definer-to-invoker flip in Task 7 is production-only, since the container never carried the SECURITY DEFINER version to flip. Its failure mode for `service_role` is a missing grant on `listing`, `capture_extract` or `capture_link`, which is `42501` and loud, not silence: `service_role` is BYPASSRLS, so RLS cannot quietly empty a view for it. For `anon`, both signatures are live, and the one a row count misses is `capture_link` becoming unreadable, which leaves every row in place with a null `logo_url`. Check the column, not just the count. Task 8 proved the invoker form works for both roles, which is the strongest available evidence short of watching the flip itself.
 
 6. Re-run the Supabase linter and confirm the `v_logo_status` SECURITY DEFINER error has cleared.
 
