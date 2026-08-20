@@ -984,6 +984,50 @@ details[open] > .st-disclosure::before { content: "− "; }
   .st-access { grid-template-columns: 1fr; align-items: start; }
 }
 
+/* Listing panels: one card per marketplace, each stating only what that
+   marketplace's own listing says. Deliberately plain: the panel is the
+   no-flattening mechanism, not a summary of one, so it carries no computed
+   or merged value anywhere in it. */
+.st-listings {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--s4);
+}
+.st-listing {
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius);
+  background: var(--c-surface);
+  padding: var(--s5);
+}
+.st-listing__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+.st-listing__name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--t-md);
+  color: var(--c-ink);
+}
+.st-listing__meta {
+  margin: var(--s1) 0 var(--s4);
+  font-size: var(--t-xs);
+  color: var(--c-ink-3);
+}
+.st-listing__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s3) var(--s4);
+}
+.st-listing__field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 /* Embedded in the landing page's modal, which supplies its own width and
    padding: drop the shell measure and let the band sit flush. */
 .st-passport--embedded .st-shell { max-width: none; padding-inline: 0; }
