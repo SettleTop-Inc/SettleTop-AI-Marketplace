@@ -1,6 +1,11 @@
-# The saved certification pages under scripts/lib/sources/fixtures are evidence:
-# they are what learn.microsoft.com served, byte for byte, and the parser tests
-# mutate exact markup inside them. core.autocrlf would rewrite their line
+# The saved pages under scripts/lib/sources/fixtures are evidence: they are what
+# learn.microsoft.com and aws.amazon.com served, byte for byte, and the parser
+# tests mutate exact markup inside them. core.autocrlf would rewrite their line
 # endings on checkout, which changes the bytes and breaks those tests on a
 # fresh clone. Leave them alone.
+#
+# It matters more for the AWS pages than for the Microsoft ones. An AWS page
+# carries its whole record as a single line of JSON inside a script tag, and a
+# CRLF injected anywhere in that line is a parse error rather than a cosmetic
+# difference: the fixture would stop being a page at all.
 scripts/lib/sources/fixtures/*.html -text
