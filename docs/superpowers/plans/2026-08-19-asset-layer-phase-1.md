@@ -898,26 +898,42 @@ SUPABASE_SERVICE_ROLE_KEY=<branch service role key> \
 npm run verify:asset-layer
 ```
 
-Expected: every check passes. The branch is seeded from production's schema without data by default, so `listing count unchanged` may legitimately differ; note it and treat the structural checks as the gate. Run `npm run verify:baseline` against the branch first if you want the count checks to be meaningful there.
+Do not run `npm run verify:baseline` against the branch. On a data-less branch the baseline validation refuses to write an incomplete snapshot, so the run just fails; on a data-carrying branch it would silently overwrite `data/asset-layer-baseline.json`, the production baseline, which is the one artifact that cannot be regenerated after this merges.
+
+The branch is seeded from production's schema without data by default, so thirteen checks fail by design and are expected to: `every listing maps to a distinct asset` (its `rows.length > 0` guard deliberately requires a non-empty result to pass), `listing count unchanged`, `v_logo_status row count unchanged`, `v_asset_passport row count unchanged`, and all nine `v_registry_stats.*` comparisons. Three more checks pass on a data-less branch, but only vacuously, at `0 == 0`, and prove nothing there: `one asset per listing`, `one canonical slug per asset`, `slug count is at least the asset count`.
+
+A branch pass means every check other than those thirteen passed. That is the gate, not a literal "every check passes."
 
 - [ ] **Step 4: Exercise the write path against the branch**
 
-This is the check that inspection cannot substitute for. Both calls in the harness prove the functions resolve their tables after the rename, and neither writes.
+This is the check that inspection cannot substitute for, but the two calls in the harness do not prove the same thing, and neither writes.
 
-If `ingest_capture reaches its own validation` fails with a message mentioning `relation "asset" does not exist`, Task 6 missed a reference. Find it, fix it, push, and repeat from Step 2.
+`set_capture_logo executes and reports no_capture` is genuinely exercised against `listing`: its probe runs `select l.current_capture_id from listing l ...` before returning `no_capture`, so a version still naming `asset` fails right here with `relation "asset" does not exist`.
 
-- [ ] **Step 5: Run the app against the branch**
+`ingest_capture reaches its own validation` is not exercised against any table. Called with an empty payload, it raises at its first guard, `if v_pid is null or ex is null`, and the declare block above that guard touches no relation, so execution never reaches the `listing` select. A version of `ingest_capture` still saying `from asset` would pass this check and this check would say nothing about it: Postgres only syntax-checks a plpgsql body, it does not resolve object names until a statement actually runs. This check proves only that `ingest_capture` exists, is callable by `service_role`, and reaches its own validation.
+
+If `set_capture_logo executes and reports no_capture` fails with a message mentioning `relation "asset" does not exist`, Task 6 missed a reference in that function. Find it, fix it, push, and repeat from Step 2.
+
+- [ ] **Step 5: Prove `ingest_capture` resolves the renamed tables**
+
+This is the only place `ingest_capture` is proved to resolve the renamed tables, and it is why the branch database exists: writing here is free and harmless.
+
+Call `ingest_capture` with a complete sentinel payload for a `source_product_id` that does not exist, then call it again with the same id and one changed field. Confirm the first returns `status: created` and the second `status: updated`, that exactly one listing, one asset and one canonical slug exist for it afterwards, and that the returned `asset_id` is unchanged between the two calls.
+
+If either call fails with a message mentioning `relation "asset" does not exist`, Task 6 missed a reference. Find it, fix it, push, and repeat from Step 2.
+
+- [ ] **Step 6: Run the app**
 
 ```bash
 npm run typecheck
 npm run test
 ```
 
-Then point `.env.local` at the branch and run `npm run dev`. Open `/registry` and one `/agent/<source_product_id>` page. Both must render exactly as they do against production. This catches anything the harness does not: a view column the app reads that quietly changed name.
+There are no rows and no product id on a data-less branch, so `/registry` and `/agent/<source_product_id>` cannot be exercised against it as written. Run that render check against production instead, immediately after deploy: point `.env.local` at production, run `npm run dev`, open `/registry` and one `/agent/<source_product_id>` page, and confirm both render exactly as they did before the merge. This catches anything the harness does not: a view column the app reads that quietly changed name.
 
-- [ ] **Step 6: Report before merging**
+- [ ] **Step 7: Report before merging**
 
-Post the harness output on the PR. Do not merge until every check passes and the app renders. Merging is the user's call, not the implementer's.
+Post the harness output on the PR. A branch pass means every check other than the thirteen listed in Step 3 passed, and that the three vacuous ones there proved nothing. Merging is the user's call, not the implementer's.
 
 ---
 
@@ -978,3 +994,21 @@ One spec claim is corrected by this plan: the spec says the harvest scripts cons
 **Placeholder scan.** No TBD, no "handle errors appropriately", no "similar to Task N". Two steps deliberately instruct the implementer to work from a live dump rather than from pasted SQL: Task 1 Step 1 and Task 7 Step 1. That is not a placeholder, it is the only correct source, because the repo's copies of those objects are known to be stale and pasting them here would bake the staleness in.
 
 **Type consistency.** `v_listing`, `v_asset`, `v_new_listing` and `v_slug_fallback` are declared in Task 6 Step 2 and used in Steps 2 and 3. `listing.asset_id` is created in Task 5 and read by Task 6 and Task 7. `asset.primary_listing_id` is created in Task 4, populated in Task 5 and Task 6. The ingest return keys named in Task 6 Step 3 match those documented in Task 9 Step 3.
+
+---
+
+## After this merges
+
+Task 9 ends the implementation. Nothing above proves the claim phase 1 exists to prove, that the registry after phase 1 is exactly the registry before it, because a branch database has no data to prove it with. That evidence comes only from running the harness against production after the merge. In order:
+
+1. Quiesce the capture worker before the push. Each migration file is its own transaction, so a harvest landing between the rename and the function rewrite fails with `relation "asset" does not exist`, and the `add column` in the backfill migration takes an ACCESS EXCLUSIVE lock that would queue behind an open ingest.
+
+2. Re-capture the baseline immediately before the push: `npm run verify:baseline` against production. So drift in `captures`, `changes` and `last_captured_at` between when the baseline was last written and when the migrations actually land does not produce failures someone has to reason away afterward.
+
+3. Run `npm run verify:asset-layer` against production. Every check must pass, with no expected-failure list this time: production has data, so none of the thirteen branch exceptions in Task 8 Step 3 apply.
+
+4. Run `npm run test:parity`, since `registry_search` joins on `asset_id` and that column changed meaning: it named a listing before this phase and names a real product after it.
+
+5. Confirm `v_logo_status` returns a non-zero count to both `anon` and `service_role`. The definer-to-invoker flip in Task 7 is production-only, since the branch never carried the SECURITY DEFINER version to flip, and its failure mode is silent: a broken invoker view returns an empty result, not an error.
+
+6. Re-run the Supabase linter and confirm the `v_logo_status` SECURITY DEFINER error has cleared.
