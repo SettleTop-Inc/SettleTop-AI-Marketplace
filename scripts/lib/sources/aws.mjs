@@ -839,6 +839,16 @@ export function toPayload({ record, capturedAt }) {
         `parentCategoryId, predicate ${PREDICATE_VERSION}`,
     },
     extract: {
+      // Deliberately NOT bumped when delivery_ids was added below, and the
+      // question was asked rather than missed. A version string earns its keep
+      // by moving when the shape moves, but it is stored per capture in
+      // capture_extract.extract_spec_version and production holds ZERO AWS
+      // captures, so no stored row carries the earlier meaning and there is
+      // nothing for a bump to disambiguate. Bumping would also break the
+      // generation these three adapters share, v3 / v3-drai / v3-aws, and put
+      // AWS a generation ahead of siblings whose extract contract did not
+      // change. The moment AWS is first harvested this string becomes load
+      // bearing and any later shape change must bump it.
       extract_spec_version: "v3-aws",
       name: record.name,
       publisher: record.publisher,
@@ -850,9 +860,8 @@ export function toPayload({ record, capturedAt }) {
       // "Supported services" row has NO data node anywhere in the page context:
       // the string exists only as a UI label, and overview.solution and
       // overview.integrationGuide, the two candidate holders, are null on every
-      // page. Consequence to know: registry_delivery() reads surfaces first, so
-      // every AWS listing derives delivery "Unknown" until that function gains
-      // an AWS branch. See docs/aws-source.md.
+      // page. registry_delivery() reads surfaces first and finds nothing here,
+      // which is why delivery_ids below exists. See docs/aws-source.md.
       surfaces: [],
       categories: arr(record.categories),
       // Empty on purpose. AWS's Industries branch children arrive in the SAME
@@ -873,6 +882,42 @@ export function toPayload({ record, capturedAt }) {
       pricing: null,
       acquire_using:
         [...new Set(options.map((o) => o.type_name).filter(Boolean))].join(", ") || null,
+      /**
+       * The fulfilment option type IDS, distinct, for registry_delivery().
+       *
+       * A SOURCE-NEUTRAL KEY. `delivery_ids` is deliberately not named after
+       * AWS: registry_delivery() is shared with every marketplace, and a shared
+       * function reaching into AWS-shaped JSON would be the start of a source
+       * switch inside the derivation. Microsoft and DRAI emit no such key at
+       * all, so it arrives absent, reads as an empty array in the write path,
+       * and their branches are reached exactly as before
+       * (20260820140000_registry_delivery_aws.sql).
+       *
+       * IDS, NOT NAMES, and the pair is right beside each other on the page:
+       * fulfillmentOptionTypeId "AMAZON_MACHINE_IMAGE" against
+       * fulfillmentOptionTypeName "Amazon Machine Image". The id is the stable
+       * machine value. The name is a rendered label, already localised through
+       * the page's UI translation table, and a CASE written against it would go
+       * quietly to "Unknown" the day AWS reworded one. The names are not lost:
+       * acquire_using above carries them verbatim, joined, and that is what a
+       * reader sees. This key is only what the derivation switches on.
+       *
+       * ORDER is ours: fulfillmentOptions() sorts on the creationDate AWS
+       * publishes, newest first, and this dedupes by first occurrence, the same
+       * shape acquire_using uses. AWS states the dates, not the order, and the
+       * distinction is the whole point of this file, so it is worth being exact
+       * about. It is deterministic for a given record and it carries no weight
+       * either way: the SQL tries the ids in a fixed literal precedence, so a
+       * listing with several options resolves the same whatever order they
+       * arrive in.
+       *
+       * Ten ids have been observed live. Five of them map onto a delivery value
+       * the registry already offers and five deliberately do not, and fall
+       * through to "Unknown" rather than borrow a label that would misdescribe
+       * them. The table and the reasoning are in the migration header and in
+       * docs/aws-source.md.
+       */
+      delivery_ids: [...new Set(options.map((o) => o.type_id).filter(Boolean))],
       /**
        * The delivery option's own fulfillmentOptionVersion, copied verbatim,
        * and ONLY where AWS publishes exactly one delivery option.
