@@ -1,0 +1,2 @@
+# run.sh is executed by bash. CRLF would break its shebang under WSL or Linux.
+*.sh text eol=lf
