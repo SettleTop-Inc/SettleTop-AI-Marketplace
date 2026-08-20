@@ -20,6 +20,11 @@
  *     than to a second one
  *   - ingest last, because it joins every earlier file
  *
+ * A source has the stages it needs and no placeholders. AWS has three: pricing
+ * arrives in the same blob as the listing, so there is nothing for a pricing
+ * stage to fetch, and AWS publishes no certification page at all, so a
+ * certification stage would have no page to read.
+ *
  * Logos are deliberately NOT a per-source stage. v_logo_status carries
  * marketplace_id, so one archiver pass covers every source at once, and running
  * it per source would just walk the same view twice.
@@ -45,6 +50,20 @@ export const SOURCES = [
       "drai-catalog.mjs",
       "drai-detail.mjs",
       "drai-ingest.mjs",
+    ],
+  },
+  {
+    id: "aws",
+    name: "AWS Marketplace",
+    stages: [
+      // The sitemap, one request. It carries no category, so unlike Microsoft
+      // this stage cannot filter and enumerates the whole marketplace.
+      "aws-catalog.mjs",
+      // The expensive pass, and the only place the category filter can live:
+      // a listing states its categories on its own record and nowhere else.
+      // Roughly seven of every eight pages fetched are read and rejected.
+      "aws-detail.mjs",
+      "aws-ingest.mjs",
     ],
   },
 ];
