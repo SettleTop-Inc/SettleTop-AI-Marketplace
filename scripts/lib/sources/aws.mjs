@@ -839,6 +839,16 @@ export function toPayload({ record, capturedAt }) {
         `parentCategoryId, predicate ${PREDICATE_VERSION}`,
     },
     extract: {
+      // Deliberately NOT bumped when delivery_ids was added below, and the
+      // question was asked rather than missed. A version string earns its keep
+      // by moving when the shape moves, but it is stored per capture in
+      // capture_extract.extract_spec_version and production holds ZERO AWS
+      // captures, so no stored row carries the earlier meaning and there is
+      // nothing for a bump to disambiguate. Bumping would also break the
+      // generation these three adapters share, v3 / v3-drai / v3-aws, and put
+      // AWS a generation ahead of siblings whose extract contract did not
+      // change. The moment AWS is first harvested this string becomes load
+      // bearing and any later shape change must bump it.
       extract_spec_version: "v3-aws",
       name: record.name,
       publisher: record.publisher,
@@ -892,11 +902,14 @@ export function toPayload({ record, capturedAt }) {
        * acquire_using above carries them verbatim, joined, and that is what a
        * reader sees. This key is only what the derivation switches on.
        *
-       * ORDER is AWS's own, newest delivery option first, deduplicated by first
-       * occurrence, the same shape acquire_using uses. It is deterministic for
-       * a given record, and it carries no weight either way: the SQL tries the
-       * ids in a fixed literal precedence, so a listing with several options
-       * resolves the same whatever order they arrive in.
+       * ORDER is ours: fulfillmentOptions() sorts on the creationDate AWS
+       * publishes, newest first, and this dedupes by first occurrence, the same
+       * shape acquire_using uses. AWS states the dates, not the order, and the
+       * distinction is the whole point of this file, so it is worth being exact
+       * about. It is deterministic for a given record and it carries no weight
+       * either way: the SQL tries the ids in a fixed literal precedence, so a
+       * listing with several options resolves the same whatever order they
+       * arrive in.
        *
        * Ten ids have been observed live. Five of them map onto a delivery value
        * the registry already offers and five deliberately do not, and fall

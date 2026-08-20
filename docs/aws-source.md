@@ -523,16 +523,30 @@ ceasing to fill. The names are not lost: `extract.acquire_using` carries them
 verbatim and joined, and that is what a reader sees. `delivery_ids` is only what
 the derivation switches on.
 
-**Order and precedence.** `delivery_ids` is in AWS's own order, newest delivery
-option first, deduplicated by first occurrence, the same shape `acquire_using`
-uses. That order carries no weight in the result: the SQL tries the ids in a
-fixed literal precedence and takes the first match, so a listing carrying
+**Order and precedence.** `delivery_ids` is ordered by the `creationDate` AWS
+publishes, newest delivery option first, deduplicated by first occurrence, the
+same shape `acquire_using` uses. The sort is the adapter's, not an order AWS
+states. It carries no weight in the result either way: the SQL tries the ids in
+a fixed literal precedence and takes the first match, so a listing carrying
 several fulfilment options resolves identically whatever order they arrive in.
 Checked over every permutation of a two-option listing.
 
+What that fixed precedence **decides** is a separate thing from whether it is
+deterministic, and it is ours to justify. The rule is: the more of the stack the
+buyer runs, the higher the id ranks. An AMI hands over a whole machine, a
+container image or Helm chart hands over a workload to schedule, and SaaS or an
+API hands over nothing but an endpoint. So `AMAZON_MACHINE_IMAGE` beats
+`CONTAINER`, `HELM`, `SAAS` and `API`, and `CONTAINER` and `HELM` beat `SAAS`
+and `API`. A listing AWS sells both as SaaS and as an AMI reads `Virtual
+machine` here, which is the registry naming a primary delivery AWS never
+designated. How often that happens is unmeasured: of the 195 records cached in
+`data/aws/details.jsonl` exactly two carry more than one id,
+`AMAZON_MACHINE_IMAGE + CLOUDFORMATION_TEMPLATE` and `CONTAINER + HELM`, and
+neither pits two mapped families against each other.
+
 **The mapping is ours, not AWS's**, as every value in the delivery column always
-has been. It stays inside the set the function already returns, which is the set
-the facet rail offers.
+has been. It stays inside the set the function already returned before this
+change. That is a curation choice, not a technical constraint: see below.
 
 | Fulfilment type id | Delivery | Why |
 | --- | --- | --- |
@@ -547,12 +561,56 @@ the facet rail offers.
 | `DATA_EXCHANGE` | Unknown | A data product, not a software delivery method. No value in the set describes it. |
 | `PROFESSIONAL_SERVICES` | Unknown | A human engagement. Nothing is delivered to run. |
 
-Five of the ten stay `Unknown` on purpose. The value set is Microsoft-shaped,
-and widening it to hold "deployed from a template into your own cloud account",
-"machine learning model", "data product" and "professional services" touches the
-facet rail and every card, so it is a separate change with its own review.
-Until it happens, `Unknown` is a true statement about what this function can
-say, and `acquire_using` carries AWS's own words for all ten regardless.
+Five of the ten stay `Unknown` on purpose, and `Unknown` is a true statement
+about what this function can say. `acquire_using` carries AWS's own words for
+all ten regardless.
+
+**A correction, and what the five actually cost.** An earlier version of this
+page said widening the value set "touches the facet rail and every card". That
+is false. `delivery` is an open, data-driven facet: `registry_search` builds its
+options with `union all select 'delivery', f_delivery, ... from matched group by
+f_delivery`, `listing.delivery` is plain text, `lib/types.ts` types it `string |
+null`, and `lib/registry-query.ts` says in its own comment that `delivery` is
+"open free text pulled from live listing data" rather than one of the two facets
+backed by a closed TS union. Grepping every `.ts`, `.tsx`, `.css` and `.json`
+for `Vendor cloud`, `ISV hosted` or `Azure application` returns nothing outside
+the migrations, and the rail renders whatever the RPC hands it. Adding
+`Data product` or `Professional services` would need zero application change.
+
+So keeping the vocabulary tight is a decision, not a constraint, and it is the
+owner's to take. Here is the price of not taking it, counted over the 195
+records cached in `data/aws/details.jsonl`:
+
+| Fulfilment type id | Records | Derives |
+| --- | ---: | --- |
+| `PROFESSIONAL_SERVICES` | 86 | Unknown |
+| `SAAS` | 69 | SaaS |
+| `AMAZON_MACHINE_IMAGE` | 30 | Virtual machine |
+| `CONTAINER` | 6 | Container |
+| `HELM` | 2 | Container |
+| `CLOUDFORMATION_TEMPLATE` | 1 | Unknown |
+| `SAGEMAKER_MODEL` | 1 | Unknown |
+| `SAGEMAKER_ALGORITHM` | 1 | Unknown |
+| `API` | 1 | SaaS |
+| `DATA_EXCHANGE` | 0 in this sample | Unknown |
+
+Two of the 195 carry two ids, the rest carry one, so roughly 45 percent of the
+sample derives `Unknown` and almost all of that is the single id
+`PROFESSIONAL_SERVICES`. The five refusals each still stand on their own merits,
+and this change does not widen the set unilaterally. But the door is not locked,
+opening it is cheap, and the number belongs in front of whoever decides.
+
+**Where the tests are.** Two places, and they cover different halves.
+`scripts/lib/sources/aws.test.mjs` covers the adapter: that `delivery_ids`
+carries the id and not the name, is distinct, is ordered by `creationDate`, and
+is empty rather than absent when a record states no fulfilment option. Step 10
+of `scripts/gate/07-final.sql` covers the SQL that consumes it, under
+`npm run gate`: all ten ids individually, precedence in both directions for
+every mixed pair, the whole write path through `ingest_capture` including the
+shapes where `delivery_ids` is not an array, and a 360-pair comparison against a
+verbatim copy of the pre-migration function so a Microsoft or DRAI regression
+cannot pass. Step `10i` deliberately mis-expects three of those checks, so a
+green result there would mean the rest proves nothing.
 
 **What this does not fix.** Microsoft listings mostly still derive `Unknown`,
 for two causes that have nothing to do with this function: `microsoft.mjs` reads

@@ -615,7 +615,7 @@ test("delivery_ids is distinct, so three AMIs are one delivery method", () => {
   assert.equal(e.acquire_using, "Amazon Machine Image");
 });
 
-test("delivery_ids order is AWS's newest-first, not the blob's array order", () => {
+test("delivery_ids is ordered by AWS's creationDate, not by the blob's array order", () => {
   // Two different types, with the CONTAINER option stated later in the array
   // and created more recently. fulfillmentOptions() sorts on creationDate, a
   // value AWS publishes, so the order is a consequence of AWS's own data

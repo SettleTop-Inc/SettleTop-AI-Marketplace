@@ -26,8 +26,10 @@
 -- the derivation switches on; acquire_using is what the passport prints.
 --
 -- THE MAPPING, and it is OURS, not AWS's. delivery has always been the
--- registry's own classification, and the values must stay inside the set this
--- function already returns, which is the set the facet rail offers.
+-- registry's own classification. The values below stay inside the set this
+-- function already returned before this migration. That is a CURATION CHOICE
+-- and not a technical constraint, which matters for the five ids left out of
+-- the table: see THE COST OF THE FIVE, below.
 --
 --   AMAZON_MACHINE_IMAGE     -> 'Virtual machine'  an AMI boots as an EC2
 --                               instance, the same thing Microsoft's 'Virtual
@@ -67,16 +69,69 @@
 --
 -- 'Unknown' for these is a true statement about what this function can say, and
 -- extract.acquire_using still carries AWS's own words for every one of them.
--- Widening the value set to cover them cleanly is a separate change, because
--- the set is currently Microsoft-shaped and adding to it touches the facet rail
--- and every card.
+--
+-- THE COST OF THE FIVE, and a correction. An earlier draft of this header said
+-- widening the value set "touches the facet rail and every card". That is false,
+-- and it is corrected here rather than quietly deleted, because it was the
+-- load-bearing reason for half the ids. delivery is an OPEN, data-driven facet.
+-- registry_search builds its options straight out of the matched rows, with
+-- `union all select 'delivery', f_delivery, ... from matched group by
+-- f_delivery` (20260818134538_registry_search.sql); listing.delivery is plain
+-- text; lib/types.ts types it `string | null`; and lib/registry-query.ts says in
+-- its own comment that delivery is "open free text pulled from live listing
+-- data" rather than one of the two facets backed by a closed TS union. Nothing
+-- in the application holds a list of delivery labels: grepping every .ts, .tsx,
+-- .css and .json for 'Vendor cloud', 'ISV hosted' or 'Azure application' returns
+-- nothing outside these migrations, and the rail renders whatever values the RPC
+-- hands it, unordered and unlabelled. A new value such as 'Data product' or
+-- 'Professional services' would need ZERO application change.
+--
+-- So keeping the set tight is a VOCABULARY DECISION, and it belongs to the
+-- owner rather than to this migration, which does not take it. What it costs
+-- today, counted over the 195 AWS records cached in data/aws/details.jsonl:
+--
+--   PROFESSIONAL_SERVICES     86 records   -> Unknown
+--   SAAS                      69           -> SaaS
+--   AMAZON_MACHINE_IMAGE      30           -> Virtual machine
+--   CONTAINER                  6           -> Container
+--   HELM                       2           -> Container
+--   CLOUDFORMATION_TEMPLATE    1           -> Unknown
+--   SAGEMAKER_MODEL            1           -> Unknown
+--   SAGEMAKER_ALGORITHM        1           -> Unknown
+--   API                        1           -> SaaS
+--   DATA_EXCHANGE              not in this sample; 20260820120000 records it
+--                              as one of the ten seen on live pages
+--
+-- Two of the 195 carry two ids; the rest carry one. So about 45 percent of the
+-- sample derives 'Unknown', and almost all of that is the single id
+-- PROFESSIONAL_SERVICES. The five refusals above still stand on their own
+-- merits, and inventing a label remains worse than saying nothing. But the
+-- door is not locked, opening it is cheap, and a later reader should have the
+-- number in front of them when the owner decides.
 --
 -- PRECEDENCE. A listing can carry several fulfilment options, so delivery_ids
 -- can hold more than one id. The branches below are tried in a fixed literal
 -- order and the first match wins, which is how the Microsoft branches above
 -- already work. That makes the result independent of the order the adapter
 -- emitted the ids in, so it is deterministic even though delivery_ids is
--- AWS-ordered, and it stays deterministic if AWS reorders fulfillmentOptions.
+-- ordered, and it stays deterministic if AWS reorders fulfillmentOptions.
+--
+-- AND HERE IS WHAT THAT ORDER DECIDES, which is the part a mechanism alone
+-- does not say. THE MORE OF THE STACK THE BUYER RUNS, THE HIGHER IT RANKS: an
+-- AMI hands over a whole machine, a container image or Helm chart hands over a
+-- workload to schedule, and SaaS or an API hands over nothing but an endpoint.
+-- So AMAZON_MACHINE_IMAGE beats CONTAINER, HELM, SAAS and API; CONTAINER and
+-- HELM beat SAAS and API. A listing AWS sells BOTH as SaaS and as an AMI is
+-- labelled 'Virtual machine' here, and that is the registry naming a primary
+-- delivery AWS never designated. It is our editorial call, stated so it can be
+-- argued with.
+--
+-- HOW OFTEN IT BITES IS UNMEASURED ON REAL SCALE. Over the 195 records cached
+-- in data/aws/details.jsonl exactly two carry more than one id,
+-- AMAZON_MACHINE_IMAGE + CLOUDFORMATION_TEMPLATE and CONTAINER + HELM. Neither
+-- pits two MAPPED families against each other, so neither exercises the rule
+-- above. AWS is not ingested on production, so a listing carrying ids from two
+-- different mapped families has not yet been seen at all.
 --
 -- ORDERING IS WHAT KEEPS MICROSOFT AND DRAI UNCHANGED. The AWS branch is added
 -- AFTER every existing branch and BEFORE the final else, so any row that
@@ -96,6 +151,18 @@
 -- still mostly 'Unknown' after this landed is looking at those two, not at a
 -- regression here.
 --
+-- WHERE THE TESTS ARE. Step 10 of scripts/gate/07-final.sql, 56 assertions,
+-- run by `npm run gate` against a throwaway container. It reads pg_proc to
+-- prove the drop below actually happened, since no value assertion can see a
+-- missing drop; it recreates the pre-migration function verbatim as
+-- gate.registry_delivery_v0 and compares the two over 360 (surfaces,
+-- cert_hosting) pairs, three ways each, which is the Microsoft and DRAI
+-- guarantee asserted rather than asserted about; it pins all ten ids
+-- individually and precedence in both directions; it runs sixteen listings
+-- through ingest_capture and reads capture_extract.delivery back; and 10i is
+-- the negative control, three checks expected red, so a green result there
+-- would mean the rest proves nothing.
+--
 -- WHY THE DROP, and it is not optional. `create or replace` matches on the
 -- argument types, so creating registry_delivery(text[], text, text[]) leaves
 -- the two-argument function standing beside it rather than replacing it.
@@ -106,6 +173,21 @@
 -- depends on it: pg_proc shows one caller, ingest_capture, whose plpgsql body
 -- is stored as text and carries no dependency, and no view or generated column
 -- references it.
+
+-- APPLYING THIS FILE, and it matters because this project hashes function
+-- bodies as evidence. The repository stores every migration with LF endings
+-- (git ls-files --eol reports i/lf), but core.autocrlf is true, so a Windows
+-- working copy holds this file as CRLF and every CR would be carried into
+-- pg_proc.prosrc verbatim. Production's current ingest_capture body is LF-only,
+-- so applying the CRLF bytes would change the stored body's md5 for a reason
+-- that has nothing to do with the change and would sabotage the next body
+-- comparison. Apply the git-stored bytes, not the checked-out ones:
+--
+--   git show HEAD:supabase/migrations/20260820140000_registry_delivery_aws.sql \
+--     | psql "$DATABASE_URL" -v ON_ERROR_STOP=1
+--
+-- The Supabase CLI and any Linux or macOS checkout already do this; only a
+-- Windows checkout piped straight from disk does not.
 
 drop function if exists public.registry_delivery(text[], text);
 
@@ -147,19 +229,45 @@ alter function public.registry_delivery(text[], text, text[])
 -- the capture_extract insert. The evidence verification gate, the two haystacks
 -- through the Microsoft Graph rule, is byte for byte what that file holds.
 -- The region runs from the line beginning hay_listing := concat_ws( down to
--- the end if; that closes the Microsoft Graph rule, both lines included, and
--- over it sha256 reads the same in both files:
+-- the end if; that closes the Microsoft Graph rule, both lines included. It is
+-- 25 lines and 1,373 bytes with CRLF endings, and over it sha256 reads the
+-- same in both files. A hash is published so a later reader can re-run it, so
+-- the exact recipe is given for each; an earlier draft printed a second value
+-- that reproduced under no recipe at all, and it is replaced here.
 --
---   da56d8f9c1f4763269cf9b441cba049a59b8131463163bf456e24b45e5a41852  as
---   the bytes sit on disk, CRLF included
---   2fe4306cffb3ca6be2fb1d323f898e0eaefd8c1c9d78edd2a1c2d51a9cbeddc7  with
---   line endings normalised to LF, which is what git stores
+--   2fe4306cffb3ca6be2fb1d323f898e0eaefd8c1c9d78edd2a1c2d51a9cbeddc7
+--     the 25 lines joined by LF with NO trailing newline. This is the
+--     git-stored form: the index holds both files as LF (git ls-files --eol
+--     reports i/lf), whatever the working copy looks like.
+--   e4ca153091130ccfdae2c994903e1a6b1dde1ccd125ea632c902bc3e06c9e123
+--     the same 25 lines exactly as they sit in a CRLF working copy, trailing
+--     CRLF of the last line included.
 --
--- The new argument is read with the same shape the declare block already uses
--- for surfaces, categories and industries, so an extract with no delivery_ids
--- key yields '{}' rather than raising. It is inline rather than a new declared
--- variable so that the diff against the previous definition is one line and can
--- be checked at a glance.
+-- For completeness, because two of the four plausible readings of "the region"
+-- differ only in a trailing newline and a reader who gets neither of the above
+-- should be able to tell which variant they computed: LF with a trailing
+-- newline is 3b6340ed59288d5d4fed8d67abdd6a3ac906c46403ff6f3e77ea4f313b9402d1
+-- and CRLF without one is
+-- e55b703690334380d9b2716a44e614935595ca060ace2b6d2128dc52feaf5aa6.
+--
+-- The new argument is read in the declare block beside surfaces, categories and
+-- industries, and it is read with ONE GUARD MORE THAN THEY HAVE. Those six keys
+-- use coalesce(array(select jsonb_array_elements_text(...)), '{}'), which
+-- defends against SQL NULL but not against a raise: jsonb_array_elements_text
+-- over a JSON scalar or object throws 22023 "cannot extract elements from a
+-- scalar" and takes the whole capture down with it. An absent key is safe
+-- because ex -> 'key' is SQL NULL there, and a JSON null or a bare string is
+-- not. That exposure is not new and is not widened here, but delivery_ids is
+-- the first extract key that is OPTIONAL BY DESIGN, since Microsoft and DRAI
+-- never emit it, so a future adapter writing `delivery_ids: ids.length ? ids :
+-- null` is an ordinary mistake rather than a corrupt payload, and it should
+-- degrade to Unknown rather than kill the record. jsonb_typeof is checked
+-- first, so anything that is not a JSON array reads as '{}'.
+--
+-- That makes TWO regions differ from 20260819100300 rather than one: this added
+-- declare line, and the registry_delivery call in the capture_extract insert.
+-- Both are shown in full in the commit message, and the evidence verification
+-- gate above is untouched by either.
 
 create or replace function ingest_capture(payload jsonb)
 returns jsonb
@@ -190,6 +298,9 @@ declare
   surfaces        text[] := coalesce(array(select jsonb_array_elements_text(ex -> 'surfaces')), '{}');
   cats            text[] := coalesce(array(select jsonb_array_elements_text(ex -> 'categories')), '{}');
   inds            text[] := coalesce(array(select jsonb_array_elements_text(ex -> 'industries')), '{}');
+  deliv_ids       text[] := case when jsonb_typeof(ex -> 'delivery_ids') = 'array'
+                                 then coalesce(array(select jsonb_array_elements_text(ex -> 'delivery_ids')), '{}')
+                                 else '{}' end;
   v_cert          certification_status := coalesce(nullif(ex ->> 'certification','')::certification_status, 'none');
   plan_count      int := coalesce(jsonb_array_length(ex -> 'plans'), 0);
   layers          text[];
@@ -388,7 +499,7 @@ begin
     cert_d ->> 'data_handling',
     registry_safe_date(cert_d ->> 'developer_last_updated'),
     registry_safe_date(cert_d ->> 'page_last_updated'),
-    v_fn, registry_delivery(surfaces, cert_d ->> 'hosting', coalesce(array(select jsonb_array_elements_text(ex -> 'delivery_ids')), '{}')),
+    v_fn, registry_delivery(surfaces, cert_d ->> 'hosting', deliv_ids),
     v_price ->> 'band', v_price ->> 'note',
     layers, v_reach, (v_prov ->> 'provenance')::provenance_status,
     v_prov ->> 'tier', (v_risk ->> 'risk')::risk_band, v_risk ->> 'basis');
@@ -456,5 +567,10 @@ begin
                            where capture_id = v_capture and not verified));
 end $fn$;
 
+-- 20260819100300 ends this same pair with a doubled semicolon, which Postgres
+-- reads as an empty statement and ignores. It is not copied forward here. That
+-- file is left alone rather than tidied: production stores a migration's full
+-- text in schema_migrations.statements, so editing an applied migration makes
+-- the file on disk disagree with the record of what was actually run.
 revoke all on function ingest_capture(jsonb) from public, anon, authenticated;
-grant execute on function ingest_capture(jsonb) to service_role;;
+grant execute on function ingest_capture(jsonb) to service_role;
