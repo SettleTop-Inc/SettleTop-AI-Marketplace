@@ -224,8 +224,57 @@ $fn$;
 -- is precisely the vacuous-pass shape the rest of this file exists to hunt.
 create or replace function gate.like_literal(p text) returns text
 language sql immutable as $fn$
-  select replace(replace(replace(p, '\', '\'), '%', '\%'), '_', '\_')
+  select replace(replace(replace(p, '\', '\\'), '%', '\%'), '_', '\_')
 $fn$;
+
+-- gate.like_literal() has one job and one way to get it wrong, so it is
+-- asserted directly rather than trusted.
+--
+-- The discriminating case is a backslash immediately before a wildcard. If the
+-- first replacement fails to DOUBLE the backslash, escaping a needle of
+-- a-backslash-percent-z yields a-backslash-backslash-percent-z, which a LIKE
+-- with ESCAPE reads as one literal backslash followed by a LIVE wildcard. The
+-- assertion the escaping was added to protect then matches text that does not
+-- contain the needle at all, which is the vacuous pass this file exists to
+-- hunt, reintroduced by the fix for it.
+--
+-- That is not hypothetical. The first version of this function shipped as
+-- replace(p, backslash, backslash), a no-op, and was green for four rounds
+-- because no seed value contained a backslash. Both this check and seed-alpha's
+-- publisher exist so it cannot go quiet again: this one proves the function,
+-- the seed proves the path through search_blob and check_card_asset.
+--
+-- Every literal below is built from chr(92) rather than written as a backslash,
+-- so the test cannot be broken by the same escaping confusion it detects, and
+-- so this file stays ASCII.
+create or replace function gate.check_like_literal(p_step text) returns void
+language plpgsql as $fn$
+declare bs text := chr(92);
+        needle text; escaped text; expected text;
+        ok_pct boolean; ok_und boolean; ok_bs boolean;
+        ok_vacuous boolean; ok_real boolean; ok boolean; v text; note text;
+begin
+  needle   := 'a' || bs || '%z';
+  escaped  := gate.like_literal(needle);
+  expected := 'a' || bs || bs || bs || '%z';
+
+  ok_pct := gate.like_literal('a%z') = 'a' || bs || '%z';
+  ok_und := gate.like_literal('a_z') = 'a' || bs || '_z';
+  ok_bs  := escaped = expected;
+  -- Text that does NOT contain the needle must not match. This is the one that
+  -- goes red when the backslash is not doubled.
+  ok_vacuous := not (('a' || bs || 'bcz') like ('%' || escaped || '%') escape bs);
+  -- And text that does contain it must still match, or the escaping is merely
+  -- breaking the pattern rather than escaping it.
+  ok_real := ('says a' || bs || '%z here') like ('%' || escaped || '%') escape bs;
+
+  ok := ok_pct and ok_und and ok_bs and ok_vacuous and ok_real;
+  v  := gate.expect(ok, 'green');
+  note := format('percent %s, underscore %s, backslash doubled %s (escaped %s chars, expected %s), vacuous match prevented %s, real match kept %s',
+                 ok_pct, ok_und, ok_bs, length(escaped), length(expected), ok_vacuous, ok_real);
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (p_step, 'postgres', 'gate.like_literal', null, v, note);
+end $fn$;
 
 -- v_registry_card is one row per live asset, and search_blob really carries the
 -- product's own words. The lowercase assertion is not decoration: the client
@@ -548,6 +597,7 @@ begin
   perform gate.check_listing_passport('3g. v_listing_passport is listing-keyed');
   perform gate.check_listing_passport_sections('3g. v_listing_passport carries its sections', 'seed-alpha');
   perform gate.check_asset_evidence('3g. v_asset_evidence is capture-keyed');
+  perform gate.check_like_literal('3h. the gate escapes its own LIKE patterns');
   perform gate.check_view_options('3h. all seven views are security_invoker');
   perform gate.check_cert_group_coherent('3i. the certification group agrees with itself');
   perform gate.check_passport_group_coherent('3i. the certification group agrees with itself');

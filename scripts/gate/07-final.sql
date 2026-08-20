@@ -22,7 +22,7 @@ select ingest_capture($p$
   "extract": {
     "extract_spec_version": "v2",
     "name": "Seed Alpha Agent",
-    "publisher": "Seed Publisher Ltd",
+    "publisher": "Seed\\_Publisher Ltd",
     "tagline": "An agent that reads Microsoft Graph and writes summaries",
     "overview_text": "Seed Alpha Agent uses GPT-4o and LangChain to summarise mail. It integrates with SharePoint and Teams.",
     "pricing": "From 22 dollars per user per month",
