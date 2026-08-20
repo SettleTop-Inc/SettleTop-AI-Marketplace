@@ -111,10 +111,40 @@ const READ_SURFACES = [
 ];
 const NEW_TABLES = ["asset", "asset_slug", "asset_merge"];
 
+// v_registry_stats runs nine subqueries over the full listing and capture
+// tables, and a cold read of it has now timed out against production three
+// times (57014, statement timeout) without the data being at fault: five
+// back-to-back reads measured right after one such failure came back in 876,
+// 307, 204, 213 and 261 ms. That makes it a transient property of a cold
+// cache, not a fact about the schema, so this is the one read in the file
+// that gets a retry: exactly once, only on this exact error, and it leaves a
+// trace in lastStatsRetry so its caller can say so in a check's detail
+// string instead of the retry being silently smoothed away. Nowhere else in
+// this file retries anything: a 404 or a 42703 is a fact about the schema
+// and has to fail on the first try.
+let lastStatsRetry = false;
+async function fetchRegistryStats(select = "*") {
+  const read = () =>
+    fetch(`${URL_BASE}/rest/v1/v_registry_stats?select=${select}`, { headers: head(ANON) });
+  let r = await read();
+  lastStatsRetry = false;
+  if (!r.ok) {
+    const text = await r.text();
+    if (r.status !== 500 || !text.includes('"57014"')) {
+      throw new Error(`v_registry_stats: ${r.status} ${text}`);
+    }
+    lastStatsRetry = true;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    r = await read();
+    if (!r.ok) {
+      throw new Error(`v_registry_stats: ${r.status} ${await r.text()} (after one retry on 57014)`);
+    }
+  }
+  return (await r.json())[0];
+}
+
 async function snapshot() {
-  const r = await fetch(`${URL_BASE}/rest/v1/v_registry_stats?select=*`, { headers: head(ANON) });
-  if (!r.ok) throw new Error(`v_registry_stats: ${r.status} ${await r.text()}`);
-  const stats = (await r.json())[0];
+  const stats = await fetchRegistryStats();
   const listings = await count("v_registry_card?select=asset_id");
   // v_logo_status and v_asset_passport are read surfaces nothing else here
   // requires a row from. A view that silently returns no rows still answers
@@ -289,7 +319,7 @@ if (base) {
   let now = null;
   await check("v_registry_stats snapshot is readable for comparison", async () => {
     now = await snapshot();
-    return { ok: true, detail: "" };
+    return { ok: true, detail: lastStatsRetry ? "retried once on 57014" : "" };
   });
 
   if (now) {
@@ -377,18 +407,18 @@ await check("v_registry_card.search_blob is populated", async () => {
 // sound for it in the way it is not for the passport above. It is asserted
 // here as a live, standalone equality against v_registry_stats.captures,
 // both read in this same run, rather than folded into snapshot() and the
-// baseline: the baseline is the pre-phase-1 record, v_asset_evidence does not
-// exist yet to have been captured into it, and requiring the field there
-// would make the existing baseline file fail isCompleteSnapshot and take
-// every baseline-comparison check down with it.
+// baseline: the baseline predates phase 2's migrations either way (it holds
+// whatever production state it was last captured against), v_asset_evidence
+// does not exist yet to have been captured into it, and requiring the field
+// there would make the baseline file fail isCompleteSnapshot and take every
+// baseline-comparison check down with it.
 await check("v_asset_evidence row count equals v_registry_stats.captures", async () => {
-  const statsRes = await fetch(`${URL_BASE}/rest/v1/v_registry_stats?select=captures`, { headers: head(ANON) });
-  if (!statsRes.ok) return { ok: false, detail: `v_registry_stats: ${statsRes.status}` };
-  const [stats] = await statsRes.json();
+  const stats = await fetchRegistryStats("captures");
   const evidence_rows = await count("v_asset_evidence?select=capture_id");
   return {
     ok: evidence_rows === Number(stats?.captures),
-    detail: `${evidence_rows} evidence rows vs ${stats?.captures} captures`,
+    detail: `${evidence_rows} evidence rows vs ${stats?.captures} captures`
+      + (lastStatsRetry ? " (v_registry_stats retried once on 57014)" : ""),
   };
 });
 
