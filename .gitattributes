@@ -1,0 +1,6 @@
+# The saved certification pages under scripts/lib/sources/fixtures are evidence:
+# they are what learn.microsoft.com served, byte for byte, and the parser tests
+# mutate exact markup inside them. core.autocrlf would rewrite their line
+# endings on checkout, which changes the bytes and breaks those tests on a
+# fresh clone. Leave them alone.
+scripts/lib/sources/fixtures/*.html -text

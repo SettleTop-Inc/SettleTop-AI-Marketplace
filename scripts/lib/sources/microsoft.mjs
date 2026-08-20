@@ -116,7 +116,13 @@ export function toPayload({ tile, detail, plans, cert = null, capturedAt }) {
       external_rating: null,
       external_count: null,
       certification: CERT_MAP[tile.CertificationState] || "none",
-      cert_url: tile.CertificationLink || null,
+      // The page that was actually read, when one was. The catalog stores a
+      // /forward/<id> redirector, and some of those land on a different
+      // product's questionnaire, so the redirector is not the address of the
+      // evidence: the page it resolved to is. The link falls
+      // back to the redirector when no page was read, because then that is the
+      // only address there is and the slug is not derivable from the id.
+      cert_url: cert?.resolved_url || tile.CertificationLink || null,
       cert_detail: certDetail(cert),
       plans: plans || [],
       product_links: productLinks,
@@ -344,10 +350,21 @@ export function parseCertificationPage({ id, html, url }) {
   const tableless = CERT_ZONES.filter((z) => !tables[z]);
   if (tableless.length) return { ok: false, reason: `no question table in: ${tableless.join(", ")}` };
 
-  // Every page states its own product id. Checking it is what stops one
-  // product's answers being filed under another when a redirect misbehaves.
+  // Every page states its own product id, and that row is the only thing that
+  // stops one product's answers being filed under another when a redirect
+  // misbehaves. Links that resolve to a sibling listing's page, with a 200 and
+  // a well-formed body, are not hypothetical: the pass finds them on every
+  // sweep, and Microsoft remaps which ones, so this is the check doing the
+  // work rather than a belt on top of one.
+  //
+  // A page that states no id fails the same way one stating the wrong id does.
+  // There is nothing left to match against, and accepting it would file the
+  // questionnaire under whatever id the caller happened to pass, on the
+  // strength of a redirect alone. Every readable page states one today, so an
+  // absent row means the template changed, not that a publisher said less.
   const statedId = tables.general.get("ID");
-  if (statedId && statedId !== id) return { ok: false, reason: `page states ID ${statedId}` };
+  if (!statedId) return { ok: false, reason: "page states no ID" };
+  if (statedId !== id) return { ok: false, reason: `page states ID ${statedId}` };
 
   const hosting = tables.general.get(Q_HOSTING) ?? null;
   if (!hosting) return { ok: false, reason: "no hosting answer" };
@@ -384,7 +401,14 @@ export function parseCertificationPage({ id, html, url }) {
         .map((q) => `${q}: ${tables.general.get(q)}`),
       qaLines(tables.data),
       qaLines(tables.privsection),
-      graph ? graph.map(([permission, type, why]) => `${permission} (${type}): ${why ?? ""}`.trim()) : [],
+      // Both trailing cells are optional. A two-column Graph table would
+      // otherwise write the literal "(undefined)" into the haystack, and this
+      // text is shown on the passport as data handling.
+      graph
+        ? graph.map(([permission, type, why]) =>
+            `${type ? `${permission} (${type})` : permission}: ${why ?? ""}`.trim()
+          )
+        : [],
     ]
       .filter((block) => block.length)
       .map((block) => block.join("\n"))
@@ -429,6 +453,11 @@ export function parseCertificationPage({ id, html, url }) {
       // CertificationState and this can disagree, in both directions.
       // Reconciling them is not this pass's job, and neither value is allowed
       // to overwrite the other.
+      //
+      // This is the one value read out of markup rather than copied from
+      // stated text, and it is allowed because it reaches nothing: badge is
+      // not a cert_detail key, so it lands in payload.raw.cert and no column,
+      // no haystack and no facet ever sees it.
       badge: /media\/certified\.png/.test(html)
         ? "certified"
         : /media\/attested\.png/.test(html)

@@ -144,6 +144,31 @@ versioning, documentation and rate limits.
 - **140 backfilled rows have `capture.raw = NULL`.** They came from the
   pre-Supabase index, which is recorded honestly in `capture.ingest_source =
   'backfill'`. They cannot be re-derived from source until re-captured.
+- **Two hosting answers the delivery facet cannot say.** Reading the
+  certification page fills `cert_hosting` for 216 Microsoft listings, and with
+  `surfaces` empty for all of them that one string decides the public delivery
+  facet through `public.registry_delivery`. Three products answer `Hybrid`,
+  which has no branch there, so a product that did state its hosting model
+  still renders Unknown. Fourteen answer `Iaas_Hybrid_Onprem`, match the
+  `%iaas%` branch and render "Vendor cloud (IaaS)", which drops the
+  on-premises half of the answer. Nothing is lost in the stated data:
+  `cert_hosting` holds the answer verbatim and the passport shows it. Only the
+  derived facet is narrower, and widening it is a change to
+  `registry_delivery`, not to the harvester.
+- **Sign-in scopes count as Graph permissions.** `openid`, `profile`, `email`
+  and `offline_access` appear in the page's own "Graph Permission" column and
+  are stored as the page writes them, which is the honest reading. Downstream,
+  any non-empty permission list writes a verified "Microsoft Graph" evidence
+  row and lights the tools layer, so a product listing only sign-in scopes
+  publishes as a verified Graph consumer on the strength of `email`. **Four of
+  the 216 do**, counted across the whole file rather than sampled: SAP Joule
+  (`WA200008645`, `email`), Trello (`WA200002592`) and Jira Cloud
+  (`WA200002140`), both `offline_access openid profile`, and Lucidchart
+  (`WA104381935`, `email openid profile`). The parser stores what the column
+  says and is right to: these scopes are granted on Microsoft Graph and the
+  page files them there. Whether the tools layer should light for a sign-in
+  scope is a product decision about the evidence row, not a parser one. Re-count
+  after each sweep.
 - **Mojibake in some captured text** (`ð`, U+FFFD) is present in the source
   listings themselves and was preserved deliberately rather than "corrected".
   Do not clean it — it is what the marketplace publishes.

@@ -325,9 +325,28 @@ write at all.
 6. Certification pass for products where `CertificationState !== 'None'`.
    **Built**, as `harvest-certification.mjs`, running fourth of five stages so
    its record joins the same capture rather than making a second one. 219
-   products of 6,855 have a page; the rest have no link and are skipped. The
-   pass reads 216 of the 219 and refuses 3, each of which resolves to a page
-   filing itself under a different product id.
+   products of 6,855 have a page; the rest have no link and are skipped.
+
+   Every page states its own product id, and a page whose stated id is not the
+   one we asked for, or which states none at all, is refused and reported
+   rather than written. Microsoft's `/forward/<id>` links do land on a sibling
+   listing's questionnaire, with a 200 and a well-formed body, so that check is
+   the only thing standing between a redirect and one product's answers being
+   published under another's name. The pass prints how many it read and how
+   many it refused; the counts move as Microsoft remaps links, so read them off
+   the run rather than from here.
+
+   Run the stage scripts as `node scripts/<name>.mjs`. **`npm run` drops
+   flags**: `npm run harvest:ingest -- --dry --limit 5` hands the child `["5"]`
+   and nothing else, because npm parses both flags as its own configuration.
+   The scripts now refuse an argument they do not recognise instead of running
+   without it, `npm run harvest:ingest` is wired to the dry run, and
+   `harvest:ingest:live` is the one that writes.
+
+   Re-running the pass resumes: records already in `certifications.jsonl` are
+   carried forward verbatim and not re-parsed. After any change to
+   `parseCertificationPage`, run it with `--refresh` so the whole file is one
+   generation of parse policy rather than two.
 
 Steps 3, 5 and 6 are all resumable and idempotent — `drive_file_id` /
 content-hash idempotency already exists in `ingest_capture()`. Build them to

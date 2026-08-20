@@ -4,6 +4,11 @@
  *
  *   node scripts/harvest-ingest.mjs [--limit N] [--dry]
  *
+ * Run it as node, never as npm run: npm parses flags after -- as its own
+ * configuration and drops them, so --dry never reaches this script. The npm
+ * script is wired to the dry run for that reason, and harvest:ingest:live is
+ * the one that writes.
+ *
  * Merges tiles + details + plans + certifications into one capture per product
  * and sends it through ingest_capture(), then records the logo via
  * set_capture_logo().
@@ -12,15 +17,16 @@
  * observation, so extraction can be improved and re-run without touching the
  * marketplace again. Re-running this is safe and cheap.
  *
- * One capture per product per sweep — the four fetch passes contribute to a
+ * One capture per product per sweep: the four fetch passes contribute to a
  * single observation rather than four, so the change feed stays meaningful.
  */
-import { readJsonl, supabaseEnv, rpc, pool, dataPath } from "./lib/marketplace.mjs";
+import { readJsonl, supabaseEnv, rpc, pool, dataPath, parseCliArgs } from "./lib/marketplace.mjs";
 import { toPayload, ID } from "./lib/sources/microsoft.mjs";
 
-const limitArg = process.argv.indexOf("--limit");
-const limit = limitArg > -1 ? Number(process.argv[limitArg + 1]) : 0;
-const dry = process.argv.includes("--dry");
+// This is the only script in the harvest that writes to the database, so an
+// argument it does not recognise stops it. A swallowed --dry looks exactly like
+// no --dry, and the run it would start is a full live sweep of every product.
+const { limit, dry } = parseCliArgs({ booleans: ["dry"], numbers: ["limit"] });
 
 const env = dry ? null : supabaseEnv();
 const capturedAt = new Date().toISOString();

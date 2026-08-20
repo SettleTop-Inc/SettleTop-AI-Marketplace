@@ -2,7 +2,7 @@
 /**
  * Pass 4 of 5: certification pages.
  *
- *   node scripts/harvest-certification.mjs [--limit N]
+ *   node scripts/harvest-certification.mjs [--limit N] [--refresh]
  *
  * Reads the Microsoft 365 app certification page behind every product that has
  * one, and writes what it says into data/microsoft/certifications.jsonl.
@@ -23,8 +23,15 @@
  * after an interruption picks up where it stopped. A page that could not be
  * read is NOT written, so a re-run retries it. That is the difference between
  * "we could not read it" and "it said nothing", and both are counted below.
+ *
+ * Resuming carries old records forward VERBATIM. It does not re-parse them, so
+ * a change to what the parser stores reaches only the pages read after it: the
+ * file would then hold two generations of parse policy at once, and nothing in
+ * the output would say so. Any change to parseCertificationPage therefore ends
+ * with --refresh, which ignores the existing file and reads all 219 pages
+ * again.
  */
-import { fetchText, pool, readJsonl, writeJsonl, sleep, dataPath } from "./lib/marketplace.mjs";
+import { fetchText, pool, readJsonl, writeJsonl, sleep, dataPath, parseCliArgs } from "./lib/marketplace.mjs";
 import { parseCertificationPage, ID } from "./lib/sources/microsoft.mjs";
 
 const TILES = dataPath(ID, "tiles.jsonl");
@@ -36,8 +43,15 @@ const OUT = dataPath(ID, "certifications.jsonl");
 const CONCURRENCY = 4;
 const PAUSE_MS = 250;
 
-const limitArg = process.argv.indexOf("--limit");
-const limit = limitArg > -1 ? Number(process.argv[limitArg + 1]) : 0;
+const { limit, refresh } = parseCliArgs({ booleans: ["refresh"], numbers: ["limit"] });
+
+// A refresh rewrites the file from what this run read. Capped, it would rewrite
+// 219 records as the handful the cap allowed, and the pages it never asked for
+// would simply be gone.
+if (refresh && limit) {
+  console.error("--refresh reads every page and rewrites the file, so it cannot be capped with --limit.");
+  process.exit(1);
+}
 
 const tiles = await readJsonl(TILES);
 if (!tiles.length) {
@@ -51,14 +65,19 @@ const certified = tiles.filter(
   (t) => t.CertificationState && t.CertificationState !== "None" && t.CertificationLink
 );
 
-const existing = await readJsonl(OUT);
+// --refresh ignores the existing records rather than deleting the file first,
+// so an interrupted refresh leaves the old file intact. A page that cannot be
+// read during a refresh does lose its old record, and that is the point of
+// asking for one: the file then holds what this parser could read today, in one
+// generation, rather than two.
+const existing = refresh ? [] : await readJsonl(OUT);
 const done = new Set(existing.map((c) => c.id));
 let todo = certified.filter((t) => !done.has(t.entityId));
 if (limit) todo = todo.slice(0, limit);
 
 console.log(
   `${tiles.length} products, ${certified.length} with a certification page, ` +
-    `${done.size} already read, ${todo.length} to go\n`
+    `${done.size} already read, ${todo.length} to go${refresh ? " (--refresh: reading every page again)" : ""}\n`
 );
 
 const failures = [];
@@ -82,25 +101,36 @@ const fetched = await pool(
   (d, n) => process.stdout.write(`\r  ${d}/${n}`)
 );
 
-const rows = existing.concat(fetched.filter(Boolean));
+// pool() turns a thrown worker into { error }, which is truthy. Written, that
+// becomes a permanent row with no id: the resume set cannot match it, so the
+// real product is never retried, and every later run trips over it. A record is
+// a record only if it carries the id it was filed under.
+const read = fetched.filter((r) => r && r.id);
+const thrown = fetched.filter((r) => r && !r.id).length;
+
+const rows = existing.concat(read);
 await writeJsonl(OUT, rows);
 
-const has = (f) => rows.filter(f).length;
+// The counts describe THIS RUN, not the file. A resumed pass that read nothing
+// new has read nothing new, and printing the file's totals as the run's is how
+// a pass that fetched zero pages comes to look like a full sweep.
+const has = (f) => read.filter(f).length;
 // A page that answered the questionnaire and disclosed nothing past its hosting
 // model is a real reading, not a failure. It is counted apart from the pages we
 // could not read at all, because the two mean opposite things.
-const silent = rows.filter(
-  (r) => !r.data_location && !r.graph_permissions.length && !r.compliance.length
+const silent = read.filter(
+  (r) => !r.data_location && !r.graph_permissions?.length && !r.compliance?.length
 ).length;
 
-console.log(`\n\n${rows.length} certification pages read -> ${OUT}`);
+console.log(`\n\n${read.length} pages read this run, ${rows.length} records in the file -> ${OUT}`);
 console.log(
   `hosting: ${has((r) => r.hosting)}   residency: ${has((r) => r.data_location)}   ` +
-    `graph permissions: ${has((r) => r.graph_permissions.length)}   ` +
-    `compliance: ${has((r) => r.compliance.length)}`
+    `graph permissions: ${has((r) => r.graph_permissions?.length)}   ` +
+    `compliance: ${has((r) => r.compliance?.length)}`
 );
 console.log(
   `audit result table: ${has((r) => r.certification_results)}   ` +
+    `${thrown ? `dropped after a worker threw: ${thrown}   ` : ""}` +
     `nothing stated beyond hosting: ${silent}   not read: ${failures.length}`
 );
 
