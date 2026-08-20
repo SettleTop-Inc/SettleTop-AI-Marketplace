@@ -37,6 +37,33 @@ stored. See `docs/capture-integration.md`.
 This also closes the loop on `capture.raw`: once 2.0 is live, every new capture
 stores its own source, and extraction can be re-run without re-scraping.
 
+**Done for the Microsoft harvester** by `scripts/harvest-certification.mjs`,
+which reads all 219 certification pages and lands their text. Two things it
+learned that the rest of this item should absorb:
+
+- `cert_detail.full_text` is read by nothing. It is absent from `hay_cert` and
+  has no column in `capture_extract`, so a value placed only there verifies
+  nothing. The haystack is `hosting + data_location + data_handling +
+  graph_permissions + compliance`, and **`data_handling` is the field that has
+  to carry the page's prose**.
+- `capture.raw` comes from `payload.raw` alone, never from `extract`. The
+  harvester adds the certification record there so the text is actually stored.
+
+Measured against the 14 rejected values, all of which are Microsoft listings
+with a certification page: **9 of the 14 now sit inside `hay_cert`** and would
+verify if proposed again. `Aws` on WA200004554 is one of them, and it verifies
+only because the cloud provider answer is carried in `data_handling`.
+
+The other 5 are on the page but outside the zones `data_handling` carries: four
+are inside "Core functionality of the app" and one inside the authentication
+library question. Widening a field the passport displays as data handling to
+take in an app's functional description is a product decision, not a parser
+one, so it was left alone.
+
+None of the 14 changes on its own: they sit on captures already written, and
+nothing re-evaluates a stored capture. They verify when a capture proposes them
+again.
+
 ## 3. Logos: run the pass, then the archiver
 
 All 140 assets read `no_logo_identified` in `v_logo_status`. Two halves, in order:

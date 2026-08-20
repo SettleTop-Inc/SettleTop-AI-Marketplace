@@ -296,10 +296,19 @@ enumeration rather than prose.
 
 ### 6.4 Certification full text
 
-Still fetched separately with `WebFetch` against the resolved
-`learn.microsoft.com` URL, per the existing skill. `CertificationState` gives
-the tier cheaply; the full text is what lets the honesty gate verify hosting,
-residency and Graph permissions. Store it in `cert_detail.full_text`.
+**Built.** `scripts/harvest-certification.mjs` reads the page with a plain
+fetch rather than `WebFetch`: it is server-rendered, so no browser is involved.
+`CertificationState` gives the tier cheaply; the page is what lets the honesty
+gate verify hosting, residency and Graph permissions.
+
+One correction to what this section assumed. `cert_detail.full_text` is read by
+nothing: it is not part of `hay_cert`, and `capture_extract` has no column for
+it. The gate's haystack is `hosting + data_location + data_handling +
+graph_permissions + compliance`, so **`data_handling` is where verifiable page
+text has to live**, and it carries the data and privacy answers plus the Graph
+justifications verbatim. `full_text` is still populated, for the contract, and
+the certification record is added to `payload.raw` so the text survives the
+write at all.
 
 ---
 
@@ -313,8 +322,12 @@ residency and Graph permissions. Store it in `cert_detail.full_text`.
 4. Run `archive-logos.mjs` once the CDN hosts are allowlisted.
 5. Build the detail pass: one page load per product, merge
    `offerDetailInformationData` into a second capture.
-6. Certification pass via `WebFetch` for products where
-   `CertificationState !== 'None'`.
+6. Certification pass for products where `CertificationState !== 'None'`.
+   **Built**, as `harvest-certification.mjs`, running fourth of five stages so
+   its record joins the same capture rather than making a second one. 219
+   products of 6,855 have a page; the rest have no link and are skipped. The
+   pass reads 216 of the 219 and refuses 3, each of which resolves to a page
+   filing itself under a different product id.
 
 Steps 3, 5 and 6 are all resumable and idempotent — `drive_file_id` /
 content-hash idempotency already exists in `ingest_capture()`. Build them to
