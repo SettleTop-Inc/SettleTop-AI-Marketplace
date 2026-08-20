@@ -14,6 +14,7 @@
     "harvest:catalog": "node scripts/harvest-catalog.mjs",
     "harvest:detail": "node scripts/harvest-detail.mjs",
     "harvest:pricing": "node scripts/harvest-pricing.mjs",
+    "harvest:certification": "node scripts/harvest-certification.mjs",
     "harvest:ingest": "node scripts/harvest-ingest.mjs",
     "harvest:logos": "node scripts/archive-logos.mjs",
     "harvest": "node scripts/harvest.mjs",

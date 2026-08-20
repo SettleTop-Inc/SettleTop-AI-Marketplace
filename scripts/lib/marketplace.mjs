@@ -79,6 +79,42 @@ export async function fetchState(url, { retries = 3, parse = extractState } = {}
   return { ok: false, status: 0, state: null, error: lastErr?.message };
 }
 
+/**
+ * Fetch a page as text, with the same backoff and the same user agent.
+ *
+ * fetchState is for the storefronts that embed their payload as JSON. Some of
+ * what a source must read is ordinary server-rendered HTML instead, and the
+ * fetching part of that is no different: same UA, same throttle handling, same
+ * refusal to treat a 403 as fatal.
+ *
+ * Redirects are followed, and the URL that answered is returned. A source that
+ * enters through a redirector needs to record where it actually landed, or its
+ * provenance points at a forwarding address rather than at the page read.
+ *
+ * A 4xx other than 403 comes straight back without retrying: the page is not
+ * there, and asking again more slowly will not conjure it.
+ */
+export async function fetchText(url, { retries = 3 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: { "user-agent": UA, "accept-language": "en-US,en;q=0.9" },
+        redirect: "follow",
+      });
+      if (res.status === 403 || res.status === 429 || res.status >= 500) {
+        throw new Error(`http ${res.status}`);
+      }
+      if (!res.ok) return { ok: false, status: res.status, url: res.url, html: null };
+      return { ok: true, status: res.status, url: res.url, html: await res.text() };
+    } catch (e) {
+      lastErr = e;
+      await sleep(400 * Math.pow(2, attempt) + Math.random() * 250);
+    }
+  }
+  return { ok: false, status: 0, url, html: null, error: lastErr?.message };
+}
+
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Run `worker` over `items` with bounded concurrency, reporting progress. */
