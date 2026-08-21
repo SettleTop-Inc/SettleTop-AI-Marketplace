@@ -156,7 +156,10 @@ psql_file -q < "$HERE/07-final.sql"
 say "11. Slug chain: three levels, and the unguarded-collision-no-longer-aborts proof"
 psql_file -q < "$HERE/08-slug-chain.sql"
 
-say "12. Verdict"
+say "12. Merged-into guard: a partial merge excludes the asset from every stat together"
+psql_file -q < "$HERE/09-merged-guard.sql"
+
+say "13. Verdict"
 if verdict; then status=0; else status=1; fi
 
 echo
