@@ -348,6 +348,26 @@ export async function getPassports(
 }
 
 /**
+ * One passport by asset_id, for the Quick-look modal's route handler. Keeps a
+ * failed read (ok:false) distinct from a missing row (ok:true, data:null), so
+ * the modal never renders "not found" during an outage.
+ */
+export async function getPassportByAssetId(
+  assetId: string
+): Promise<ReadResult<AssetPassport | null>> {
+  const { data, error } = await supabase
+    .from("v_asset_passport")
+    .select("*")
+    .eq("asset_id", assetId)
+    .maybeSingle();
+  if (error) {
+    console.error("getPassportByAssetId", error.message);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, data: (data as AssetPassport) ?? null };
+}
+
+/**
  * One passport, resolved through a URL slug rather than a listing id.
  *
  * Two reads: asset_slug is the only table keyed on the string a visitor
