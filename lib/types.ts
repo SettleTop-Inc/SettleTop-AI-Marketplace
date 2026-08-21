@@ -70,6 +70,16 @@ export interface RegistryCard {
   marketplace_ids?: string[];
   /** How many listings the asset has. */
   listing_count?: number;
+  /**
+   * The asset's canonical URL slug, appended to v_registry_card by the phase 2
+   * task 45 migration. This is what the grid must link /agent/ from: once two
+   * marketplaces share a source_product_id, the second asset falls back to a
+   * marketplace-prefixed or uuid slug, and its source_product_id would resolve
+   * to the OTHER asset. Optional for the same reason as the fields above: a row
+   * read from a pre-migration database does not carry the key, and there the
+   * slug equals source_product_id anyway, so callers fall back to it.
+   */
+  canonical_slug?: string | null;
 }
 
 export interface PlanRow {

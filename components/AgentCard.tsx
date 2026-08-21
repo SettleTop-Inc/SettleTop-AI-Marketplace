@@ -56,7 +56,14 @@ export default function AgentCard({
    */
   atCap?: boolean;
 }) {
-  const href = `/agent/${encodeURIComponent(c.source_product_id)}${
+  // Link by the asset's canonical slug, never its primary listing's product id.
+  // Once two marketplaces share a source_product_id, the fallback asset answers
+  // only to its slug (marketplace-productid, or its uuid), and /agent/<product
+  // id> would resolve to the OTHER asset. Falls back to source_product_id for a
+  // row read from a pre-phase-2 database, where the column is absent and the two
+  // are equal anyway, so no link ever breaks.
+  const slug = c.canonical_slug ?? c.source_product_id;
+  const href = `/agent/${encodeURIComponent(slug)}${
     from ? `?from=${from}${back ? `&back=${encodeURIComponent(back)}` : ""}` : ""
   }`;
 
