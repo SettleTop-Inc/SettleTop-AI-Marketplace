@@ -131,9 +131,9 @@ begin
           format('%s candidate rows touch the two same-marketplace assets, expected 0', n_same_present));
 
   -- 3. the cross-marketplace matching-publisher product DOES appear, as 'high',
-  -- with the evidence that earned the tier: name match and publisher exact
-  -- (Mergefx Vendor, Inc. and Mergefx Vendor both normalise to mergefxvendorinc
-  -- / mergefxvendor, one a prefix of the other -> publisher prefix; the trailing
+  -- with the evidence that earned the tier: name match and a publisher PREFIX
+  -- match (Mergefx Vendor, Inc. and Mergefx Vendor both normalise to
+  -- mergefxvendorinc / mergefxvendor, one a prefix of the other; the trailing
   -- ", Inc." is exactly the real-world difference the prefix signal exists for).
   select count(*) into n_hi
     from v_merge_candidates

@@ -175,6 +175,11 @@ pair as (
     on a.norm_name = b.norm_name
    and length(a.norm_name) >= 4
    and a.marketplace_id <> b.marketplace_id
+   -- The pair key is (marketplace_id, asset_id), which emits each unordered pair
+   -- once under today's strict one-listing-per-asset data. Once #63 lets an asset
+   -- hold several listings, an asset pair could emit more than one row differing
+   -- only in listing_id: #63 and #65 should revisit this key against the listing
+   -- cardinality then, and dedupe to the asset pair if that is what the queue wants.
    and (a.marketplace_id, a.asset_id) < (b.marketplace_id, b.asset_id)
 )
 select

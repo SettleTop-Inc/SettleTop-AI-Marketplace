@@ -455,7 +455,10 @@ export async function getMergeCandidates(
   let query = supabase
     .from("v_merge_candidates")
     .select("*")
-    .order("confidence", { ascending: true }) // 'high' sorts before 'low'
+    // 'high' sorts before 'low' alphabetically, which is the order we want for
+    // today's two-tier enum. A third tier (say 'medium') would not sort into
+    // place by name and would need a numeric rank column on the view.
+    .order("confidence", { ascending: true })
     .order("norm_name", { ascending: true })
     .order("asset_id_a", { ascending: true });
   if (confidence) query = query.eq("confidence", confidence);
