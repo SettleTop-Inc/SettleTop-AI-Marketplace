@@ -57,6 +57,18 @@ export default async function RegistryPage({
     getStats(),
   ]);
 
+  if (!result.ok && result.rateLimited) {
+    return (
+      <main className="container" style={{ padding: "4rem 0" }}>
+        <h1>Slow down for a moment</h1>
+        <p>
+          The registry is handling a lot of requests right now. Sign in for higher
+          limits, or try again in a moment.
+        </p>
+      </main>
+    );
+  }
+
   // Sequenced after the search rather than run alongside it: the logos we need
   // are exactly the ones on this page, and we cannot know those ids until the
   // query returns. That is one extra round trip for a lookup of at most 96 ids,

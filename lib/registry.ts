@@ -1,4 +1,5 @@
 import { supabase } from "./supabase.ts";
+import { globalReadTake } from "./rate-limit.ts";
 import {
   type Criteria,
   type FacetGroup,
@@ -173,7 +174,9 @@ export async function getCards(): Promise<RegistryCard[]> {
  * marketing page and dishonest on a tool: "the registry is down" and "your
  * filters matched nothing" must never render the same.
  */
-export type ReadResult<T> = { ok: true; data: T } | { ok: false; error: string };
+export type ReadResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string; rateLimited?: boolean };
 
 /**
  * Every facet's distinct values and counts, with no rows attached.
@@ -265,6 +268,14 @@ interface SearchPayload {
  * between its pages; this function cannot observe a mid-write registry at all.
  */
 export async function searchRegistry(c: Criteria): Promise<ReadResult<RegistryPage>> {
+  if (!(await globalReadTake())) {
+    return {
+      ok: false,
+      rateLimited: true,
+      error: "You are moving quickly. Sign in for higher limits, or slow down and try again in a moment.",
+    };
+  }
+
   // runQuery guards the page size too. Criteria normally comes from
   // parseCriteria, but it is a plain object and can be built by hand.
   const per = (PAGE_SIZES as readonly number[]).includes(c.perPage) ? c.perPage : PAGE_SIZE;
