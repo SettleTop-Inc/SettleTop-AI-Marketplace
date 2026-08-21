@@ -346,88 +346,481 @@ begin
 end $$;
 
 
--- 5u. One asset on two marketplaces, which is the only way to test any of this.
+-- 5u. One asset on two marketplaces, built and taken apart through the real
+-- merge_assets and unmerge_asset RPCs rather than a raw UPDATE. Issue #63.
 --
--- Under 1:1 "the asset's marketplaces" and "the primary listing's marketplace"
--- are the same set, and "counts assets" and "counts listings" are the same
--- number, so three of the four properties phase 2 task 3 changed cannot be
--- distinguished from the behaviour they replaced. Every check above is green
--- against the old function too. That is not a reason to skip the checks; it is
--- a reason not to mistake them for evidence.
+-- This is where the two functions #63 adds are exercised end to end. Phase 2
+-- left this step as a bare `update listing set asset_id`, which reproduced the
+-- listing move but none of the rest of a merge: it did not retire the absorbed
+-- asset, move its slugs, or log anything. merge_assets does all of it in one
+-- transaction, and unmerge_asset restores it exactly. The search assertions the
+-- old 5u carried must still pass through the RPC, and they do, because the RPC
+-- produces the same listing topology and more.
 --
--- So build the phase 3 case here and take it apart again. seed-gamma's listing
--- is moved onto seed-alpha's asset, which leaves:
+-- The case: seed-gamma (drai) is folded into seed-alpha (microsoft), so
+-- seed-alpha's asset ends up with two listings on two marketplaces and
+-- seed-gamma's asset is retired. That is Red Hat AI Enterprise on Microsoft and
+-- AWS reproduced deterministically, with drai standing in for AWS. What it makes
+-- provable, none of which was provable under 1:1:
 --
---   three listings and two assets that have a primary listing, because
---   seed-gamma's own asset now points at a listing that names somebody else
---   back and drops out of every asset-keyed view exactly as a retired asset
---   does;
+--   total counts ASSETS. It must fall to the live-asset count while listing
+--   still holds every row.
+--   search_blob spans listings. 'triage' is only in seed-gamma's tagline, which
+--   is now the SECONDARY listing, so it is nowhere on the card's own nine fields
+--   and search must still return seed-alpha for it.
+--   the source facet counts once per MARKETPLACE, microsoft and drai both.
+--   the survivor's passport carries two listings with exactly one primary, the
+--   absorbed slug resolves to the survivor, and the retired asset is gone from
+--   every asset-keyed view.
 --
---   one asset on two marketplaces, microsoft through its primary listing and
---   drai through the one just moved.
---
--- What that makes provable, none of which was provable a moment ago:
---
---   total counts ASSETS. It must read 2 while listing still holds 3.
---
---   search_blob spans listings. 'triage' appears only in seed-gamma's tagline
---   and seed-gamma is now the SECONDARY listing, so the nine fields on the card
---   itself no longer contain it anywhere. The old function returned nothing for
---   this; the new one must return seed-alpha. This is the vLLM case from the
---   task, with drai standing in for AWS.
---
---   the source facet counts once per MARKETPLACE. Microsoft must read 2 and
---   drai 1, summing to 3 against a total of 2. A facet that grouped the array
---   as a single value would give one bucket holding both names and a count of
---   1, and the match would still be right, which is what makes this the easy
---   half of the change to leave undone.
---
---   the source filter matches ANY of an asset's marketplaces. Filtering by drai
---   must return the asset whose primary listing is on microsoft.
---
--- listing.asset_id is a plain column with no trigger on it, and asset_slug,
--- capture and capture_extract are all keyed by something this does not touch,
--- so the move is a single UPDATE and the restore below is its exact inverse.
--- 5v asserts the restore rather than assuming it.
-create temp table search_merge_stash as
-  select (select l.id       from listing l where l.source_product_id = 'seed-gamma') as gamma_listing,
-         (select l.asset_id from listing l where l.source_product_id = 'seed-gamma') as gamma_asset,
+-- merge_assets and unmerge_asset touch no capture-family table, so the seven
+-- tables' content is identical before merge, after merge and after unmerge, and
+-- 5v proves the unmerge restores listing.asset_id, asset_slug.asset_id,
+-- asset_slug.is_canonical per slug, asset.merged_into and every v_registry_stats
+-- field to their pre-merge values.
+
+-- 5u0. The RPCs are service_role only, exactly like ingest_capture: granted to
+-- service_role, revoked from anon and authenticated.
+do $$
+declare ok boolean;
+begin
+  ok := has_function_privilege('service_role', 'merge_assets(uuid,uuid,text,text)', 'EXECUTE')
+    and has_function_privilege('service_role', 'unmerge_asset(bigint)', 'EXECUTE')
+    and not has_function_privilege('anon',          'merge_assets(uuid,uuid,text,text)', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'merge_assets(uuid,uuid,text,text)', 'EXECUTE')
+    and not has_function_privilege('anon',          'unmerge_asset(bigint)', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'unmerge_asset(bigint)', 'EXECUTE');
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values ('5u0. merge RPCs are service_role only', 'postgres', 'has_function_privilege', null,
+          gate.expect(ok, 'green'),
+          format('merge exec: service_role %s anon %s authenticated %s; unmerge exec: service_role %s anon %s authenticated %s',
+            has_function_privilege('service_role','merge_assets(uuid,uuid,text,text)','EXECUTE'),
+            has_function_privilege('anon','merge_assets(uuid,uuid,text,text)','EXECUTE'),
+            has_function_privilege('authenticated','merge_assets(uuid,uuid,text,text)','EXECUTE'),
+            has_function_privilege('service_role','unmerge_asset(bigint)','EXECUTE'),
+            has_function_privilege('anon','unmerge_asset(bigint)','EXECUTE'),
+            has_function_privilege('authenticated','unmerge_asset(bigint)','EXECUTE')));
+end $$;
+
+-- The two assets, and the absorbed listing, carried between statements.
+create temp table mx as
+  select (select l.asset_id from listing l where l.source_product_id = 'seed-gamma') as gamma_asset,
+         (select l.id       from listing l where l.source_product_id = 'seed-gamma') as gamma_listing,
          (select l.asset_id from listing l where l.source_product_id = 'seed-alpha') as alpha_asset;
 
-update listing
-   set asset_id = (select alpha_asset from search_merge_stash)
- where id       = (select gamma_listing from search_merge_stash);
+-- 5u1. merge_assets refuses bad input, with a raise and never a silent no-op.
+-- Six of the seven rules are trippable while both assets are still live; the
+-- seventh, already-retired, is asserted below once the merge has retired one.
+do $$
+declare g uuid; a uuid; t uuid; st text := '5u1. merge_assets rejects bad input';
+begin
+  select gamma_asset, alpha_asset into g, a from mx;
+  -- A throwaway asset with no listings, for the zero-listing rule, deleted again
+  -- immediately so it cannot disturb the 1:1 counts the later steps assert.
+  insert into asset default values returning id into t;
 
+  perform gate.check_raises(st, 'same id twice',
+    format('select merge_assets(%L::uuid, %L::uuid, %L, %L)', g, g, 'basis', 'gate-harness'),
+    'p_from = p_into');
+  perform gate.check_raises(st, 'unknown id',
+    format('select merge_assets(%L::uuid, %L::uuid, %L, %L)', gen_random_uuid(), a, 'basis', 'gate-harness'),
+    'p_from absent from asset');
+  perform gate.check_raises(st, 'zero-listing asset',
+    format('select merge_assets(%L::uuid, %L::uuid, %L, %L)', t, a, 'basis', 'gate-harness'),
+    'p_from owns no listings');
+  perform gate.check_raises(st, 'blank basis',
+    format('select merge_assets(%L::uuid, %L::uuid, %L, %L)', g, a, '   ', 'gate-harness'),
+    'p_basis blank');
+  perform gate.check_raises(st, 'blank handle',
+    format('select merge_assets(%L::uuid, %L::uuid, %L, %L)', g, a, 'basis', ''),
+    'p_by blank');
+  perform gate.check_raises(st, 'handle contains @',
+    format('select merge_assets(%L::uuid, %L::uuid, %L, %L)', g, a, 'basis', 'niles@settletop.com'),
+    'p_by contains @');
+
+  delete from asset where id = t;
+end $$;
+
+-- 5u#63. Give the from-asset a SECOND slug before the merge: its real canonical
+-- slug (seed-gamma, is_canonical true) plus a manually inserted NON-canonical
+-- sibling. This is the exact case the reversibility contract turns on and that a
+-- one-slug fixture cannot prove: merge_assets clears is_canonical on EVERY moved
+-- slug, and unmerge_asset restores it on from_canonical_slug ALONE, so on the way
+-- back the canonical slug and the sibling must part ways per slug. Inserted as
+-- postgres (the harness role, which has the same reach as service_role here),
+-- before every snapshot below, so premerge_slug captures both rows and every
+-- assertion downstream compares both. Removed again at the step 5 cleanup, so the
+-- sentinel and final steps meet seed-gamma in its seeded one-slug state.
+insert into asset_slug (slug, asset_id, is_canonical)
+values ('seed-gamma-legacy', (select gamma_asset from mx), false);
+
+-- Pre-merge snapshots for the exact-restoration proof and the content-hash
+-- invariance. Taken now, while seed-gamma is still live and standalone (and now
+-- carrying its canonical slug plus the non-canonical sibling above).
+create temp table premerge_slug as
+  select slug, asset_id, is_canonical from asset_slug where asset_id = (select gamma_asset from mx);
+
+create temp table msnap (fingerprint0 jsonb, stats0 jsonb, agents0 bigint);
+insert into msnap
+  select gate.capture_family_fingerprint(), gate.stats_json(),
+         (gate.stats_json() ->> 'agents')::bigint;
+
+create temp table mrun (merge_id bigint);
+
+-- The merge, as service_role, which is how production would call it. The RPC is
+-- security definer, so it runs as its owner whoever calls it; calling it as
+-- service_role exercises the execute grant end to end. The ids are read into
+-- local variables first so no temp table is read while the role is switched.
+do $$
+declare g uuid; a uuid; mid bigint;
+begin
+  select gamma_asset, alpha_asset into g, a from mx;
+  set role service_role;
+  mid := (merge_assets(g, a,
+            'gate 5u: seed-gamma and seed-alpha are the same product across marketplaces',
+            'gate-harness') ->> 'merge_id')::bigint;
+  reset role;
+  insert into mrun values (mid);
+end $$;
+
+-- The search assertions the old 5u carried, unchanged, now against the merged
+-- state the RPC produced. Every one must still pass.
 do $$
 begin
   perform gate.check_search_total('5u. one asset, two marketplaces: total counts assets not listings');
   perform gate.check_search_term('5u. a term on the SECONDARY listing still finds the product', 'triage', 'seed-alpha');
-  -- And it must no longer answer with the card it used to, or the line above
-  -- could be passing on a row that never moved.
+  -- And the retired card must no longer answer, or the line above could be
+  -- passing on a row that never moved.
   perform gate.check_search_term('5u. and the retired card no longer answers', 'triage', 'seed-gamma', 'red');
   perform gate.check_search_source('5u. the source facet counts the asset under BOTH marketplaces');
-  -- Untouched by the grain change, and asserted so rather than assumed.
+  -- Untouched by the merge, and asserted so rather than assumed.
   perform gate.check_search_escape('5u. the needle escaping is untouched');
   perform gate.check_search_sort('5u. the sort orders are untouched');
 end $$;
 
-update listing
-   set asset_id = (select gamma_asset from search_merge_stash)
- where id       = (select gamma_listing from search_merge_stash);
+-- The merged-state assertions #63 asks for, on top of the search ones.
+do $$
+declare
+  g uuid; a uuid; canon text; slug_owner uuid;
+  card_gamma int; pass_gamma int; surv_listings int; surv_primary int;
+  agents0 bigint; agents1 bigint; certified1 bigint; attested1 bigint;
+  n_dangling int; ls jsonb; s1 jsonb; ok boolean;
+  st text := '5u. merged state, via merge_assets';
+begin
+  select gamma_asset, alpha_asset into g, a from mx;
+  select msnap.agents0 into agents0 from msnap;
+  select from_canonical_slug into canon from asset_merge where id = (select merge_id from mrun);
 
-drop table search_merge_stash;
+  s1 := gate.stats_json();
+  agents1    := (s1 ->> 'agents')::bigint;
+  certified1 := (s1 ->> 'certified')::bigint;
+  attested1  := (s1 ->> 'attested')::bigint;
 
+  set role anon;
+  select count(*) into card_gamma from v_registry_card  where asset_id = g;
+  select count(*) into pass_gamma from v_asset_passport where asset_id = g;
+  select p.listings into ls from v_asset_passport p where p.asset_id = a;
+  reset role;
+
+  surv_listings := coalesce(jsonb_array_length(ls), 0);
+  select count(*) into surv_primary
+    from jsonb_array_elements(coalesce(ls, '[]'::jsonb)) e
+   where (e ->> 'is_primary') = 'true';
+
+  -- The absorbed slug now resolves to the survivor's asset.
+  select asset_id into slug_owner from asset_slug where slug = canon;
+
+  -- No asset is left retired while a listing still points at it.
+  select count(*) into n_dangling
+    from asset x
+   where x.merged_into is not null
+     and exists (select 1 from listing l where l.asset_id = x.id);
+
+  ok := card_gamma = 0 and pass_gamma = 0
+    and surv_listings = 2 and surv_primary = 1
+    and slug_owner = a
+    and agents1 = agents0 - 1
+    and certified1 + attested1 <= agents1
+    and n_dangling = 0;
+
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (st, 'anon', 'v_registry_card / v_asset_passport / v_registry_stats', null, gate.expect(ok, 'green'),
+    format('retired asset card rows %s, passport rows %s; survivor listings %s (exactly one primary %s); absorbed slug %L resolves to %s (survivor %s); agents %s to %s; certified %s + attested %s <= agents %s; retired-with-listing assets %s',
+      card_gamma, pass_gamma, surv_listings, surv_primary, canon, slug_owner, a,
+      agents0, agents1, certified1, attested1, agents1, n_dangling));
+end $$;
+
+-- 5u#63. The per-slug distinction after the merge, on the two-slug from-asset.
+-- BOTH of the from-asset's slugs are now on the survivor and BOTH are
+-- non-canonical: merge_assets cleared is_canonical on the canonical one, and the
+-- sibling was already false. And from_canonical_slug recorded the ORIGINAL
+-- canonical slug, seed-gamma, not the sibling, which is the only thing that lets
+-- unmerge later restore canonical on the right one. This is what a one-slug
+-- fixture could not assert, because with one slug "the canonical one" and "the
+-- only one" are the same row.
+do $$
+declare
+  a uuid; canon text;
+  canon_owner uuid; canon_flag boolean;
+  sib_owner uuid;   sib_flag boolean;
+  ok boolean; st text := '5u. two-slug from-asset: both slugs moved and both non-canonical';
+begin
+  select alpha_asset into a from mx;
+  select from_canonical_slug into canon from asset_merge where id = (select merge_id from mrun);
+
+  select asset_id, is_canonical into canon_owner, canon_flag
+    from asset_slug where slug = 'seed-gamma';
+  select asset_id, is_canonical into sib_owner, sib_flag
+    from asset_slug where slug = 'seed-gamma-legacy';
+
+  ok := canon = 'seed-gamma'                     -- the original canonical slug, not the sibling
+    and canon_owner = a and sib_owner = a        -- both moved to the survivor
+    and canon_flag = false and sib_flag = false; -- both non-canonical after the merge
+
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (st, 'postgres', 'asset_slug (both slugs) / asset_merge.from_canonical_slug', null,
+    gate.expect(ok, 'green'),
+    format('from_canonical_slug %L (want seed-gamma); seed-gamma -> owner %s canonical %s; seed-gamma-legacy -> owner %s canonical %s; survivor %s',
+      canon, canon_owner, canon_flag, sib_owner, sib_flag, a));
+end $$;
+
+-- 5u1, continued. The seventh rule, now trippable: p_from is retired.
+do $$
+declare g uuid; a uuid;
+begin
+  select gamma_asset, alpha_asset into g, a from mx;
+  perform gate.check_raises('5u1. merge_assets rejects bad input', 'already-retired id',
+    format('select merge_assets(%L::uuid, %L::uuid, %L, %L)', g, a, 'basis', 'gate-harness'),
+    'p_from already retired');
+end $$;
+
+-- The capture family is untouched by the merge: same seven fingerprints as
+-- before it ran.
+do $$
+declare f0 jsonb; f1 jsonb; ok boolean;
+begin
+  select fingerprint0 into f0 from msnap;
+  f1 := gate.capture_family_fingerprint();
+  ok := f1 = f0;
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values ('5u. capture-family content-hash invariance across the merge', 'postgres',
+          'capture family fingerprint (before vs after merge)', null, gate.expect(ok, 'green'),
+          format('identical=%s; before=%s; after=%s', ok, f0::text, f1::text));
+end $$;
+
+-- 5v. unmerge_asset restores exactly.
+do $$
+declare mid bigint;
+begin
+  select merge_id into mid from mrun;
+  set role service_role;
+  perform unmerge_asset(mid);
+  reset role;
+end $$;
+
+-- The search assertions confirm the restoration from the query angle, exactly as
+-- the old 5v did.
 do $$
 begin
-  perform gate.check_search_total('5v. the listing is back on its own asset');
-  perform gate.check_search_term('5v. the listing is back on its own asset', 'triage', 'seed-gamma');
-  perform gate.check_search_source('5v. the listing is back on its own asset');
-  perform gate.check_search_sort('5v. the listing is back on its own asset');
-  perform gate.check_card_asset('5v. the listing is back on its own asset', 'seed-alpha');
-  perform gate.check_passport_listings('5v. the listing is back on its own asset', 'seed-alpha');
-  perform gate.check_listing_passport('5v. the listing is back on its own asset');
-  perform gate.check_asset_evidence('5v. the listing is back on its own asset');
+  perform gate.check_search_total('5v. unmerge restores: the listing is back on its own asset');
+  perform gate.check_search_term('5v. unmerge restores: the listing is back on its own asset', 'triage', 'seed-gamma');
+  perform gate.check_search_source('5v. unmerge restores: the listing is back on its own asset');
+  perform gate.check_search_sort('5v. unmerge restores: the listing is back on its own asset');
+  perform gate.check_card_asset('5v. unmerge restores: the listing is back on its own asset', 'seed-alpha');
+  perform gate.check_passport_listings('5v. unmerge restores: the listing is back on its own asset', 'seed-alpha');
+  perform gate.check_listing_passport('5v. unmerge restores: the listing is back on its own asset');
+  perform gate.check_asset_evidence('5v. unmerge restores: the listing is back on its own asset');
 end $$;
+
+-- The exact-restoration proof #63 asks for: listing.asset_id, asset_slug.asset_id,
+-- asset_slug.is_canonical per slug, asset.merged_into null, every stat field back
+-- to pre-merge, and the capture family unchanged.
+do $$
+declare
+  g uuid; gl uuid; listing_owner uuid; merged_into_val uuid;
+  n_slug int; n_slug_match int; s0 jsonb; s2 jsonb; f0 jsonb; f2 jsonb;
+  ok boolean; st text := '5v. unmerge_asset restores exactly';
+begin
+  select gamma_asset, gamma_listing into g, gl from mx;
+  select stats0, fingerprint0 into s0, f0 from msnap;
+
+  select asset_id  into listing_owner   from listing where id = gl;
+  select merged_into into merged_into_val from asset where id = g;
+  select count(*)  into n_slug           from premerge_slug;
+  select count(*)  into n_slug_match
+    from premerge_slug p join asset_slug s using (slug)
+   where s.asset_id = p.asset_id and s.is_canonical = p.is_canonical;
+
+  s2 := gate.stats_json();
+  f2 := gate.capture_family_fingerprint();
+
+  ok := listing_owner = g
+    and n_slug > 0 and n_slug_match = n_slug
+    and merged_into_val is null
+    and s2 = s0
+    and f2 = f0;
+
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (st, 'anon', 'listing / asset_slug / asset / v_registry_stats / capture family', null,
+          gate.expect(ok, 'green'),
+    format('absorbed listing owner %s (want %s); slugs restored (asset_id and is_canonical) %s of %s; merged_into %s; every stat field equal %s; capture fingerprint equal %s',
+      listing_owner, g, n_slug_match, n_slug, coalesce(merged_into_val::text, 'null'), (s2 = s0), (f2 = f0)));
+end $$;
+
+-- 5v#63. The per-slug distinction after the unmerge, the crux of the
+-- reversibility contract and the case the one-slug fixture left unproven. BOTH
+-- slugs are back on the from-asset; the ORIGINAL canonical slug is canonical
+-- again; the sibling STAYS non-canonical; and the from-asset carries exactly one
+-- canonical slug. This assertion is genuinely failable, which is the whole point:
+-- if unmerge_asset restored canonical on the sibling (the wrong slug), or on
+-- both, canon_flag/sib_flag/n_canon would move and it would go red. The one-slug
+-- 5v could not fail this way, because restoring canonical on "the only slug" is
+-- restoring it on "the canonical slug" whatever the code intended.
+do $$
+declare
+  g uuid;
+  canon_owner uuid; canon_flag boolean;
+  sib_owner uuid;   sib_flag boolean;
+  n_canon int; ok boolean;
+  st text := '5v. two-slug from-asset: canonical restored on the right slug alone';
+begin
+  select gamma_asset into g from mx;
+
+  select asset_id, is_canonical into canon_owner, canon_flag
+    from asset_slug where slug = 'seed-gamma';
+  select asset_id, is_canonical into sib_owner, sib_flag
+    from asset_slug where slug = 'seed-gamma-legacy';
+  select count(*) into n_canon from asset_slug where asset_id = g and is_canonical;
+
+  ok := canon_owner = g and sib_owner = g   -- both slugs back on the from-asset
+    and canon_flag = true                   -- the original canonical slug is canonical again
+    and sib_flag = false                    -- the sibling stays non-canonical
+    and n_canon = 1;                         -- exactly one canonical slug per asset
+
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (st, 'postgres', 'asset_slug (both slugs), one-canonical invariant', n_canon,
+    gate.expect(ok, 'green'),
+    format('seed-gamma -> owner %s canonical %s; seed-gamma-legacy -> owner %s canonical %s; canonical slugs on from-asset %s (want exactly 1)',
+      canon_owner, canon_flag, sib_owner, sib_flag, n_canon));
+end $$;
+
+-- unmerge_asset twice on the same merge raises on the second call.
+do $$
+declare mid bigint;
+begin
+  select merge_id into mid from mrun;
+  perform gate.check_raises('5v. a second unmerge of the same merge raises',
+    'unmerge_asset twice', format('select unmerge_asset(%s)', mid), 'merge already undone');
+end $$;
+
+-- 5w. Re-harvesting an absorbed listing does NOT undo the merge. A fresh merge is
+-- put in place, the absorbed listing is re-ingested through the ordinary capture
+-- path, and ingest_capture must take its listing-exists else branch (update
+-- listing set updated_at) and never rewrite asset_id: the merge stands. This
+-- runs after the exact-restoration proof above, because a re-harvest inserts a
+-- capture and so would move the very capture-family fingerprint 5v pins.
+create temp table mrun2 (merge_id bigint);
+
+do $$
+declare g uuid; a uuid; mid2 bigint;
+begin
+  select gamma_asset, alpha_asset into g, a from mx;
+  set role service_role;
+  mid2 := (merge_assets(g, a, 'gate 5w: re-merge to prove re-harvest does not undo it', 'gate-harness')
+           ->> 'merge_id')::bigint;
+  reset role;
+  insert into mrun2 values (mid2);
+end $$;
+
+create temp table reharvest (result jsonb);
+-- The same drai/seed-gamma listing, re-captured with its own content unchanged
+-- and a fresh drive_file_id. It is an existing listing now owned by the survivor,
+-- so ingest_capture must adopt that asset, not create a new one. The call is made
+-- as service_role, but the temp-table insert happens after reset role, because
+-- service_role holds no privilege on a postgres-owned temp table.
+do $blk$
+declare r jsonb;
+begin
+  set role service_role;
+  r := ingest_capture($p$
+{
+  "capture_meta": {
+    "marketplace_id": "drai",
+    "source_product_id": "seed-gamma",
+    "listing_url": "https://www.drai-commercial.com/agent/seed-gamma",
+    "captured_at_utc": "2026-08-19T15:00:00Z",
+    "drive_file_id": "drive-seed-gamma-reharvest-1"
+  },
+  "ingest_source": "dual_write",
+  "raw": {"body": "seed gamma re-harvest while absorbed"},
+  "extract": {
+    "name": "Seed Gamma Assistant",
+    "publisher": "Gamma Systems",
+    "tagline": "Agentic support triage",
+    "overview_text": "Seed Gamma Assistant uses Llama 3 and CrewAI.",
+    "pricing": "Contact us",
+    "certification": "publisher_attestation",
+    "surfaces": ["Web"],
+    "categories": ["Support"],
+    "stated": {"models": ["Llama 3"], "frameworks": ["CrewAI"]},
+    "cert_detail": {"hosting": "AWS", "data_location": "United States"}
+  }
+}
+$p$::jsonb);
+  reset role;
+  insert into reharvest values (r);
+end $blk$;
+
+do $$
+declare
+  g uuid; a uuid; mid2 bigint; r jsonb;
+  res_status text; res_asset uuid; listing_owner uuid; n_listing int; undone timestamptz;
+  ok boolean; st text := '5w. re-harvesting an absorbed listing does not undo the merge';
+begin
+  select gamma_asset, alpha_asset into g, a from mx;
+  select merge_id into mid2 from mrun2;
+  select result into r from reharvest;
+  res_status := r ->> 'status';
+  res_asset  := (r ->> 'asset_id')::uuid;
+  select asset_id into listing_owner from listing where source_product_id = 'seed-gamma';
+  select count(*)  into n_listing     from listing where source_product_id = 'seed-gamma';
+  select undone_at into undone        from asset_merge where id = mid2;
+
+  ok := res_status = 'updated'   -- the listing-exists else branch, not 'created'
+    and res_asset = a            -- it adopted the survivor, created no new asset
+    and listing_owner = a        -- and never rewrote listing.asset_id
+    and n_listing = 1            -- no second listing
+    and undone is null;          -- the merge is still in force
+
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (st, 'service_role', 'ingest_capture on an absorbed listing', null, gate.expect(ok, 'green'),
+    format('status %L, result asset_id %s (survivor %s), listing owner %s, listings %s, merge undone_at %s',
+      res_status, res_asset, a, listing_owner, n_listing, coalesce(undone::text, 'null')));
+end $$;
+
+-- Undo the re-harvest merge, so seed-gamma is live and standalone again for the
+-- sentinel, final and merged-guard steps that follow.
+do $$
+declare mid2 bigint;
+begin
+  select merge_id into mid2 from mrun2;
+  set role service_role;
+  perform unmerge_asset(mid2);
+  reset role;
+end $$;
+
+-- Remove the #63 sibling slug so seed-gamma returns to its seeded one-slug state
+-- for the sentinel, final and merged-guard steps that follow. 07-final asserts an
+-- asset_slug before/after count invariant across its re-ingest, so a slug added
+-- here must not leak past step 5. seed-gamma itself is left exactly as seeded.
+delete from asset_slug where slug = 'seed-gamma-legacy';
+
+drop table mx;
+drop table premerge_slug;
+drop table msnap;
+drop table mrun;
+drop table mrun2;
+drop table reharvest;
 
 \pset format aligned
 select step, as_role, object, n_rows, verdict, note
