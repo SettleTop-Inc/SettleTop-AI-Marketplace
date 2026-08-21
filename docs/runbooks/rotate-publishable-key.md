@@ -32,10 +32,15 @@ credential, and it stays server-only from here on.
 - [ ] **Step 2: Merge and deploy Phase A**
 
   Merge the Phase A branch and let Vercel build and deploy it. Confirm the
-  site reads (registry list and an agent passport both load data) and that
-  `npm run check:bundle` passed as part of that build. `check:bundle` is the
-  automated proof that no client chunk contains the key; a green build is
-  the signal to proceed.
+  site reads (registry list and an agent passport both load data), then run
+  `npm run check:bundle` manually against the deployed build's output.
+  `check:bundle` is not wired into `next build` or into any CI workflow
+  (`vercel.json` runs only `next build`), so it does not run on its own; you
+  have to invoke it. It is a backstop, not the primary defense: the
+  `server-only` import on the module that reads `SUPABASE_PUBLISHABLE_KEY`
+  already fails the Vercel build outright if that key is ever pulled into
+  client code. Treat the manual grep as confirmation, not as the thing
+  standing between you and a leaked key.
 
 - [ ] **Step 3: Apply the rate-limit migration**
 

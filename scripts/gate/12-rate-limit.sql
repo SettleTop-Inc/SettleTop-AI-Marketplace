@@ -13,3 +13,20 @@ begin
     case when v1 and v2 and v3 and not v4 then 'PASS' else 'FAIL' end,
     format('takes: %s %s %s %s', v1, v2, v3, v4));
 end $$;
+
+-- anon must specifically hold EXECUTE on rate_take (the server calls it with the
+-- anon-role key). Run as anon and record whether the call is permitted.
+do $$
+declare ok boolean := true;
+begin
+  begin
+    set local role anon;
+    perform rate_take('gate:anon', 0, 2);
+    reset role;
+  exception when insufficient_privilege then
+    reset role; ok := false;
+  end;
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values ('15b. anon can execute rate_take', 'anon', 'rate_take', null,
+    case when ok then 'PASS' else 'FAIL' end, format('anon execute ok: %s', ok));
+end $$;
