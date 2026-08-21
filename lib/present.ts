@@ -163,6 +163,46 @@ export function marketplaceUrl(a: Pick<RegistryCard, "listing_url">): string {
   return a.listing_url;
 }
 
+/**
+ * Marketplace id -> display name. Mirrors the `marketplace` table seeded by
+ * migrations 20260816162955 (microsoft), 20260818192216 (drai) and
+ * 20260820120000 (aws). v_registry_card carries marketplace_ids as IDS (see the
+ * header of 20260820100100_registry_search_asset_keyed.sql), and the client
+ * holds no marketplace table, so any marketplace past the asset's primary
+ * listing has to be labelled from here. Kept in step with those rows the same
+ * way CERT_LABELS in ListingPanels mirrors the certification enum: one small
+ * map, repeated because the client cannot read the source of truth. A new
+ * marketplace ships one line here in the same commit as its seed migration.
+ */
+export const MARKETPLACE_LABELS: Record<string, string> = {
+  microsoft: "Microsoft Marketplace",
+  drai: "DRAI Agentic-AI Marketplace",
+  aws: "AWS Marketplace",
+};
+
+/**
+ * Every marketplace an asset is listed on, as { id, name }, in the card's own
+ * marketplace_ids order. One entry per marketplace: a 1:1 asset yields one, a
+ * merged asset yields one per listing, so a card renders one badge per source
+ * and hides none.
+ *
+ * The primary listing's id is labelled from marketplace_name, which the card
+ * carries EXACTLY from the DB, so the primary is always right whatever this
+ * client build knows; the rest resolve through MARKETPLACE_LABELS, falling back
+ * to the raw id for a marketplace this build predates rather than dropping the
+ * badge. Falls back to the single primary listing for a pre-phase-2 card that
+ * carries no marketplace_ids column, so nothing here changes the 1:1 render.
+ */
+export function marketplaceBadges(
+  c: Pick<RegistryCard, "marketplace_id" | "marketplace_name" | "marketplace_ids">
+): { id: string; name: string }[] {
+  const ids = c.marketplace_ids?.length ? c.marketplace_ids : [c.marketplace_id];
+  return ids.map((id) => ({
+    id,
+    name: id === c.marketplace_id ? c.marketplace_name : MARKETPLACE_LABELS[id] ?? id,
+  }));
+}
+
 export function formatChangeField(field: string): string {
   const labels: Record<string, string> = {
     pricing: "Pricing",

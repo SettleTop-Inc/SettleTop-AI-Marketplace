@@ -282,7 +282,15 @@ export default function PassportView({
             As described on {descriptionSource(a)}.
           </p>
           {blocks.length === 0 ? (
-            <p>This listing publishes no overview text.</p>
+            // The overview is the primary listing's own text, so under a merge
+            // the absence belongs to that one marketplace, not to "this listing"
+            // among several shown below. Name it. Under one listing the copy is
+            // unchanged.
+            <p>
+              {listings.length > 1
+                ? `${descriptionSource(a)} publishes no overview text.`
+                : "This listing publishes no overview text."}
+            </p>
           ) : (
             <>
               {head.map(renderBlock)}
@@ -345,7 +353,23 @@ export default function PassportView({
             }
             status={a.listing_version || a.listing_updated ? "Disclosed" : UNKNOWN}
           />
-          <Row label="Marketplace / source" value={a.marketplace_name} status="Disclosed" />
+          {/*
+           * Names EVERY marketplace the asset is listed on, not just the
+           * primary: a.marketplace_name is one listing's marketplace, which is
+           * false once the asset spans several. The per-listing panels below
+           * carry each marketplace in full; this row states the set. Under one
+           * listing (every asset today) it is the single primary name, and the
+           * label stays singular, so the 1:1 render is unchanged.
+           */}
+          <Row
+            label={listings.length > 1 ? "Marketplaces / sources" : "Marketplace / source"}
+            value={
+              listings.length > 0
+                ? listings.map((l) => l.marketplace_name).join(", ")
+                : a.marketplace_name
+            }
+            status="Disclosed"
+          />
           <Row label="Source type" value="Marketplace listing" status="Disclosed" />
           <Row
             label="Evidence tier"
@@ -442,12 +466,27 @@ export default function PassportView({
 
         <SectionHead>Sources</SectionHead>
         <div className="st-record">
-          <SourceRow
-            label="Marketplace listing"
-            url={a.listing_url}
-            note={hostOf(a.listing_url)}
-            verified={false}
-          />
+          {listings.length > 1 ? (
+            // A merged product's evidence comes from every listing, so the
+            // Sources section names each marketplace's own listing, not just the
+            // primary. Primary first, matching the panels above.
+            listings.map((l) => (
+              <SourceRow
+                key={l.listing_id}
+                label={`Marketplace listing (${l.marketplace_name})`}
+                url={l.listing_url}
+                note={hostOf(l.listing_url)}
+                verified={false}
+              />
+            ))
+          ) : (
+            <SourceRow
+              label="Marketplace listing"
+              url={a.listing_url}
+              note={hostOf(a.listing_url)}
+              verified={false}
+            />
+          )}
           {a.cert_url && (
             <SourceRow
               label="App certification"
@@ -487,14 +526,37 @@ export default function PassportView({
             <div className="st-field__value">{a.delivery ?? UNKNOWN}</div>
             <span className="st-field__note">{a.support ?? a.marketplace_name}</span>
           </div>
-          <a
-            className="st-btn st-btn--primary"
-            href={a.listing_url}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Open the source listing ↗
-          </a>
+          {/*
+           * One link per listing once the asset is merged: a single
+           * a.listing_url is the primary listing's alone and hides the others.
+           * Each names its marketplace so the visitor picks the source they
+           * want. Under one listing (every asset today) this is the same single
+           * button pointing at the same url, so the 1:1 render is unchanged.
+           */}
+          {listings.length > 1 ? (
+            <div className="st-access__links">
+              {listings.map((l) => (
+                <a
+                  key={l.listing_id}
+                  className="st-btn st-btn--primary"
+                  href={l.listing_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Open on {l.marketplace_name} ↗
+                </a>
+              ))}
+            </div>
+          ) : (
+            <a
+              className="st-btn st-btn--primary"
+              href={a.listing_url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open the source listing ↗
+            </a>
+          )}
         </div>
 
         <p className="st-note">
@@ -503,8 +565,10 @@ export default function PassportView({
           band on how much of the build this source can disclose that it actually
           does. Three of the {a.layers_tracked} layers (hosting, data residency
           and permission scope) are only ever stated on an app certification page,
-          so a listing without one is scored against the nine it can state. Every
-          value above is copied from this listing or its certification page.
+          so a listing without one is scored against the nine it can state.{" "}
+          {listings.length > 1
+            ? "Every value above is copied from one of the listings above or its certification page."
+            : "Every value above is copied from this listing or its certification page."}{" "}
           Unknown means the source does not state it.
         </p>
       </div>
