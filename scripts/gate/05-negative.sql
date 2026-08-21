@@ -441,8 +441,22 @@ begin
   delete from asset where id = t;
 end $$;
 
+-- 5u#63. Give the from-asset a SECOND slug before the merge: its real canonical
+-- slug (seed-gamma, is_canonical true) plus a manually inserted NON-canonical
+-- sibling. This is the exact case the reversibility contract turns on and that a
+-- one-slug fixture cannot prove: merge_assets clears is_canonical on EVERY moved
+-- slug, and unmerge_asset restores it on from_canonical_slug ALONE, so on the way
+-- back the canonical slug and the sibling must part ways per slug. Inserted as
+-- postgres (the harness role, which has the same reach as service_role here),
+-- before every snapshot below, so premerge_slug captures both rows and every
+-- assertion downstream compares both. Removed again at the step 5 cleanup, so the
+-- sentinel and final steps meet seed-gamma in its seeded one-slug state.
+insert into asset_slug (slug, asset_id, is_canonical)
+values ('seed-gamma-legacy', (select gamma_asset from mx), false);
+
 -- Pre-merge snapshots for the exact-restoration proof and the content-hash
--- invariance. Taken now, while seed-gamma is still live and standalone.
+-- invariance. Taken now, while seed-gamma is still live and standalone (and now
+-- carrying its canonical slug plus the non-canonical sibling above).
 create temp table premerge_slug as
   select slug, asset_id, is_canonical from asset_slug where asset_id = (select gamma_asset from mx);
 
@@ -536,6 +550,40 @@ begin
       agents0, agents1, certified1, attested1, agents1, n_dangling));
 end $$;
 
+-- 5u#63. The per-slug distinction after the merge, on the two-slug from-asset.
+-- BOTH of the from-asset's slugs are now on the survivor and BOTH are
+-- non-canonical: merge_assets cleared is_canonical on the canonical one, and the
+-- sibling was already false. And from_canonical_slug recorded the ORIGINAL
+-- canonical slug, seed-gamma, not the sibling, which is the only thing that lets
+-- unmerge later restore canonical on the right one. This is what a one-slug
+-- fixture could not assert, because with one slug "the canonical one" and "the
+-- only one" are the same row.
+do $$
+declare
+  a uuid; canon text;
+  canon_owner uuid; canon_flag boolean;
+  sib_owner uuid;   sib_flag boolean;
+  ok boolean; st text := '5u. two-slug from-asset: both slugs moved and both non-canonical';
+begin
+  select alpha_asset into a from mx;
+  select from_canonical_slug into canon from asset_merge where id = (select merge_id from mrun);
+
+  select asset_id, is_canonical into canon_owner, canon_flag
+    from asset_slug where slug = 'seed-gamma';
+  select asset_id, is_canonical into sib_owner, sib_flag
+    from asset_slug where slug = 'seed-gamma-legacy';
+
+  ok := canon = 'seed-gamma'                     -- the original canonical slug, not the sibling
+    and canon_owner = a and sib_owner = a        -- both moved to the survivor
+    and canon_flag = false and sib_flag = false; -- both non-canonical after the merge
+
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (st, 'postgres', 'asset_slug (both slugs) / asset_merge.from_canonical_slug', null,
+    gate.expect(ok, 'green'),
+    format('from_canonical_slug %L (want seed-gamma); seed-gamma -> owner %s canonical %s; seed-gamma-legacy -> owner %s canonical %s; survivor %s',
+      canon, canon_owner, canon_flag, sib_owner, sib_flag, a));
+end $$;
+
 -- 5u1, continued. The seventh rule, now trippable: p_from is retired.
 do $$
 declare g uuid; a uuid;
@@ -617,6 +665,43 @@ begin
           gate.expect(ok, 'green'),
     format('absorbed listing owner %s (want %s); slugs restored (asset_id and is_canonical) %s of %s; merged_into %s; every stat field equal %s; capture fingerprint equal %s',
       listing_owner, g, n_slug_match, n_slug, coalesce(merged_into_val::text, 'null'), (s2 = s0), (f2 = f0)));
+end $$;
+
+-- 5v#63. The per-slug distinction after the unmerge, the crux of the
+-- reversibility contract and the case the one-slug fixture left unproven. BOTH
+-- slugs are back on the from-asset; the ORIGINAL canonical slug is canonical
+-- again; the sibling STAYS non-canonical; and the from-asset carries exactly one
+-- canonical slug. This assertion is genuinely failable, which is the whole point:
+-- if unmerge_asset restored canonical on the sibling (the wrong slug), or on
+-- both, canon_flag/sib_flag/n_canon would move and it would go red. The one-slug
+-- 5v could not fail this way, because restoring canonical on "the only slug" is
+-- restoring it on "the canonical slug" whatever the code intended.
+do $$
+declare
+  g uuid;
+  canon_owner uuid; canon_flag boolean;
+  sib_owner uuid;   sib_flag boolean;
+  n_canon int; ok boolean;
+  st text := '5v. two-slug from-asset: canonical restored on the right slug alone';
+begin
+  select gamma_asset into g from mx;
+
+  select asset_id, is_canonical into canon_owner, canon_flag
+    from asset_slug where slug = 'seed-gamma';
+  select asset_id, is_canonical into sib_owner, sib_flag
+    from asset_slug where slug = 'seed-gamma-legacy';
+  select count(*) into n_canon from asset_slug where asset_id = g and is_canonical;
+
+  ok := canon_owner = g and sib_owner = g   -- both slugs back on the from-asset
+    and canon_flag = true                   -- the original canonical slug is canonical again
+    and sib_flag = false                    -- the sibling stays non-canonical
+    and n_canon = 1;                         -- exactly one canonical slug per asset
+
+  insert into gate.result(step, as_role, object, n_rows, verdict, note)
+  values (st, 'postgres', 'asset_slug (both slugs), one-canonical invariant', n_canon,
+    gate.expect(ok, 'green'),
+    format('seed-gamma -> owner %s canonical %s; seed-gamma-legacy -> owner %s canonical %s; canonical slugs on from-asset %s (want exactly 1)',
+      canon_owner, canon_flag, sib_owner, sib_flag, n_canon));
 end $$;
 
 -- unmerge_asset twice on the same merge raises on the second call.
@@ -723,6 +808,12 @@ begin
   perform unmerge_asset(mid2);
   reset role;
 end $$;
+
+-- Remove the #63 sibling slug so seed-gamma returns to its seeded one-slug state
+-- for the sentinel, final and merged-guard steps that follow. 07-final asserts an
+-- asset_slug before/after count invariant across its re-ingest, so a slug added
+-- here must not leak past step 5. seed-gamma itself is left exactly as seeded.
+delete from asset_slug where slug = 'seed-gamma-legacy';
 
 drop table mx;
 drop table premerge_slug;
