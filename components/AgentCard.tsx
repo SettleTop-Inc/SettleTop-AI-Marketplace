@@ -110,7 +110,7 @@ export default function AgentCard({
           and neither is hidden behind the primary. Labelled from
           marketplaceBadges, which uses the card's own marketplace_name for the
           primary and the id->name map for the rest. */}
-      <div className="st-card__sources">
+      <div className="st-card__sources" aria-label="Listed on">
         {marketplaceBadges(c).map((m) => (
           <span className="st-source" key={m.id}>
             {m.name}

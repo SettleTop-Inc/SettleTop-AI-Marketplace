@@ -466,12 +466,27 @@ export default function PassportView({
 
         <SectionHead>Sources</SectionHead>
         <div className="st-record">
-          <SourceRow
-            label="Marketplace listing"
-            url={a.listing_url}
-            note={hostOf(a.listing_url)}
-            verified={false}
-          />
+          {listings.length > 1 ? (
+            // A merged product's evidence comes from every listing, so the
+            // Sources section names each marketplace's own listing, not just the
+            // primary. Primary first, matching the panels above.
+            listings.map((l) => (
+              <SourceRow
+                key={l.listing_id}
+                label={`Marketplace listing (${l.marketplace_name})`}
+                url={l.listing_url}
+                note={hostOf(l.listing_url)}
+                verified={false}
+              />
+            ))
+          ) : (
+            <SourceRow
+              label="Marketplace listing"
+              url={a.listing_url}
+              note={hostOf(a.listing_url)}
+              verified={false}
+            />
+          )}
           {a.cert_url && (
             <SourceRow
               label="App certification"
