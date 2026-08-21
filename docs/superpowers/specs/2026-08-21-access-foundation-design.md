@@ -72,9 +72,13 @@ Settled in brainstorming, binding on the design:
    we claim to raise its cost and to protect depth. Section 4.5 adds an
    IP-independent global anon budget as a backstop lever.
 
-3. **Passwordless magic-link auth; admin by allowlist.** Sign-in is Supabase
-   GoTrue email magic link (no password handling). The admin role is granted
-   only by a server-side allowlist; there is never a self-serve path to admin.
+3. **Passwordless sign-in (email magic link + Google/GitHub/LinkedIn OAuth);
+   admin by allowlist.** Sign-in is Supabase GoTrue: an email magic link (no
+   password handling) plus social OAuth for Google, GitHub, and LinkedIn, to keep
+   sign-up low-friction. All of it runs server-side, so no Supabase key returns
+   to the browser. The admin role is granted only by a server-side allowlist,
+   keyed on the email each method returns; there is never a self-serve path to
+   admin.
 
 4. **Open self-serve sign-up, rate-limited.** Anyone can create an account with
    a verified email and unlock passport depth. Per-account read limits, minimal
@@ -440,18 +444,24 @@ touches read privileges only. The write path and its evidence gate are untouched
 
 ### 4.4 Authentication and identity
 
-- Enable magic-link (email OTP) in Supabase Auth config.
+- Enable email OTP (magic link) and the Google, GitHub, and LinkedIn OAuth
+  providers in Supabase Auth config (each social provider needs an OAuth app
+  registered in its own console with the client id/secret pasted into Supabase).
 - **`proxy.ts`** (Next 16's renamed middleware; the exported function is `proxy`,
   the runtime is Node.js and cannot be configured to edge) refreshes the session
   on each request per the `@supabase/ssr` pattern, using the same `getAll` /
   `setAll` cookie adapter, so server components and route handlers observe a
   valid session. Do not scaffold a `middleware.ts` / `middleware` export; that
   convention is deprecated in Next 16.
-- **Sign-in UI:** an email input; on submit calls `signInWithOtp`; shows "Check
-  your email for a sign-in link." A callback route
-  (`app/auth/callback/route.ts`) exchanges the code for a session
-  (`exchangeCodeForSession`) and sets cookies via `@supabase/ssr`. Sign-out
-  clears the cookies.
+- **Sign-in UI:** social buttons (Google, GitHub, LinkedIn) plus an email input.
+  Email uses the stateless `token_hash` flow (a server action calls
+  `signInWithOtp`; the emailed link hits `app/auth/confirm/route.ts`, which calls
+  `verifyOtp`), so a link opened on a different device works. Social uses a
+  server action calling `signInWithOAuth` (which redirects the browser to the
+  provider) and returns to `app/auth/callback/route.ts`, which calls
+  `exchangeCodeForSession` (same browser, so the PKCE verifier is present). All
+  server-side via `@supabase/ssr`; sign-out is a server action that clears the
+  session.
 - **`profile` table:**
   - `id uuid primary key references auth.users(id) on delete cascade`
   - `role text not null default 'signed_in' check (role in ('signed_in','admin'))`

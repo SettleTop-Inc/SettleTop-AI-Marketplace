@@ -90,6 +90,7 @@ docker exec "$CONTAINER" psql -U postgres -Atc 'select version();'
 
 say "2. Roles, as production has them"
 psql_file -q -1 < "$HERE/01-roles.sql"
+psql_file -q -1 < "$HERE/00-auth-stub.sql"
 docker exec "$CONTAINER" psql -U postgres -c \
   "select rolname, rolcanlogin, rolinherit, rolbypassrls, rolsuper from pg_roles
     where rolname in ('anon','authenticated','service_role','postgres') order by rolname;"
@@ -168,7 +169,10 @@ psql_file -q < "$HERE/11-known-layers.sql"
 say "15. Rate limiter: a bucket allows its burst then denies"
 psql_file -q < "$HERE/12-rate-limit.sql"
 
-say "16. Verdict"
+say "16. Identity: trigger + profile RLS + no self-escalation"
+psql_file -q < "$HERE/13-identity.sql"
+
+say "17. Verdict"
 if verdict; then status=0; else status=1; fi
 
 echo

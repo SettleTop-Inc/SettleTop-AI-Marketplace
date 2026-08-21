@@ -356,6 +356,13 @@ body {
 }
 .st-theme-toggle:hover { color: var(--c-accent); border-color: var(--c-accent); }
 
+.st-account { display: inline-flex; align-items: center; gap: 0.5rem; }
+.st-account__email { font-size: 0.85rem; opacity: 0.8; max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Sign-in page (Task 4): the social buttons stack and the "or" divider. */
+.st-signin__social { display: flex; flex-direction: column; gap: 0.5rem; }
+.st-signin__social form { display: contents; }
+.st-signin__or { text-align: center; opacity: 0.6; margin: 1rem 0; }
+
 /* The current surface is stated, not offered as a link to itself. */
 .st-header__here {
   font-family: var(--font-data);

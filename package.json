@@ -32,6 +32,7 @@
     "check:bundle": "node scripts/check-no-key-in-bundle.mjs"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.45.0",
     "next": "^16.3.1",
     "react": "^19.0.0",
