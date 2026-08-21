@@ -14,6 +14,8 @@ import type {
   AssetPassport,
   ChangeRow,
   ListingPassport,
+  MergeCandidate,
+  MergeConfidence,
   RegistryCard,
   RegistryStats,
 } from "./types.ts";
@@ -437,6 +439,35 @@ export async function getAssetEvidence(
     return { ok: false, error: error.message };
   }
   return { ok: true, data: (data ?? []) as AssetEvidenceRow[] };
+}
+
+/**
+ * The cross-marketplace merge-candidate queue (#64): pairs of listings on
+ * different marketplaces that look like one product, highest confidence first.
+ * DETECTION ONLY. This surfaces proposals for a human to confirm; it merges
+ * nothing. merge_assets (#63) is what will act on a confirmed pair, and the
+ * review UI (#65) is what will render this. Until those land, v_merge_candidates
+ * is the interface and this reader is the one caller.
+ */
+export async function getMergeCandidates(
+  confidence?: MergeConfidence
+): Promise<ReadResult<MergeCandidate[]>> {
+  let query = supabase
+    .from("v_merge_candidates")
+    .select("*")
+    // 'high' sorts before 'low' alphabetically, which is the order we want for
+    // today's two-tier enum. A third tier (say 'medium') would not sort into
+    // place by name and would need a numeric rank column on the view.
+    .order("confidence", { ascending: true })
+    .order("norm_name", { ascending: true })
+    .order("asset_id_a", { ascending: true });
+  if (confidence) query = query.eq("confidence", confidence);
+  const { data, error } = await query;
+  if (error) {
+    console.error("getMergeCandidates", error.message);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true, data: (data ?? []) as MergeCandidate[] };
 }
 
 /**
