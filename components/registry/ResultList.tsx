@@ -36,6 +36,10 @@ export default function ResultList({
       {rows.map((c) => {
         const isSelected = !!selectedIds?.includes(c.asset_id);
         const disabled = !!atCap && !isSelected;
+        // Link by the asset's canonical slug, not its primary listing's product
+        // id, for the reason spelled out in AgentCard. Falls back to
+        // source_product_id for a pre-phase-2 row, where they are equal.
+        const slug = c.canonical_slug ?? c.source_product_id;
         return (
           <article className="reg-row" key={c.asset_id}>
             {onSelect && (
@@ -59,7 +63,7 @@ export default function ResultList({
             <div>
               <h3 className="reg-row-name">
                 <Link
-                  href={`/agent/${encodeURIComponent(c.source_product_id)}${
+                  href={`/agent/${encodeURIComponent(slug)}${
                     from ? `?from=${from}${back ? `&back=${encodeURIComponent(back)}` : ""}` : ""
                   }`}
                 >

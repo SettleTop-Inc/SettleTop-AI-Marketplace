@@ -153,7 +153,10 @@ psql_file -q < "$HERE/06-sentinel.sql"
 say "10. Final reads, catalog audit, leftover-name scan"
 psql_file -q < "$HERE/07-final.sql"
 
-say "11. Verdict"
+say "11. Slug chain: three levels, and the unguarded-collision-no-longer-aborts proof"
+psql_file -q < "$HERE/08-slug-chain.sql"
+
+say "12. Verdict"
 if verdict; then status=0; else status=1; fi
 
 echo
