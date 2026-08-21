@@ -109,6 +109,45 @@ test("an asset with two marketplaces matches a source filter for either", () => 
   assert.equal(drai.rows[0].marketplace_name, "DRAI Marketplace");
 });
 
+// registry_search resolves a source filter to a canonical marketplace name and
+// seeds the source facet only with names that resolve, so an unknown source
+// value seeds NO bucket (issue #47). runQuery must agree, or the parity test's
+// "selected facet value with no rows" scenario diverges once the migration is
+// live: the SQL emits three real marketplaces, runQuery a fourth phantom.
+// The asymmetry is deliberate: every OTHER facet still seeds an unknown selected
+// value at zero, matching registry_search's `selected` CTE, which unnests
+// p_<facet> verbatim for them. This test pins both halves.
+test("an unknown source value seeds no facet bucket, but an unknown value in another facet still does", () => {
+  const cards = [
+    card({ asset_id: "a1", marketplace_name: "Microsoft Marketplace", function_category: "Software Development" }),
+    card({ asset_id: "a2", marketplace_name: "AWS Marketplace", function_category: "Security" }),
+  ];
+  const base = defaultCriteria();
+
+  const src = runQuery(cards, { ...base, facets: { ...base.facets, source: ["definitely-not-a-marketplace"] } });
+  const source = src.facets.find((f) => f.key === "source")!;
+  assert.equal(src.total, 0, "an unknown source value filters everything out");
+  assert.deepEqual(
+    source.values.map((v) => v.value),
+    ["AWS Marketplace", "Microsoft Marketplace"],
+    "the unknown source value must not appear as a phantom bucket"
+  );
+  assert.ok(
+    !source.values.some((v) => v.value === "definitely-not-a-marketplace"),
+    "no phantom source bucket for the unresolved value"
+  );
+
+  // Contrast: an open non-source facet keeps seeding the unknown selected value,
+  // because registry_search does too. Removing this would silently change the
+  // other facets' contract while fixing source.
+  const fn = runQuery(cards, { ...base, facets: { ...base.facets, function: ["No Such Function"] } });
+  const func = fn.facets.find((f) => f.key === "function")!;
+  const phantom = func.values.find((v) => v.value === "No Such Function");
+  assert.ok(phantom, "an unknown function value still seeds a zero bucket");
+  assert.equal(phantom!.count, 0);
+  assert.equal(phantom!.selected, true);
+});
+
 test("q matches a surfaces-only needle", () => {
   const cards = [card({ asset_id: "a1", surfaces: ["Virtual Machines"] }), card({ asset_id: "a2" })];
   const r = runQuery(cards, { ...defaultCriteria(), q: "Virtual Machines" });

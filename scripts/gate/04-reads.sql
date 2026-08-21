@@ -795,6 +795,7 @@ declare
   n_not_a_name int; sum_counts bigint; sum_expected bigint;
   r record; n_off int; n_filter_bad int := 0;
   t_by_id bigint; t_by_name bigint; n_id_name_mismatch int := 0; t_bogus bigint;
+  n_id_facet_ghost int := 0;
   ok boolean; v text; note text := '';
 begin
   begin
@@ -848,14 +849,28 @@ begin
     -- filtering by its NAME. This is the issue #47 fix asserted directly: the
     -- previous version required the id form to return 0, which was the defect
     -- written as an expectation. One mismatch anywhere fails the check.
+    --
+    -- The total alone does not catch the trap the issue names. A function that
+    -- resolved the id for the FILTER but seeded the facet with the raw id would
+    -- return the right total for both id and name (n_id_name_mismatch = 0) and
+    -- still leave a {"value":"<id>","selected":true} phantom in the rail under
+    -- the id filter. n_not_a_name above cannot see it: it runs only on the
+    -- unfiltered call, where `selected` seeds nothing. So the id-filter facet is
+    -- inspected here too, the id-filter twin of n_not_a_name: every value the
+    -- source facet carries under an id filter must be a real marketplace NAME.
     for r in select m.id as mid, m.name as mname from marketplace m loop
       set role anon;
-      t_by_id   := (registry_search(p_source => array[r.mid],   p_limit => 0) ->> 'total')::bigint;
+      j         := registry_search(p_source => array[r.mid], p_limit => 0);
+      t_by_id   := (j ->> 'total')::bigint;
       t_by_name := (registry_search(p_source => array[r.mname], p_limit => 0) ->> 'total')::bigint;
       reset role;
       if t_by_id is distinct from t_by_name then
         n_id_name_mismatch := n_id_name_mismatch + 1;
       end if;
+      select count(*) into n_off
+        from jsonb_array_elements(j -> 'facets' -> 'source') e
+       where not exists (select 1 from marketplace m where m.name = e.value ->> 'value');
+      n_id_facet_ghost := n_id_facet_ghost + n_off;
     end loop;
 
     set role anon;
@@ -868,14 +883,15 @@ begin
       and n_not_a_name = 0
       and sum_counts = sum_expected
       and n_filter_bad = 0
-      and n_id_name_mismatch = 0 and t_bogus = 0;
+      and n_id_name_mismatch = 0 and t_bogus = 0
+      and n_id_facet_ghost = 0;
     v := gate.expect(ok, p_expect);
-    note := format('total %s; facet %s vs expected %s; non-name values %s; counts sum %s vs %s asset-marketplace pairs; filter mismatches %s; id-vs-name total mismatches %s (must be 0); bogus %s (must be 0)',
+    note := format('total %s; facet %s vs expected %s; non-name values %s; counts sum %s vs %s asset-marketplace pairs; filter mismatches %s; id-vs-name total mismatches %s (must be 0); id-filter facet ghosts %s (must be 0); bogus %s (must be 0)',
                    t,
                    coalesce(array_to_string(actual, ', '), '(none)'),
                    coalesce(array_to_string(expected, ', '), '(none)'),
                    n_not_a_name, sum_counts, sum_expected, n_filter_bad,
-                   n_id_name_mismatch, t_bogus);
+                   n_id_name_mismatch, n_id_facet_ghost, t_bogus);
   exception when others then
     reset role; v := 'ERROR ' || sqlstate; note := sqlerrm;
   end;
