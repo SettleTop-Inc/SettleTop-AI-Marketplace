@@ -432,14 +432,14 @@ export default function PassportView({
           <SourceRow
             label="Marketplace listing"
             url={a.listing_url}
-            note="marketplace.microsoft.com"
+            note={hostOf(a.listing_url)}
             verified={false}
           />
           {a.cert_url && (
             <SourceRow
               label="App certification"
               url={a.cert_url}
-              note="learn.microsoft.com"
+              note={hostOf(a.cert_url)}
               verified={cert === "microsoft_365_certified"}
             />
           )}
@@ -497,6 +497,20 @@ export default function PassportView({
       </div>
     </div>
   );
+}
+
+// The displayed hostname is derived from the URL it links to, never asserted
+// separately. Hardcoding "marketplace.microsoft.com" and "learn.microsoft.com"
+// mislabelled every non-Microsoft source: on a DRAI or AWS passport the row
+// linked to drai-commercial.com or aws.amazon.com while claiming Microsoft's
+// domain, which is the registry attributing evidence to a party that never
+// published it. Fall back to the raw URL if it does not parse.
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
 }
 
 function SourceRow({
