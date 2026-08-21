@@ -9,8 +9,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test lib/*.test.ts scripts/**/*.test.mjs",
-    "test:parity": "node --experimental-strip-types --env-file-if-exists=.env.local --test lib/registry-search.parity.test.ts",
+    "test": "node --conditions=react-server --experimental-strip-types --test lib/*.test.ts scripts/**/*.test.mjs",
+    "test:parity": "node --conditions=react-server --experimental-strip-types --env-file-if-exists=.env.local --test lib/registry-search.parity.test.ts",
     "harvest:catalog": "node scripts/harvest-catalog.mjs",
     "harvest:detail": "node scripts/harvest-detail.mjs",
     "harvest:pricing": "node scripts/harvest-pricing.mjs",
@@ -34,7 +34,8 @@
     "@supabase/supabase-js": "^2.45.0",
     "next": "^16.3.1",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
