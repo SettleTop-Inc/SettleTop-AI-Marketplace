@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import ThemeToggle from "@/components/ThemeToggle";
+import AccountControl from "@/components/AccountControl";
 
 /**
  * The header every route shares.
@@ -69,6 +70,7 @@ export default function SiteHeader({
 
         <div className="st-header__actions">
           <ThemeToggle />
+          <AccountControl />
           {current === "registry" ? (
             <span className="st-header__here" aria-current="page">
               Browsing AI &amp; Agents
