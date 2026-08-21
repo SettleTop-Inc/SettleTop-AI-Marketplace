@@ -259,7 +259,20 @@ export default function PassportView({
             >
               {a.risk}
             </span>
-            <span className="st-field__note">{a.risk_basis}</span>
+            {/*
+             * risk_basis comes from the QUALIFYING listing (the cert lateral),
+             * while the layer ledger above and layers_known now come from the
+             * PRIMARY listing (issue #43, option b). Once an asset carries more
+             * than one listing the two can name different layer counts, so the
+             * basis is attributed to the marketplace it came from rather than
+             * left to read like the ledger's own number. certificationSource(a)
+             * names that same qualifying listing. Under one listing there is only
+             * one candidate, so this renders exactly as before.
+             */}
+            <span className="st-field__note">
+              {a.risk_basis}
+              {listings.length > 1 && ` (per ${certificationSource(a)})`}
+            </span>
           </div>
         </div>
 

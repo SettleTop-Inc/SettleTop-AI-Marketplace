@@ -162,7 +162,10 @@ psql_file -q < "$HERE/09-merged-guard.sql"
 say "13. Merge candidates: cross-marketplace detection, and the same-market exclusion proof"
 psql_file -q < "$HERE/10-merge-candidates.sql"
 
-say "14. Verdict"
+say "14. Known layers: a two-listing asset proves the ledger reads the PRIMARY listing"
+psql_file -q < "$HERE/11-known-layers.sql"
+
+say "15. Verdict"
 if verdict; then status=0; else status=1; fi
 
 echo
