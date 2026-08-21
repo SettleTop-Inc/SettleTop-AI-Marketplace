@@ -119,6 +119,19 @@ function norm(v: string | null | undefined): string {
  */
 export function facetValueOf(c: RegistryCard, key: FacetKey): string {
   switch (key) {
+    // The source facet value is the marketplace NAME, and always has been: the
+    // rail shows names, the app sends the shown value back in p_source, so the
+    // app's own round-trip is names in and names out and needs nothing here.
+    // registry_search additionally accepts marketplace IDS as of issue #47 and
+    // resolves each id OR name to the canonical name for both the filter and the
+    // facet seeding; the client never emits an id, so the filter side is
+    // unaffected. The one consequence that IS handled on this side is the facet
+    // seeding: an unresolved p_source value seeds no source bucket, which
+    // countFacet enforces below so runQuery and registry_search agree that an
+    // unknown source value leaves the rail with no phantom entry. The remaining
+    // client question, a card whose asset spans several marketplaces (an array
+    // of names rather than the one marketplace_name below), is the merge-phase
+    // concern tracked in the #64 / #43 area, not this issue. Do not fold it in.
     case "source": return norm(c.marketplace_name);
     case "function": return norm(c.function_category);
     case "provenance": return norm(c.provenance);
@@ -171,7 +184,8 @@ function countFacet(
   all: RegistryCard[],
   base: RegistryCard[],
   key: FacetKey,
-  selected: string[]
+  selected: string[],
+  seedSelected: (v: string) => boolean
 ): FacetValue[] {
   const counts = new Map<string, number>();
   // Seed from the query-filtered set (siblings NOT applied) so a value that a
@@ -184,8 +198,15 @@ function countFacet(
     counts.set(v, (counts.get(v) ?? 0) + 1);
   }
   // A selected value with no rows anywhere in the base must still appear, or
-  // it would vanish from the rail while active in the URL.
-  for (const v of selected) if (!counts.has(v)) counts.set(v, 0);
+  // it would vanish from the rail while active in the URL. seedSelected gates
+  // that seeding so this side matches registry_search's `selected` CTE: every
+  // facet but source unnests p_<facet> verbatim there, so an unknown selected
+  // value seeds a zero bucket on both sides. source is the exception, because
+  // registry_search seeds the RESOLVED marketplace name and an unresolvable
+  // value seeds nothing; so a selected source value that is not a real
+  // marketplace name must seed no bucket here either, or runQuery would carry a
+  // phantom {value, count:0, selected:true} the SQL never emits (issue #47).
+  for (const v of selected) if (!counts.has(v) && seedSelected(v)) counts.set(v, 0);
   return [...counts.entries()]
     .sort((x, y) => collator.compare(x[0], y[0]))
     .map(([value, count]) => ({ value, count, selected: selected.includes(value) }));
@@ -193,6 +214,19 @@ function countFacet(
 
 export function runQuery(cards: RegistryCard[], criteria: Criteria): QueryResult {
   const byQ = cards.filter((c) => matchesQ(c, criteria.q));
+
+  // The marketplace names the corpus knows about. registry_search resolves each
+  // p_source value (id or name) to a canonical marketplace name and seeds the
+  // source facet only with names that resolve, so a selected source value that
+  // is not a real marketplace name seeds no bucket. The client never emits an
+  // id, so resolution here is identity: a source value is seedable iff the
+  // corpus carries it. Derived from the full corpus, not byQ, because a real
+  // marketplace filtered out by the free-text query must still seed its selected
+  // bucket at zero, exactly as registry_search does (src_resolved is computed
+  // against the marketplace table, independent of the query).
+  const knownSources = new Set(cards.map((c) => facetValueOf(c, "source")));
+  const seedSelected = (key: FacetKey): ((v: string) => boolean) =>
+    key === "source" ? (v) => knownSources.has(v) : () => true;
 
   const rows = byQ
     .filter((c) => FACET_KEYS.every((k) => matchesFacet(c, k, criteria.facets[k])))
@@ -208,7 +242,7 @@ export function runQuery(cards: RegistryCard[], criteria: Criteria): QueryResult
     return {
       key,
       label: FACET_LABELS[key],
-      values: countFacet(byQ, base, key, criteria.facets[key]),
+      values: countFacet(byQ, base, key, criteria.facets[key], seedSelected(key)),
     };
   });
 
