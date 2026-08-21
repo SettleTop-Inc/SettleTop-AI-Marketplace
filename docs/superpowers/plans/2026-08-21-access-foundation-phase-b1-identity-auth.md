@@ -30,10 +30,14 @@ Sign-in cannot complete until Supabase Auth is configured on the project (ref `a
 2. **Use the `token_hash` (stateless) flow so links open on any device.** Set the **Magic Link** email template's action URL to:
    `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=email`
    (`{{ .RedirectTo }}` is the per-request `emailRedirectTo` the app sends, `${origin}/auth/confirm`.) Do NOT leave the default `{{ .ConfirmationURL }}` template: that is the PKCE code flow, which fails when the link is opened on a different device than it was requested from.
-3. Add **Redirect URLs** allowlisting `${origin}/auth/confirm` for each origin: `https://settletop-ai-registry.vercel.app/auth/confirm` and `http://localhost:3000/auth/confirm`. Keep the allowlist narrow; avoid a broad `*.vercel.app` wildcard.
-4. Ensure email delivery works (Supabase's built-in email is rate-limited; configure SMTP for real volume).
+3. **Register the social providers** in Supabase Auth (Authentication -> Providers), each needing an OAuth app in that provider's console with the client ID/secret pasted into Supabase:
+   - **Google** (a Google Cloud Console OAuth client),
+   - **GitHub** (a GitHub Developer Settings OAuth App),
+   - **LinkedIn** (a LinkedIn app with the "Sign In with LinkedIn using OpenID Connect" product; the Supabase provider key is `linkedin_oidc`).
+4. Add **Redirect URLs** allowlisting both callback paths for each origin: `${origin}/auth/confirm` (email) and `${origin}/auth/callback` (social), i.e. `https://settletop-ai-registry.vercel.app/auth/confirm`, `.../auth/callback`, and the `http://localhost:3000` equivalents. Keep the allowlist narrow; avoid a broad `*.vercel.app` wildcard.
+5. Ensure email delivery works (Supabase's built-in email is rate-limited; configure SMTP for real volume).
 
-The DB, server, and UI work below can be built and gate-tested without this, but the end-to-end magic-link test (Task 4 Step 6), including the cross-device case, needs it live.
+The DB, server, and UI work below can be built and gate-tested without this, but the end-to-end sign-in tests (Task 4 Step 7), email cross-device and each social provider, need it live.
 
 ---
 
@@ -344,9 +348,9 @@ say "17. Verdict"
 
 ---
 
-### Task 4: Sign-in page, server action, token_hash confirm route, and sign-out
+### Task 4: Sign-in page (email + social), server actions, and the confirm/callback routes
 
-**Files:** Create `app/signin/page.tsx`, `app/signin/actions.ts`, `app/auth/confirm/route.ts`.
+**Files:** Create `app/signin/page.tsx`, `app/signin/actions.ts`, `app/auth/confirm/route.ts`, `app/auth/callback/route.ts`.
 
 - [ ] **Step 1: The sign-in + sign-out server actions** (`app/signin/actions.ts`)
 
@@ -388,6 +392,26 @@ export async function signIn(formData: FormData) {
   redirect("/signin?sent=1");
 }
 
+/** Start a social OAuth flow (Google, GitHub, LinkedIn). signInWithOAuth on the
+    server client sets the PKCE verifier cookie and returns the provider URL; the
+    browser goes to the provider and returns to /auth/callback in the SAME
+    browser, so exchangeCodeForSession there has the verifier. Bound per button
+    via signInWithProvider.bind(null, provider). */
+export async function signInWithProvider(
+  provider: "google" | "github" | "linkedin_oidc",
+  _formData?: FormData
+) {
+  const origin = await siteOrigin();
+  if (!origin) redirect("/signin?error=oauth");
+  const supabase = await supabaseServer();
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider,
+    options: { redirectTo: `${origin}/auth/callback` },
+  });
+  if (error || !data?.url) redirect("/signin?error=oauth");
+  redirect(data.url);
+}
+
 export async function signOut() {
   const supabase = await supabaseServer();
   await supabase.auth.signOut();
@@ -400,7 +424,7 @@ export async function signOut() {
 ```tsx
 import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
-import { signIn } from "./actions";
+import { signIn, signInWithProvider } from "./actions";
 
 export default async function SignInPage({
   searchParams,
@@ -416,14 +440,29 @@ export default async function SignInPage({
         {sent ? (
           <p>Check your email for a sign-in link.</p>
         ) : (
-          <form action={signIn}>
-            <label htmlFor="email">Email</label>
-            <input id="email" name="email" type="email" required autoComplete="email" />
-            <button className="st-btn st-btn--primary" type="submit">Email me a sign-in link</button>
+          <>
+            <div className="st-signin__social">
+              <form action={signInWithProvider.bind(null, "google")}>
+                <button className="st-btn st-btn--secondary" type="submit">Continue with Google</button>
+              </form>
+              <form action={signInWithProvider.bind(null, "github")}>
+                <button className="st-btn st-btn--secondary" type="submit">Continue with GitHub</button>
+              </form>
+              <form action={signInWithProvider.bind(null, "linkedin_oidc")}>
+                <button className="st-btn st-btn--secondary" type="submit">Continue with LinkedIn</button>
+              </form>
+            </div>
+            <p className="st-signin__or">or</p>
+            <form action={signIn}>
+              <label htmlFor="email">Email</label>
+              <input id="email" name="email" type="email" required autoComplete="email" />
+              <button className="st-btn st-btn--primary" type="submit">Email me a sign-in link</button>
+            </form>
             {error === "email" && <p>Enter a valid email address.</p>}
             {error === "limited" && <p>We cannot create the account right now. Try again later.</p>}
             {error === "send" && <p>That did not send. Request a new link.</p>}
-          </form>
+            {error === "oauth" && <p>That sign-in did not start. Try again.</p>}
+          </>
         )}
       </main>
       <SiteFooter />
@@ -452,11 +491,29 @@ export async function GET(request: Request) {
 }
 ```
 
-- [ ] **Step 4: Build + typecheck** — `npm run build && npm run typecheck` (SUCCESS; `/signin` and `/auth/confirm` compile). Sign-out is a server action (Next's CSRF protection applies); it is consumed by `AccountControl` in Task 6.
+- [ ] **Step 4: The OAuth callback route** (`app/auth/callback/route.ts`) — exchanges the provider's `code` (same-browser, so the PKCE verifier cookie set by `signInWithProvider` is present).
 
-- [ ] **Step 5: Commit** — `git add app/signin app/auth` then `git commit -m "feat: server-side magic-link sign-in (token_hash), confirm route, sign-out action"`.
+```ts
+import { NextResponse } from "next/server";
+import { supabaseServer } from "@/lib/auth";
 
-- [ ] **Step 6: Manual end-to-end verification (after the Supabase Auth prerequisite is live).** With email OTP + the token_hash template + allowlisted redirect URLs, load `/signin`, submit your email, and open the link. Test BOTH same-device and **cross-device** (request on desktop, open the link on your phone): both must land signed in. Confirm `/api/me` (Task 6) returns your email + `admin`. This step is manual; there is no automatable substitute without a live provider and a real inbox. Record the outcome.
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const code = url.searchParams.get("code");
+  if (code) {
+    const supabase = await supabaseServer();
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (!error) return NextResponse.redirect(new URL("/", url.origin));
+  }
+  return NextResponse.redirect(new URL("/signin?error=oauth", url.origin));
+}
+```
+
+- [ ] **Step 5: Build + typecheck** — `npm run build && npm run typecheck` (SUCCESS; `/signin`, `/auth/confirm`, `/auth/callback` compile). Sign-out is a server action (Next's CSRF protection applies); it is consumed by `AccountControl` in Task 6.
+
+- [ ] **Step 6: Commit** — `git add app/signin app/auth` then `git commit -m "feat: server-side sign-in (email token_hash + Google/GitHub/LinkedIn OAuth) and sign-out"`.
+
+- [ ] **Step 7: Manual end-to-end verification (after the Supabase Auth prerequisite is live).** Load `/signin`. (1) Email: submit your address and open the link both same-device and **cross-device** (request on desktop, open on your phone); both must land signed in. (2) Each social provider (Google, GitHub, LinkedIn): click it, complete the provider consent, and confirm you return signed in. In every case confirm `/api/me` (Task 6) returns your email and, for your allowlisted address, `admin`. This step is manual; there is no automatable substitute without live providers and a real inbox. Record the outcome per method.
 
 ---
 
@@ -593,6 +650,10 @@ export default function AccountControl() {
 ```css
 .st-account { display: inline-flex; align-items: center; gap: 0.5rem; }
 .st-account__email { font-size: 0.85rem; opacity: 0.8; max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Sign-in page (Task 4): the social buttons stack and the "or" divider. */
+.st-signin__social { display: flex; flex-direction: column; gap: 0.5rem; }
+.st-signin__social form { display: contents; }
+.st-signin__or { text-align: center; opacity: 0.6; margin: 1rem 0; }
 ```
 
 - [ ] **Step 5: Build + preview** — `npm run build`, then start the dev server and confirm the header shows a styled "Sign in" when logged out and `/api/me` returns `null`. No em dashes in the control copy.
@@ -604,7 +665,7 @@ export default function AccountControl() {
 ## Notes for the executor
 
 - **No visibility change in B1.** If any step would revoke a grant, change a view, or gate a read, stop, that belongs to Phase B2.
-- **The magic-link end-to-end flow (Task 4 Step 6) cannot be automated** without the Supabase Auth prerequisite live and a real inbox, and it must be tested cross-device. The DB identity model (trigger + RLS + no-self-escalation + allowlist-unreadable) is fully proven by the gate; the account limiter's pure logic is unit-tested; everything else is build + typecheck + a manual preview.
+- **The end-to-end sign-in flows (Task 4 Step 7) cannot be automated** without the Supabase Auth prerequisite live (email inbox + the three OAuth apps), and email must be tested cross-device. The DB identity model (trigger + RLS + no-self-escalation + allowlist-unreadable) is fully proven by the gate; the account limiter's pure logic is unit-tested; the OAuth flow (server-action redirect + code exchange) should be verified against current Supabase docs during implementation; everything else is build + typecheck + a manual preview.
 - **`is_admin()` is `security definer`** specifically so the profile SELECT policy can call it without RLS recursion. Do not inline the `exists (select ... from profile ...)` into the policy.
 - **Server-side auth only.** No `createBrowserClient`, no `NEXT_PUBLIC_` key path.
 - **Gate numbering:** read `scripts/gate/run.sh` before editing to confirm the current highest `say` number (Phase A left Verdict = 16), and keep the inserted identity step (16) and the renumbered Verdict (17) contiguous. Role-switched gate assertions must capture into a variable and `reset role` BEFORE inserting into `gate.result` (the `authenticated` role has no privilege on the `gate` schema).
