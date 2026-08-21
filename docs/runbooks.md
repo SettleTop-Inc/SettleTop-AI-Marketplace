@@ -16,9 +16,12 @@ npm run typecheck
 npm run dev            # http://localhost:3000
 ```
 
-The two public values in `.env.example` are already correct and safe to commit —
-the publishable key can only read, because the database has public SELECT
-policies and no write policies at all.
+`NEXT_PUBLIC_SUPABASE_URL` in `.env.example` is already correct and is the one
+public value here, safe to commit. `SUPABASE_PUBLISHABLE_KEY` is server-only:
+even though the database's public SELECT policies limit what it can do, it is
+still a credential, not a public value, so never commit a filled-in copy and
+never treat it as safe to expose. See `docs/runbooks/rotate-publishable-key.md`
+for why that distinction matters.
 
 > **This app has never been built.** It was authored in an environment without
 > access to the npm registry, so `next build` has not run against it once. Treat
@@ -43,7 +46,7 @@ without these fails exactly the way a missing key fails locally.
 | Name | Value |
 |---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://atevamimariwlpidgvog.supabase.co` |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | the `sb_publishable_...` key |
+| `SUPABASE_PUBLISHABLE_KEY` | the `sb_publishable_...` key |
 
 Do **not** put `SUPABASE_SERVICE_ROLE_KEY` in Vercel. Nothing the website does
 needs it, and the registry has no write path from the browser by design.

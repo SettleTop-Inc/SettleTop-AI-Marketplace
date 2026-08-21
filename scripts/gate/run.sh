@@ -165,7 +165,10 @@ psql_file -q < "$HERE/10-merge-candidates.sql"
 say "14. Known layers: a two-listing asset proves the ledger reads the PRIMARY listing"
 psql_file -q < "$HERE/11-known-layers.sql"
 
-say "15. Verdict"
+say "15. Rate limiter: a bucket allows its burst then denies"
+psql_file -q < "$HERE/12-rate-limit.sql"
+
+say "16. Verdict"
 if verdict; then status=0; else status=1; fi
 
 echo

@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
 import { USE_CASES } from "@/lib/usecases";
 import PassportView from "@/components/PassportView";
 import AgentLogo from "@/components/AgentLogo";
@@ -65,21 +64,16 @@ export default function LandingApp({
     }
     let cancelled = false;
     setLoadingPassport(true);
-    supabase
-      .from("v_asset_passport")
-      .select("*")
-      // Fetch by asset_id, the asset's stable unique key, not source_product_id.
-      // Two assets can share a source_product_id across marketplaces (the #45
-      // slug-fallback case), so an .eq("source_product_id", ...).maybeSingle()
-      // would match two passport rows and resolve to the wrong product. The card
-      // Link already keys on canonical_slug for the same reason; this is the
-      // modal's equivalent.
-      .eq("asset_id", modal.id)
-      .maybeSingle()
-      .then(({ data, error }) => {
+    fetch(`/api/passport/${encodeURIComponent(modal.id)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
         if (cancelled) return;
-        if (error) console.error("passport", error.message);
         setPassport((data as AssetPassport) ?? null);
+        setLoadingPassport(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPassport(null);
         setLoadingPassport(false);
       });
     return () => {

@@ -29,7 +29,7 @@ import type { RegistryCard } from "./types.ts";
 
 const haveDb = Boolean(
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+    process.env.SUPABASE_PUBLISHABLE_KEY
 );
 
 type Over = Partial<Omit<Criteria, "facets">> & {
