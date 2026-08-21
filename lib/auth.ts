@@ -2,6 +2,17 @@ import "server-only";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const key = process.env.SUPABASE_PUBLISHABLE_KEY;
+
+if (!url || !key) {
+  throw new Error(
+    "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_PUBLISHABLE_KEY. " +
+      "Copy .env.example to .env.local, or set them in the Vercel project. " +
+      "SUPABASE_PUBLISHABLE_KEY is server-only: never prefix it with NEXT_PUBLIC_."
+  );
+}
+
 /**
  * Per-request, cookie-bound Supabase client for auth. Server-only: the
  * publishable key never reaches the browser. In an RSC render `setAll` cannot
@@ -11,24 +22,20 @@ import { cookies } from "next/headers";
  */
 export async function supabaseServer() {
   const store = await cookies();
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_PUBLISHABLE_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return store.getAll();
-        },
-        setAll(list) {
-          try {
-            for (const { name, value, options } of list) store.set(name, value, options);
-          } catch {
-            // RSC render: proxy.ts handles the refresh instead.
-          }
-        },
+  return createServerClient(url!, key!, {
+    cookies: {
+      getAll() {
+        return store.getAll();
       },
-    }
-  );
+      setAll(list) {
+        try {
+          for (const { name, value, options } of list) store.set(name, value, options);
+        } catch {
+          // RSC render: proxy.ts handles the refresh instead.
+        }
+      },
+    },
+  });
 }
 
 export async function getSessionUser() {
