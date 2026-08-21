@@ -43,7 +43,7 @@ without these fails exactly the way a missing key fails locally.
 | Name | Value |
 |---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://atevamimariwlpidgvog.supabase.co` |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | the `sb_publishable_...` key |
+| `SUPABASE_PUBLISHABLE_KEY` | the `sb_publishable_...` key |
 
 Do **not** put `SUPABASE_SERVICE_ROLE_KEY` in Vercel. Nothing the website does
 needs it, and the registry has no write path from the browser by design.
