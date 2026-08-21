@@ -159,7 +159,10 @@ psql_file -q < "$HERE/08-slug-chain.sql"
 say "12. Merged-into guard: a partial merge excludes the asset from every stat together"
 psql_file -q < "$HERE/09-merged-guard.sql"
 
-say "13. Verdict"
+say "13. Merge candidates: cross-marketplace detection, and the same-market exclusion proof"
+psql_file -q < "$HERE/10-merge-candidates.sql"
+
+say "14. Verdict"
 if verdict; then status=0; else status=1; fi
 
 echo

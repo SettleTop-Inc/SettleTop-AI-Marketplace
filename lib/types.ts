@@ -178,6 +178,39 @@ export interface AssetEvidenceRow {
   has_raw: boolean;
 }
 
+/** Confidence tier of a merge candidate. */
+export type MergeConfidence = "high" | "low";
+
+/**
+ * One cross-marketplace duplicate candidate PAIR, mirroring v_merge_candidates
+ * (#64). Two listings on different marketplaces whose normalised names match,
+ * ordered so a pair appears once with side a the lower (marketplace_id,
+ * asset_id). The signal_* fields and shared_link_host are the evidence; a human
+ * confirms before anything merges. This is a proposal, never a merge:
+ * merge_assets (#63) and the review UI (#65) consume it.
+ */
+export interface MergeCandidate {
+  asset_id_a: string;
+  asset_id_b: string;
+  listing_id_a: string;
+  listing_id_b: string;
+  marketplace_id_a: string;
+  marketplace_id_b: string;
+  name_a: string;
+  name_b: string;
+  publisher_a: string | null;
+  publisher_b: string | null;
+  norm_name: string;
+  norm_publisher_a: string;
+  norm_publisher_b: string;
+  signal_name_match: boolean;
+  signal_publisher_exact: boolean;
+  signal_publisher_prefix: boolean;
+  signal_link_host_shared: boolean;
+  shared_link_host: string | null;
+  confidence: MergeConfidence;
+}
+
 export interface RegistryStats {
   agents: number;
   marketplaces: number;
