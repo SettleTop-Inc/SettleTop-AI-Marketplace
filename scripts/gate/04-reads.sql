@@ -773,20 +773,28 @@ end $fn$;
 --   4. filtering by each name returns that count, and every card it returns
 --      really does have a listing on that marketplace.
 --
--- And two zero assertions. Filtering by the raw marketplace IDS must return
--- nothing, which is the ids-versus-names question stated as a test: a function
--- that compared p_source against marketplace_ids would pass every count above
--- and fail here, because the rail would be showing names the filter could never
--- match. Filtering by a value that is neither returns nothing too, which is the
--- control for that one: it proves an empty result is not simply what this
--- function does with every array it is handed.
+-- And the ids-versus-names pair, restated for issue #47. p_source now accepts
+-- BOTH a marketplace's id and its name and resolves each to the canonical name,
+-- so filtering by the raw ID must return the SAME total as filtering by the
+-- NAME, marketplace for marketplace. That is the fix asserted directly: the old
+-- version of this check required the id form to return 0, which was the bug
+-- written down as an expectation rather than the property. A function that
+-- still compared p_source against marketplace_ids, or that resolved ids for the
+-- filter but seeded the facet with the raw input, would fail here.
+--
+-- The bogus control stays exactly as it was. Filtering by a value that is
+-- neither a known id nor a known name returns nothing AND seeds no facet value:
+-- it proves an empty result is not simply what this function does with every
+-- array it is handed, and that an unresolved value leaves no phantom bucket in
+-- the rail. n_not_a_name above already asserts no id-spelled ghost leaks into
+-- the facet for a resolved selection; this is its unknown-value twin.
 create or replace function gate.check_search_source(p_step text, p_expect text default 'green')
 returns void language plpgsql as $fn$
 declare
   j jsonb; t bigint; facet jsonb; expected text[]; actual text[];
   n_not_a_name int; sum_counts bigint; sum_expected bigint;
   r record; n_off int; n_filter_bad int := 0;
-  ids text[]; t_by_id bigint; t_bogus bigint;
+  t_by_id bigint; t_by_name bigint; n_id_name_mismatch int := 0; t_bogus bigint;
   ok boolean; v text; note text := '';
 begin
   begin
@@ -800,7 +808,6 @@ begin
       from (select distinct c.asset_id, l.marketplace_id
               from v_registry_card c
               join listing l on l.asset_id = c.asset_id) pairs;
-    select array_agg(m.id order by m.id) into ids from marketplace m;
 
     set role anon;
     j := registry_search(p_limit => 0);
@@ -837,8 +844,21 @@ begin
       n_filter_bad := n_filter_bad + n_off;
     end loop;
 
+    -- Filtering by each marketplace's raw ID must return the SAME total as
+    -- filtering by its NAME. This is the issue #47 fix asserted directly: the
+    -- previous version required the id form to return 0, which was the defect
+    -- written as an expectation. One mismatch anywhere fails the check.
+    for r in select m.id as mid, m.name as mname from marketplace m loop
+      set role anon;
+      t_by_id   := (registry_search(p_source => array[r.mid],   p_limit => 0) ->> 'total')::bigint;
+      t_by_name := (registry_search(p_source => array[r.mname], p_limit => 0) ->> 'total')::bigint;
+      reset role;
+      if t_by_id is distinct from t_by_name then
+        n_id_name_mismatch := n_id_name_mismatch + 1;
+      end if;
+    end loop;
+
     set role anon;
-    t_by_id := (registry_search(p_source => ids, p_limit => 0) ->> 'total')::bigint;
     t_bogus := (registry_search(p_source => array['definitely-not-a-marketplace'],
                                 p_limit => 0) ->> 'total')::bigint;
     reset role;
@@ -848,14 +868,14 @@ begin
       and n_not_a_name = 0
       and sum_counts = sum_expected
       and n_filter_bad = 0
-      and t_by_id = 0 and t_bogus = 0;
+      and n_id_name_mismatch = 0 and t_bogus = 0;
     v := gate.expect(ok, p_expect);
-    note := format('total %s; facet %s vs expected %s; non-name values %s; counts sum %s vs %s asset-marketplace pairs; filter mismatches %s; by raw id %s (must be 0); bogus %s (must be 0)',
+    note := format('total %s; facet %s vs expected %s; non-name values %s; counts sum %s vs %s asset-marketplace pairs; filter mismatches %s; id-vs-name total mismatches %s (must be 0); bogus %s (must be 0)',
                    t,
                    coalesce(array_to_string(actual, ', '), '(none)'),
                    coalesce(array_to_string(expected, ', '), '(none)'),
                    n_not_a_name, sum_counts, sum_expected, n_filter_bad,
-                   t_by_id, t_bogus);
+                   n_id_name_mismatch, t_bogus);
   exception when others then
     reset role; v := 'ERROR ' || sqlstate; note := sqlerrm;
   end;

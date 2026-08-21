@@ -119,6 +119,17 @@ function norm(v: string | null | undefined): string {
  */
 export function facetValueOf(c: RegistryCard, key: FacetKey): string {
   switch (key) {
+    // The source facet value is the marketplace NAME, and always has been: the
+    // rail shows names, the app sends the shown value back in p_source, so the
+    // app's own round-trip is names in and names out and needs nothing here.
+    // registry_search additionally accepts marketplace IDS as of issue #47 and
+    // resolves each id OR name to the canonical name for both the filter and the
+    // facet seeding — but the client never emits an id, so this side is
+    // unaffected. The remaining client question — a card whose asset spans
+    // several marketplaces, i.e. an array of names rather than the one
+    // marketplace_name below, and how an unresolved p_source value should seed
+    // the local runQuery facet — is the merge-phase concern tracked in the
+    // #64 / #43 area, not this issue. Do not fold that in here.
     case "source": return norm(c.marketplace_name);
     case "function": return norm(c.function_category);
     case "provenance": return norm(c.provenance);
