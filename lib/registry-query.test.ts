@@ -109,6 +109,62 @@ test("an asset with two marketplaces matches a source filter for either", () => 
   assert.equal(drai.rows[0].marketplace_name, "DRAI Marketplace");
 });
 
+// The asset-keyed view emits ONE row per asset, carrying marketplace_ids (the
+// ids of every marketplace the asset is listed on) and the primary listing's
+// own marketplace_name. This is the merged shape the client actually receives
+// once a real merge lands: a single card whose asset spans two marketplaces,
+// NOT two rows sharing an asset_id. facetValuesOf must resolve marketplace_ids
+// to the same names registry_search's f_sources does, so runQuery matches the
+// asset under EITHER marketplace and counts it under BOTH. This is the path the
+// live parity test cannot exercise while production is 1:1, so it is pinned here
+// over a synthetic merged card instead.
+test("a merged card matches a source filter for either marketplace and counts under both", () => {
+  const cards = [
+    card({
+      asset_id: "a1",
+      marketplace_id: "microsoft",
+      marketplace_name: "Microsoft Marketplace",
+      marketplace_ids: ["drai", "microsoft"],
+      listing_count: 2,
+    }),
+    card({
+      asset_id: "a2",
+      marketplace_id: "aws",
+      marketplace_name: "AWS Marketplace",
+      marketplace_ids: ["aws"],
+      listing_count: 1,
+    }),
+  ];
+  const base = defaultCriteria();
+
+  // The primary name resolves, and so does the non-primary id through the label
+  // map: filtering on the SECONDARY marketplace still finds the merged asset,
+  // which is exactly the drift the single-name facetValueOf caused.
+  const ms = runQuery(cards, { ...base, facets: { ...base.facets, source: ["Microsoft Marketplace"] } });
+  assert.deepEqual(ms.rows.map((r) => r.asset_id), ["a1"]);
+  const drai = runQuery(cards, {
+    ...base,
+    facets: { ...base.facets, source: ["DRAI Agentic-AI Marketplace"] },
+  });
+  assert.deepEqual(drai.rows.map((r) => r.asset_id), ["a1"]);
+
+  // The merged asset is counted under both of its marketplaces, so the source
+  // counts sum ABOVE total (3 across two assets) — the unnest semantics, not a
+  // discrepancy. Every other facet still sums to total.
+  const all = runQuery(cards, base);
+  const source = all.facets.find((f) => f.key === "source")!;
+  const byValue = Object.fromEntries(source.values.map((v) => [v.value, v.count]));
+  assert.equal(byValue["Microsoft Marketplace"], 1, "primary marketplace counts the merged asset");
+  assert.equal(byValue["DRAI Agentic-AI Marketplace"], 1, "secondary marketplace counts it too");
+  assert.equal(byValue["AWS Marketplace"], 1);
+  assert.equal(all.total, 2, "two assets, counted once each in total");
+  assert.equal(
+    source.values.reduce((n, v) => n + v.count, 0),
+    3,
+    "a multi-listed asset counts under each of its marketplaces"
+  );
+});
+
 // registry_search resolves a source filter to a canonical marketplace name and
 // seeds the source facet only with names that resolve, so an unknown source
 // value seeds NO bucket (issue #47). runQuery must agree, or the parity test's

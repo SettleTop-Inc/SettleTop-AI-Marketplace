@@ -781,6 +781,29 @@ h3.st-display { font-size: var(--t-lg); }
   margin: var(--s3) 0 0;
 }
 
+/* Source marketplaces: one hairline chip per marketplace the asset is listed
+   on. Bordered and unfilled, so it reads as provenance ("where this is
+   listed") and stays visually distinct from the filled .st-tag category chips
+   further down the card. A 1:1 asset shows one; a merged asset shows one per
+   listing, wrapping if it must, and the row keeps to a single line for the
+   two-marketplace ceiling the registry allows today. */
+.st-card__sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-top: var(--s2);
+}
+.st-source {
+  font-size: var(--t-2xs);
+  font-weight: 500;
+  color: var(--c-ink-2);
+  background: transparent;
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-sm);
+  padding: 2px var(--s2);
+  white-space: nowrap;
+}
+
 /* Two lines reserved so every card in a row starts its evidence well at the
    same y — a ragged well is what made the old grid look unaligned. */
 .st-card__tagline {
@@ -982,6 +1005,13 @@ details[open] > .st-disclosure::before { content: "− "; }
 }
 @media (max-width: 720px) {
   .st-access { grid-template-columns: 1fr; align-items: start; }
+}
+/* A merged asset offers one source link per marketplace, stacked in the CTA
+   cell where a 1:1 asset shows its single button. */
+.st-access__links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
 }
 
 /* Listing panels: one card per marketplace, each stating only what that

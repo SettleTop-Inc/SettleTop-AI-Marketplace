@@ -1,4 +1,4 @@
-import { UNKNOWN } from "./present.ts";
+import { UNKNOWN, marketplaceBadges } from "./present.ts";
 import type { ProvenanceStatus, RegistryCard, RiskBand } from "./types.ts";
 
 /**
@@ -112,38 +112,49 @@ function norm(v: string | null | undefined): string {
 }
 
 /**
- * Exported so every surface that filters on a facet value — not just this
- * module's own runQuery — normalises null and the literal 'Unknown' the same
- * way. A second, hand-rolled version of this mapping is how the two spellings
- * drift apart again.
+ * The facet value(s) a card carries for a key. Exported so every surface that
+ * filters on a facet value — not just this module's own runQuery — normalises
+ * null and the literal 'Unknown' the same way. A second, hand-rolled version of
+ * this mapping is how the two spellings drift apart again.
+ *
+ * source is the one MULTI-VALUED facet: an asset can be sold on more than one
+ * marketplace and is not made to pick one, so it carries every marketplace the
+ * asset is listed on, resolved to the NAMES the rail shows and deduplicated on
+ * the name. registry_search builds its f_sources the same way — unnest
+ * marketplace_ids, map to names, distinct on name — then matches with && (the
+ * asset is a hit if ANY of its marketplaces is selected) and counts by
+ * unnesting (the asset is counted under EACH of its marketplaces). This side
+ * mirrors both: matchesFacet overlaps the sets, countFacet counts every value.
+ * Under one listing this is a one-element array and behaves exactly as the
+ * single value did, which is every asset in production today; the semantics
+ * only diverge once a real merge lands, and then they diverge correctly.
+ *
+ * The remaining single-valued facets return a one-element array so the two call
+ * sites can treat every facet the same way. Preferring marketplaceBadges (which
+ * reads marketplace_ids, else the primary marketplace_name) is the same
+ * prefer-the-complete-column move searchBlob() makes for search_blob: the
+ * reconstruction from marketplace_name alone is only complete while the asset
+ * has one listing.
  */
-export function facetValueOf(c: RegistryCard, key: FacetKey): string {
+export function facetValuesOf(c: RegistryCard, key: FacetKey): string[] {
   switch (key) {
-    // The source facet value is the marketplace NAME, and always has been: the
-    // rail shows names, the app sends the shown value back in p_source, so the
-    // app's own round-trip is names in and names out and needs nothing here.
-    // registry_search additionally accepts marketplace IDS as of issue #47 and
-    // resolves each id OR name to the canonical name for both the filter and the
-    // facet seeding; the client never emits an id, so the filter side is
-    // unaffected. The one consequence that IS handled on this side is the facet
-    // seeding: an unresolved p_source value seeds no source bucket, which
-    // countFacet enforces below so runQuery and registry_search agree that an
-    // unknown source value leaves the rail with no phantom entry. The remaining
-    // client question, a card whose asset spans several marketplaces (an array
-    // of names rather than the one marketplace_name below), is the merge-phase
-    // concern tracked in the #64 / #43 area, not this issue. Do not fold it in.
-    case "source": return norm(c.marketplace_name);
-    case "function": return norm(c.function_category);
-    case "provenance": return norm(c.provenance);
-    case "risk": return norm(c.risk);
-    case "tier": return norm(c.evidence_tier);
-    case "delivery": return norm(c.delivery);
-    case "price": return norm(c.price_band);
+    case "source": return [...new Set(marketplaceBadges(c).map((m) => norm(m.name)))];
+    case "function": return [norm(c.function_category)];
+    case "provenance": return [norm(c.provenance)];
+    case "risk": return [norm(c.risk)];
+    case "tier": return [norm(c.evidence_tier)];
+    case "delivery": return [norm(c.delivery)];
+    case "price": return [norm(c.price_band)];
   }
 }
 
 function matchesFacet(c: RegistryCard, key: FacetKey, selected: string[]): boolean {
-  return selected.length === 0 || selected.includes(facetValueOf(c, key));
+  if (selected.length === 0) return true;
+  // Overlap, not equality: a value matches if ANY of the card's values for this
+  // key is selected. For every facet but source the card has exactly one value,
+  // so this is the same test it always was; for source it lifts the "or within
+  // a group" rule to a set on both sides, matching registry_search's &&.
+  return facetValuesOf(c, key).some((v) => selected.includes(v));
 }
 
 function matchesQ(c: RegistryCard, q: string): boolean {
@@ -192,10 +203,17 @@ function countFacet(
   // sibling selection has driven to zero still appears in the rail instead of
   // silently disappearing — a shown 0 tells the visitor "still exists,
   // narrowed away"; an absent row is indistinguishable from "never existed".
-  for (const c of all) counts.set(facetValueOf(c, key), 0);
+  //
+  // A card contributes to every value it carries, not one: for source that
+  // means an asset on two marketplaces is counted under BOTH, exactly as
+  // registry_search's `counted` CTE unnests f_sources before grouping. Once
+  // assets are multi-listed these counts sum to more than `total`, and that is
+  // correct: the number beside a marketplace answers "how many products would
+  // selecting this show", and one product can be the answer to two of them.
+  // Every other facet is single-valued, so its loop runs once per card as before.
+  for (const c of all) for (const v of facetValuesOf(c, key)) counts.set(v, 0);
   for (const c of base) {
-    const v = facetValueOf(c, key);
-    counts.set(v, (counts.get(v) ?? 0) + 1);
+    for (const v of facetValuesOf(c, key)) counts.set(v, (counts.get(v) ?? 0) + 1);
   }
   // A selected value with no rows anywhere in the base must still appear, or
   // it would vanish from the rail while active in the URL. seedSelected gates
@@ -224,7 +242,7 @@ export function runQuery(cards: RegistryCard[], criteria: Criteria): QueryResult
   // marketplace filtered out by the free-text query must still seed its selected
   // bucket at zero, exactly as registry_search does (src_resolved is computed
   // against the marketplace table, independent of the query).
-  const knownSources = new Set(cards.map((c) => facetValueOf(c, "source")));
+  const knownSources = new Set(cards.flatMap((c) => facetValuesOf(c, "source")));
   const seedSelected = (key: FacetKey): ((v: string) => boolean) =>
     key === "source" ? (v) => knownSources.has(v) : () => true;
 

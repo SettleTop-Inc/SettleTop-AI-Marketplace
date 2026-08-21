@@ -3,7 +3,7 @@
 import Link from "next/link";
 import AgentLogo from "@/components/AgentLogo";
 import { MAX_COMPARE } from "@/lib/registry-query";
-import { UNKNOWN, statusClass } from "@/lib/present";
+import { UNKNOWN, marketplaceBadges, statusClass } from "@/lib/present";
 import type { RegistryCard } from "@/lib/types";
 
 /**
@@ -102,9 +102,21 @@ export default function AgentCard({
 
       <p className="st-card__meta">
         {c.rating ? `${c.rating} ★ · ${c.rating_count} reviews` : "Not rated"}
-        {" · "}
-        {c.marketplace_name}
       </p>
+
+      {/* One badge per marketplace the asset is listed on, never a single
+          resolved name. A 1:1 asset (every asset today) renders exactly one
+          badge; a merged asset renders one per listing so both sources show
+          and neither is hidden behind the primary. Labelled from
+          marketplaceBadges, which uses the card's own marketplace_name for the
+          primary and the id->name map for the rest. */}
+      <div className="st-card__sources">
+        {marketplaceBadges(c).map((m) => (
+          <span className="st-source" key={m.id}>
+            {m.name}
+          </span>
+        ))}
+      </div>
 
       <p className="st-card__tagline">{c.tagline ?? "Not stated"}</p>
 
