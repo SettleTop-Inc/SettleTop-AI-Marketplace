@@ -184,7 +184,7 @@ export default function AgentCard({
         {onOpen && (
           <button
             className="st-btn st-btn--secondary"
-            onClick={() => onOpen({ kind: "agent", id: c.source_product_id })}
+            onClick={() => onOpen({ kind: "agent", id: c.asset_id })}
           >
             Quick look
           </button>

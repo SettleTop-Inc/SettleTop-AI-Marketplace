@@ -68,7 +68,13 @@ export default function LandingApp({
     supabase
       .from("v_asset_passport")
       .select("*")
-      .eq("source_product_id", modal.id)
+      // Fetch by asset_id, the asset's stable unique key, not source_product_id.
+      // Two assets can share a source_product_id across marketplaces (the #45
+      // slug-fallback case), so an .eq("source_product_id", ...).maybeSingle()
+      // would match two passport rows and resolve to the wrong product. The card
+      // Link already keys on canonical_slug for the same reason; this is the
+      // modal's equivalent.
+      .eq("asset_id", modal.id)
       .maybeSingle()
       .then(({ data, error }) => {
         if (cancelled) return;
@@ -386,7 +392,7 @@ function Workbench({
         </div>
         <button
           className="secondary-btn full"
-          onClick={() => onOpen({ kind: "agent", id: a.source_product_id })}
+          onClick={() => onOpen({ kind: "agent", id: a.asset_id })}
         >
           Open full Agent Passport
         </button>
@@ -420,7 +426,7 @@ function Workbench({
           </svg>
           <button
             className="node center-node"
-            onClick={() => onOpen({ kind: "agent", id: a.source_product_id })}
+            onClick={() => onOpen({ kind: "agent", id: a.asset_id })}
           >
             <span className="node-icon">{initials(a.name)}</span>
             <b>{a.name}</b>
