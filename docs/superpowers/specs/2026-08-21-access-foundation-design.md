@@ -1,7 +1,7 @@
 # Access Foundation: Design Spec
 
 **Date:** 2026-08-21
-**Status:** Draft for review (revised after adversarial critique)
+**Status:** Draft for review (revised: adversarial critique, then public-passport split)
 **Sub-project:** 1 of 6 in the Accounts & Access initiative
 **Depends on:** nothing (this is the foundation everything else builds on)
 
@@ -42,12 +42,22 @@ analytics capture, or any billing.
 
 Settled in brainstorming, binding on the design:
 
-1. **Gate depth behind sign-in.** Anonymous visitors see cards, search, and the
-   top-line provenance summary. Full passports, raw-evidence metadata, and
-   cross-marketplace linkage require an account. This changes the public "nobody
-   takes our word" promise from PR #30: provenance depth becomes a sign-in
-   benefit, not fully-open proof. The landing copy will be revised to match in a
-   later pass; that copy change is noted here, not built here.
+1. **Gate provenance depth behind sign-in, with a useful public passport.**
+   Anonymous visitors see cards, search, and a reduced public passport: the
+   vendor's own published facts (identity, description, pricing and plans, which
+   marketplaces it is on and the links out) plus our top-line verdict
+   (provenance status, evidence tier, risk, and the ledger count). SettleTop's
+   provenance analysis is the sign-in benefit: the evidence records, the
+   per-layer tracing, the risk basis, cross-marketplace linkage detail, and the
+   permissions and compliance breakdown. The gate is inline within the passport
+   (each deep section invites sign-in), not a full-page wall, so the anon page
+   stays genuinely useful and shareable. This still changes the PR #30 "nobody
+   takes our word" promise: the proof depth becomes a sign-in benefit. The
+   landing copy will be revised to match in a later pass; that copy change is
+   noted here, not built here.
+   The organizing line: the vendor's own facts are public (they are scrapable
+   from the source marketplaces anyway, so gating them buys nothing); SettleTop's
+   analysis is gated (it is the unique, monetizable asset worth protecting).
 
 2. **Cards server-side too.** All reads move behind a Next.js server layer, and
    the anon Supabase key is retired from the browser. Anon still sees cards, but
@@ -258,11 +268,14 @@ Two enforcement layers, defense in depth:
    passport depth but never `capture.raw` and never the admin ops surface; only
    `service_role` touches base tables directly.
 2. **Server layer.** Chooses the credential by session, shapes responses,
-   returns a sign-in wall for anon depth requests, re-checks `profile.role`
-   before exposing any admin surface, and enforces rate and account-creation
-   limits.
+   serves the public projection and the inline depth gate for anon passport
+   requests, re-checks `profile.role` before exposing any admin surface, and
+   enforces rate and account-creation limits.
 
 ### 4.1 What each tier sees
+
+The organizing line: **the vendor's own published facts plus our top-line
+verdict are public; SettleTop's provenance analysis is gated behind sign-in.**
 
 | Surface (read function) | Anon | Signed-in | Admin |
 |---|---|---|---|
@@ -270,21 +283,27 @@ Two enforcement layers, defense in depth:
 | Top-line stats (`v_registry_stats`) | yes | yes | yes |
 | Registry cards (`v_registry_card` / `getTopAgents`) | yes | yes | yes |
 | Logo status (`v_logo_status` / `getLogos`) | yes | yes | yes |
-| Card provenance summary (ledger count, tier, risk, status) | yes | yes | yes |
-| Full passport (`v_asset_passport` / `getFeatured`, `getPassports`, `getPassportBySlug`) | no (wall) | yes | yes |
+| Public passport (`v_asset_passport_public`, new): identity, description (`overview_text`), pricing and plans, where-to-get-it (marketplaces + links), plus the top-line verdict (status, tier, risk, ledger count) | yes | yes | yes |
+| Provenance depth (full `v_asset_passport`): evidence records, per-layer tracing (`known_layers` detail), risk basis, permissions and compliance detail | no (inline gate) | yes | yes |
 | Per-listing passport (`v_listing_passport`) | no | yes | yes |
 | Raw-evidence metadata (`v_asset_evidence`: content_hash, method, has_raw) | no | yes | yes |
 | Recent changes (`v_asset_change_feed` / `getRecentChanges`) | no | yes | yes |
-| Cross-marketplace linkage shown on a merged passport | no | yes | yes |
+| Cross-marketplace linkage detail on a merged passport | no | yes | yes |
 | Merge-candidate queue (`v_merge_candidates` / `getMergeCandidates`) | no | no | yes |
 | Raw capture bytes (`capture.raw`) | no | no | no (service_role only) |
 | Operations (merge / unmerge) | no | no | later spec |
 
-`capture.raw` is unreadable by every browser tier including admin: the admin UI
-that will operate merges (sub-project 3) acts through `service_role` RPCs, not
-by reading raw bytes. Linkage distinction: the *fact* that two listings are the
-same product, as shown on a merged passport, is signed-in depth; the
-*merge-candidate queue* of unconfirmed suspects is admin-only.
+Notes. The anon *public passport* renders as a real page (good for sharing and
+SEO); the deep sections show an inline sign-in prompt, not a full-page wall.
+`capture.raw` is unreadable by every browser tier including admin: the admin
+merge UI (sub-project 3) acts through `service_role` RPCs, not by reading raw
+bytes. Linkage distinction: the *detail* that two listings are the same product,
+shown on a merged passport, is signed-in depth; the *merge-candidate queue* of
+unconfirmed suspects is admin-only. Borderline fields (detailed permissions and
+compliance) are classified as gated depth, because they are part of the
+provenance detail the passport exists to surface; the vendor's headline
+certification stays visible through the public evidence tier. The plan finalizes
+the field-by-field projection.
 
 ### 4.2 Database re-gate (the core change)
 
@@ -301,12 +320,17 @@ revoke direct base-table SELECT from both roles.**
 
 - Convert the read surfaces to `security definer`, owned by a role that holds
   base access, each projecting only its tier's columns:
-  - **Card tier** (granted `anon, authenticated`): `registry_search`,
-    `v_registry_card`, `v_registry_stats`, `v_logo_status`. `registry_search`
-    also gains an internal `p_limit` cap (below).
-  - **Passport tier** (granted `authenticated` only): `v_asset_passport`,
-    `v_listing_passport`, `v_asset_evidence` (projects `has_raw`, never `raw`),
-    `v_asset_change_feed`.
+  - **Public tier** (granted `anon, authenticated`): `registry_search`,
+    `v_registry_card`, `v_registry_stats`, `v_logo_status`, and a new
+    `v_asset_passport_public` projecting the public passport fields (identity,
+    `overview_text`, pricing and plans, the listings' marketplace names and
+    source URLs, and the top-line verdict). It carries none of the evidence
+    jsonb, per-layer detail, risk basis, permissions, or compliance detail, so
+    depth cannot leak through the public surface. `registry_search` also gains an
+    internal `p_limit` cap (below).
+  - **Passport-depth tier** (granted `authenticated` only): `v_asset_passport`
+    (full), `v_listing_passport`, `v_asset_evidence` (projects `has_raw`, never
+    `raw`), `v_asset_change_feed`.
   - **Admin tier** (granted `authenticated`, admin-checked in the body):
     `v_merge_candidates` gets a trailing `where exists (select 1 from profile
     where profile.id = auth.uid() and role = 'admin')`, so a signed-in non-admin
@@ -377,12 +401,13 @@ touches read privileges only. The write path and its evidence gate are untouched
   - `service_role` is used only for writes / admin operations in later specs,
     never for reads.
 - **`lib/registry.ts` reads become session-aware.** Each read function resolves
-  the request session and uses the anon client (card tier) or the session client
-  (passport tier). A passport read with no signed-in session **must not execute
-  and must not throw**: it returns a distinct "needs sign-in" result, separate
-  from the existing `{ ok: false, error }` failure shape, so callers render the
-  sign-in wall (4.6) rather than the generic fault copy. **No privileged
-  credential is ever used to satisfy an anon passport read.**
+  the request session and uses the anon client or the session client. For a
+  passport, an anon session reads `v_asset_passport_public` (the public
+  projection) and a signed-in session reads `v_asset_passport` (full). A
+  full-depth read is never attempted for anon, and **no privileged credential is
+  ever used to satisfy an anon read**. A genuine failure still returns the
+  existing `{ ok: false, error }` shape and must never surface the raw PostgREST
+  message.
 - **Rotate the publishable key.** The current key is in git history and shipped
   bundles, so relocating it is not enough: rotate it in Supabase so the old key
   stops authorizing PostgREST. The new anon key is server-only (no
@@ -390,24 +415,28 @@ touches read privileges only. The write path and its evidence gate are untouched
   window has a live client pointed at a dead key.
 - **Relocate the one browser read.** Replace the client
   `supabase.from("v_asset_passport")` in `LandingApp.tsx` with a `fetch` to a
-  route handler, `app/api/passport/[assetId]/route.ts`, that checks the session:
-  signed-in returns the passport JSON; anon returns `401` with a JSON body the
-  modal renders as the sign-in wall.
-- **Gate the two server-rendered passport pages** (this is the critical
-  addition; they were the primary passport surfaces and cannot be left out):
-  - `app/agent/[id]/page.tsx` (`getPassportBySlug` -> `v_asset_passport`): for
-    anon, render the sign-in wall, not a thrown 500 and not a card-only teaser
-    unless we choose the teaser treatment. It must never surface the raw
-    PostgREST permission-denied message.
-  - `app/registry/compare/page.tsx` (`getPassports` -> `v_asset_passport`): for
-    anon, render the sign-in wall in place of the comparison.
-  Both pages consume the "needs sign-in" result above and render the wall; signed
-  -in visitors see the full passport / comparison unchanged.
-- **Home "featured passport" reduction.** `getFeatured` reads `v_asset_passport`
-  and renders on the home page for everyone, including anon. Under the gate, the
-  home featured section becomes card-level for anon (a teaser: name, publisher,
-  top-line provenance, "sign in to open the passport"); signed-in visitors keep
-  the full featured passport.
+  route handler, `app/api/passport/[assetId]/route.ts`, that returns the
+  tier-appropriate projection: the public passport for anon, the full passport
+  for signed-in, both `200`. The modal renders the public fields and shows the
+  inline depth gate when the response is the public shape.
+- **Render the public passport on the two server-rendered pages, depth gated
+  inline** (they are the primary passport surfaces and cannot be left out):
+  - `app/agent/[id]/page.tsx`: for anon, read `v_asset_passport_public` and
+    render `PassportView` in gated mode (public fields shown, depth sections
+    replaced by an inline sign-in prompt). Signed-in reads the full passport and
+    renders normally. Never throw a 500 on the anon path and never surface the
+    raw permission-denied message.
+  - `app/registry/compare/page.tsx`: for anon, compare the public fields with the
+    depth rows gated inline. Signed-in compares the full passports.
+- **`PassportView` gains a `gated` mode.** It renders the public fields from
+  whichever projection it is handed and, in gated mode, replaces each depth
+  section (evidence, per-layer tracing, risk basis, permissions, compliance,
+  cross-marketplace linkage) with the inline sign-in affordance (4.6). This is
+  the one real UI change; the component stays presentational.
+- **Home "featured passport".** `getFeatured` currently reads `v_asset_passport`
+  for everyone. For anon it reads `v_asset_passport_public` and the modal shows
+  the public fields with the depth gated; signed-in keeps the full featured
+  passport.
 
 ### 4.4 Authentication and identity
 
@@ -473,8 +502,9 @@ anything a visitor reads):
 
 - Rate limit (`429`): "You are moving quickly. Sign in for higher limits, or slow
   down and try again in a moment."
-- Sign-in wall (anon depth request, on the modal, the agent page, and compare):
-  "Sign in to see the full passport. The provenance depth, evidence, and
+- Inline depth gate (shown in place of each gated passport section, on the
+  modal, the agent page, and compare): "Sign in to see the provenance. The
+  evidence, the layer-by-layer tracing, the risk basis, and the
   cross-marketplace links are open to signed-in accounts."
 - Magic-link sent: "Check your email for a sign-in link."
 - Auth callback failure: "That sign-in link did not work. Request a new one."
@@ -482,7 +512,8 @@ anything a visitor reads):
   later."
 - A genuine server failure (not a gate refusal) returns "Something went wrong
   loading this passport. Try again." The raw PostgREST permission-denied message
-  must never reach the client; a gate refusal is the wall, not an error.
+  must never reach the client; a gated depth section renders the inline sign-in
+  prompt, not an error.
 
 ---
 
@@ -503,10 +534,11 @@ server-side and rate-limited. Shippable, no regression.
 **Phase B: auth + the tier gate.**
 Add magic-link auth (`proxy.ts`, callback route, sign-in UI), `profile` + role +
 `admin_allowlist` + trigger, the account-creation limiter, the DB re-gate
-(definer surfaces for both roles, base-table SELECT revoked, `registry_search`
-cap, `v_merge_candidates` admin check, new-contract DO-blocks), the gate `auth`
-shim and new check files, the passport sign-in wall on the modal / agent page /
-compare page, and the home featured reduction. After Phase B, the gate is real.
+(definer surfaces including the new `v_asset_passport_public`, base-table SELECT
+revoked from both roles, `registry_search` cap, `v_merge_candidates` admin check,
+new-contract DO-blocks), the gate `auth` shim and new check files, `PassportView`
+gated mode with the inline depth gate on the modal / agent page / compare page,
+and the public featured passport for anon. After Phase B, the gate is real.
 
 ---
 
@@ -514,13 +546,17 @@ compare page, and the home featured reduction. After Phase B, the gate is real.
 
 - **Gate (pure-Postgres container), with the `auth` shim from 4.2.** New numbered
   check files assert:
-  - anon: SELECT on the card definer surfaces (`v_registry_card`,
-    `v_registry_stats`, `v_logo_status`) returns rows; EXECUTE `registry_search`
-    returns rows; a large `p_limit` returns at most the cap.
-  - anon: SELECT on `v_asset_passport` / `v_listing_passport` /
+  - anon: SELECT on the public definer surfaces (`v_registry_card`,
+    `v_registry_stats`, `v_logo_status`, `v_asset_passport_public`) returns rows;
+    EXECUTE `registry_search` returns rows; a large `p_limit` returns at most the
+    cap.
+  - anon: SELECT on `v_asset_passport` (full) / `v_listing_passport` /
     `v_asset_evidence` / `v_asset_change_feed` / `v_merge_candidates` raises
     `42501`; SELECT on base tables raises `42501`; `select raw from capture`
     raises `42501`.
+  - `v_asset_passport_public` carries no evidence, per-layer, risk-basis,
+    permissions, or compliance columns: assert the projection so depth cannot
+    leak through the public surface.
   - authenticated: SELECT on the passport surfaces returns rows;
     `select raw from capture` raises `42501`; SELECT on base tables raises
     `42501`.
@@ -533,9 +569,11 @@ compare page, and the home featured reduction. After Phase B, the gate is real.
 - **Parity.** Keep `test:parity` green: `registry_search` card results unchanged
   by the definer conversion and the cap (within the existing <= 96 page size).
 - **App / integration (Playwright + `node --test`).** The passport route returns
-  `401` for anon, `200` for signed-in. Anon `GET /agent/<slug>` and
-  `GET /registry/compare?ids=...` render the sign-in wall, not the passport and
-  not a 500. The read limiter returns `429` past the budget. The
+  the public projection for anon (`200`, no depth fields) and the full passport
+  for signed-in (`200`). Anon `GET /agent/<slug>` and
+  `GET /registry/compare?ids=...` render the public passport with the depth
+  sections gated inline, never the full depth and never a 500; signed-in renders
+  full depth. The read limiter returns `429` past the budget. The
   account-creation limiter blocks past its budget. The auth callback sets a
   session; sign-out clears it.
 
@@ -549,7 +587,11 @@ compare page, and the home featured reduction. After Phase B, the gate is real.
   a tier-scoped definer surface. `capture.raw` is reachable only by
   `service_role`, so no browser tier, including admin, can read raw evidence.
 - `registry_search` is capped so one definer call cannot dump the corpus.
-- Passport depth is genuinely gated behind auth. Reaching it requires an account.
+- The public passport (vendor facts + top-line verdict) is intentionally open and
+  was scrapable from the source marketplaces anyway. SettleTop's provenance
+  analysis (evidence, per-layer tracing, risk basis, linkage, permissions and
+  compliance detail) is genuinely gated behind auth; reaching it requires an
+  account.
 - Read limits: anon by IP plus a global anon backstop; signed-in by account;
   admin exempt. Account creation is limited per IP / domain with a global budget.
 - **Honest residuals** (closed by sub-project 5, not this spec): a determined
@@ -576,8 +618,14 @@ compare page, and the home featured reduction. After Phase B, the gate is real.
   ops setup item; without it, sign-in does not work end to end.
 - **Key rotation timing.** Rotation and the server-only-client deploy must be
   coordinated so no deployed window ships a client with a dead key.
-- **The home featured reduction** and the agent/compare wall treatment are
-  visible changes to existing surfaces; confirm the treatment during review.
+- **The public passport treatment** (the anon passport rendering the public
+  fields with the depth sections gated inline, on the modal, agent page, and
+  compare) is a visible change to existing surfaces; confirm the treatment during
+  review.
+- **The public/depth field split** in `v_asset_passport_public` is load-bearing:
+  any field wrongly placed on the public side leaks analysis, any field wrongly
+  gated makes the anon page thin. The plan must produce the exact column list and
+  the gate must assert the public projection excludes every depth column.
 - **The account-creation limiter is a scope addition** (section 4.5). Keep it or
   defer it; if deferred, the passport-farm residual is accepted until
   sub-project 5.
@@ -589,16 +637,18 @@ compare page, and the home featured reduction. After Phase B, the gate is real.
 - The browser bundle contains no Supabase key (verified by building and grepping
   the emitted client chunks).
 - The old publishable key is rotated and no longer authorizes PostgREST.
-- Anon can browse cards, search, stats, and logos through the server layer only,
-  and sees the sign-in wall on the Quick-look modal, `/agent/<slug>`, and
-  `/registry/compare`, never a 500 and never a raw DB error.
+- Anon can browse cards, search, stats, logos, and the public passport through
+  the server layer only. The Quick-look modal, `/agent/<slug>`, and
+  `/registry/compare` render the public passport with the provenance depth gated
+  inline, never a 500 and never a raw DB error.
 - A visitor can sign in by magic link; a signed-in account sees full passport
   depth.
 - The admin allowlist promotes the seeded account to admin; no self-serve path to
   admin exists; the merge-candidate queue returns rows only to an admin.
-- The gate proves the tier contract: anon denied depth, base tables, and
+- The gate proves the tier contract: anon allowed the public surfaces (including
+  `v_asset_passport_public`) and denied the full passport, base tables, and
   `capture.raw`; authenticated denied `capture.raw` and base tables, allowed the
-  passport surface; `registry_search` capped; admin-only rows on
+  full passport surface; `registry_search` capped; admin-only rows on
   `v_merge_candidates`. The parity test is green.
 - Read limits return `429` past the budget for anon (by IP, with the global
   backstop) and signed-in (by account); admin is exempt. Account creation is
