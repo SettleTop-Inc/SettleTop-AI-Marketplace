@@ -706,6 +706,52 @@ h3.st-display { font-size: var(--t-lg); }
 }
 
 /* =========================================================================
+   Depth gate — the inline sign-in affordance (Access Foundation Phase B2)
+
+   Stands in for one gated section of the passport (the layer ledger, the
+   "Agent build and provenance" record, the "Listed on" panels) when the
+   read is anonymous. A quiet inset panel that reads as the next row of the
+   document, not a full-page wall — the public fields around it stay fully
+   visible and readable.
+   ========================================================================= */
+
+.st-depth-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s3);
+  padding: var(--s6);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius);
+}
+.st-depth-gate__lead {
+  margin: 0;
+  font-size: var(--t-md);
+  font-weight: 600;
+  color: var(--c-heading);
+}
+.st-depth-gate__body {
+  margin: 0;
+  max-width: 60ch;
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  color: var(--c-ink-2);
+}
+
+/* Inside the identity band, in place of the layer ledger: match the
+   ledger's own top rule and spacing (see `.st-passport-band .st-ledger`
+   above) rather than boxing a second panel under the hero. */
+.st-passport-band .st-depth-gate {
+  margin-top: var(--s7);
+  padding: var(--s6) 0 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--c-line);
+  border-radius: 0;
+}
+
+/* =========================================================================
    Tag row
    ========================================================================= */
 

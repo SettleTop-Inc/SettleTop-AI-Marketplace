@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "node --conditions=react-server --experimental-strip-types --test lib/*.test.ts scripts/**/*.test.mjs",
+    "test": "node --conditions=react-server --experimental-strip-types --experimental-test-module-mocks --test lib/*.test.ts scripts/**/*.test.mjs",
     "test:parity": "node --conditions=react-server --experimental-strip-types --env-file-if-exists=.env.local --test lib/registry-search.parity.test.ts",
     "harvest:catalog": "node scripts/harvest-catalog.mjs",
     "harvest:detail": "node scripts/harvest-detail.mjs",

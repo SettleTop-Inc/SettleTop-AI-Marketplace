@@ -28,6 +28,15 @@ IMAGE=${IMAGE:-postgres:17-alpine}
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MIGRATIONS="$HERE/../../supabase/migrations"
 
+# The re-gate migration (Access Foundation Phase B2) is held back behind this
+# threshold. It revokes base-table SELECT from anon/authenticated and flips
+# the read views to security definer, so the historical tripwires in
+# 04-reads.sql...13-identity.sql, which assert anon can read the OLD
+# invoker-view surface directly, would break if it applied alongside
+# everything else. Step 5 below stops before it; step 16b applies it (and
+# anything after it) once those historical checks have already passed.
+REGATE=20260821180000
+
 # Everything is piped over stdin rather than copied in, so no path translation
 # happens on Windows.
 psql_file() { docker exec -i "$CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 "$@"; }
@@ -126,10 +135,11 @@ done
 say "4. Seed through the OLD ingest_capture, as service_role"
 psql_file -1 < "$HERE/02-seed.sql"
 
-say "5. Every migration from 20260819100000 onward, in filename order"
+say "5. Every migration from 20260819100000 up to (not including) REGATE, in filename order"
 for f in "$MIGRATIONS"/*.sql; do
   b=$(basename "$f")
   [[ "$b" < "20260819100000" ]] && continue
+  [[ "$b" < "$REGATE" ]] || continue
   printf '%-50s ' "$b"
   if ! psql_file -q -1 < "$f" >/dev/null; then
     echo "FAILED"
@@ -171,6 +181,20 @@ psql_file -q < "$HERE/12-rate-limit.sql"
 
 say "16. Identity: trigger + profile RLS + no self-escalation"
 psql_file -q < "$HERE/13-identity.sql"
+
+say "16b. Apply the visibility-gate migration(s), in filename order"
+for f in "$MIGRATIONS"/*.sql; do
+  b=$(basename "$f")
+  [[ "$b" < "$REGATE" ]] && continue
+  printf '%-50s ' "$b"
+  if ! psql_file -q -1 < "$f" >/dev/null; then
+    echo "FAILED"; echo "Re-gate migration $b did not apply. The gate stops here." >&2; exit 1
+  fi
+  echo OK
+done
+
+say "16c. Visibility gate: tiered read surfaces, base + capture.raw denied, admin-only candidates"
+psql_file -q < "$HERE/14-visibility-gate.sql"
 
 say "17. Verdict"
 if verdict; then status=0; else status=1; fi
