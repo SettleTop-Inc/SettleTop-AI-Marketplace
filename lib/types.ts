@@ -71,6 +71,15 @@ export interface RegistryCard {
   /** How many listings the asset has. */
   listing_count?: number;
   /**
+   * The listing that supplied this row's headline fields (the qualifying
+   * listing for the certification group, the primary listing for everything
+   * else). Present on v_registry_card and v_asset_passport since the
+   * asset-layer migration, but never modeled here until the visibility gate
+   * needed it in PublicPassport's allowlist. Optional for the same reason as
+   * the fields above: a hand-built fixture is not obligated to carry it.
+   */
+  listing_id?: string;
+  /**
    * The asset's canonical URL slug, appended to v_registry_card by the phase 2
    * task 45 migration. This is what the grid must link /agent/ from: once two
    * marketplaces share a source_product_id, the second asset falls back to a
@@ -136,6 +145,36 @@ export interface AssetPassport extends RegistryCard {
   graph_permissions: string[];
   compliance: string[];
 }
+
+/**
+ * The reduced public passport: vendor facts + top-line verdict, no analysis.
+ * Mirrors v_asset_passport_public (Access Foundation Phase B2) — the depth
+ * fields (evidence, known_layers, risk_basis, graph_permissions, compliance,
+ * the cert_* detail fields, listings) are absent by construction, not merely
+ * unused. A signed-out read can only ever produce this shape.
+ */
+export type PublicPassport = Pick<AssetPassport,
+  | "asset_id" | "source_product_id" | "listing_url" | "marketplace_id" | "marketplace_name"
+  | "name" | "publisher" | "tagline" | "overview_text"
+  | "surfaces" | "categories" | "industries" | "works_with"
+  | "pricing" | "acquire_using" | "support"
+  | "listing_version" | "listing_updated"
+  | "rating" | "rating_count" | "native_rating" | "native_count"
+  | "external_source" | "external_rating" | "external_count"
+  | "certification" | "cert_label" | "cert_url"
+  | "function_category" | "delivery" | "price_band" | "price_note"
+  | "reach" | "provenance" | "evidence_tier" | "risk"
+  | "plans" | "product_links" | "legal_links" | "media"
+  | "listing_id" | "last_captured_at" | "capture_count"> & { logo?: string | null };
+
+/**
+ * A passport read at the tier the session earns. `gated` drives PassportView:
+ * false is the full record a signed-in read produced, true is the public
+ * projection a signed-out (or pre-migration-fallback) read produced.
+ */
+export type TieredPassport =
+  | { gated: false; passport: AssetPassport }
+  | { gated: true; passport: PublicPassport };
 
 /**
  * One row per listing, unaggregated: what one marketplace said about one

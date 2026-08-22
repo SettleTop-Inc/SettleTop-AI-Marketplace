@@ -1,4 +1,5 @@
 import { supabase } from "./supabase.ts";
+import { getSessionUser, supabaseServer } from "./auth.ts";
 import { globalReadTake } from "./rate-limit.ts";
 import {
   type Criteria,
@@ -17,8 +18,10 @@ import type {
   ListingPassport,
   MergeCandidate,
   MergeConfidence,
+  PublicPassport,
   RegistryCard,
   RegistryStats,
+  TieredPassport,
 } from "./types.ts";
 
 /**
@@ -339,54 +342,229 @@ export async function searchRegistry(c: Criteria): Promise<ReadResult<RegistryPa
 }
 
 /**
- * Compare needs full passports, keyed by asset_id. getPassportBySlug() cannot
- * be reused: it returns null for both a missing row and a failed read, so
- * compare would report an agent as "not found" during an outage.
+ * The reduced-public-passport column allowlist (Access Foundation Phase B2).
+ * Vendor facts, the top-line verdict, and where to get it: the 43 columns
+ * Task 1 Step 2 names, and NONE of the depth columns (evidence, known_layers,
+ * risk_basis, graph_permissions, compliance, the cert_* detail fields,
+ * listings, or the capture internals).
+ *
+ * A runtime constant, not just a type, because it bounds the anon read's own
+ * `.select()`. That is the actual boundary: even if v_asset_passport_public
+ * were widened tomorrow, or (during the pre-migration fallback below) the
+ * read reaches v_asset_passport itself, this list is still all this code
+ * ever asks for. `satisfies` ties it to PublicPassport so the two cannot
+ * silently drift apart.
  */
-export async function getPassports(
-  assetIds: string[]
-): Promise<ReadResult<AssetPassport[]>> {
-  if (assetIds.length === 0) return { ok: true, data: [] };
-  const { data, error } = await supabase
-    .from("v_asset_passport")
-    .select("*")
-    .in("asset_id", assetIds);
+export const PUBLIC_PASSPORT_COLUMNS = [
+  "asset_id", "source_product_id", "listing_url", "marketplace_id", "marketplace_name",
+  "name", "publisher", "tagline", "overview_text",
+  "surfaces", "categories", "industries", "works_with",
+  "pricing", "acquire_using", "support",
+  "listing_version", "listing_updated",
+  "rating", "rating_count", "native_rating", "native_count",
+  "external_source", "external_rating", "external_count",
+  "certification", "cert_label", "cert_url",
+  "function_category", "delivery", "price_band", "price_note",
+  "reach", "provenance", "evidence_tier", "risk",
+  "plans", "product_links", "legal_links", "media",
+  "listing_id", "last_captured_at", "capture_count",
+] as const satisfies readonly (keyof PublicPassport)[];
+
+/**
+ * Never the raw PostgREST message for a tiered passport read (unlike the
+ * older readers below, whose error text stays server-side console.error and
+ * whose ok:false is what every caller actually branches on). These reads sit
+ * directly behind the anon path, so a genuine failure logs the real message
+ * and hands the caller this instead.
+ */
+const READ_FAILED = "could not read the passport";
+
+/**
+ * slug -> asset_id via the definer resolver (public.resolve_asset_slug),
+ * so browser roles need no asset_slug grant: base-table SELECT on asset_slug
+ * is revoked from both anon and authenticated by the visibility-gate
+ * migration. Both tiers use the anon client here — the function is routing
+ * only, carries no provenance, and is granted to anon and authenticated
+ * alike, so there is nothing for a session client to add.
+ *
+ * Returns the uuid, `undefined` for a slug that resolves to nothing, or
+ * `null` if the read itself failed.
+ */
+export async function resolveAssetSlug(slug: string): Promise<string | undefined | null> {
+  const { data, error } = await supabase.rpc("resolve_asset_slug", { p_slug: slug });
   if (error) {
-    console.error("getPassports", error.message);
-    return { ok: false, error: error.message };
+    console.error("resolveAssetSlug", error.message);
+    return null;
   }
-  return { ok: true, data: (data ?? []) as AssetPassport[] };
+  return (data as string | null) ?? undefined;
 }
 
 /**
- * One passport by asset_id, for the Quick-look modal's route handler. Keeps a
- * failed read (ok:false) distinct from a missing row (ok:true, data:null), so
- * the modal never renders "not found" during an outage.
+ * The signed-out (public) tier of a passport read: v_asset_passport_public,
+ * selecting only PUBLIC_PASSPORT_COLUMNS. If that view does not exist yet
+ * (Postgres 42P01, undefined_table — the window between this code deploying
+ * and the visibility-gate migration being applied to prod, since database
+ * deploys are manual here), falls back to v_asset_passport itself, but keeps
+ * the same allowlisted `.select()`. The public tier is therefore preserved by
+ * the projection this code asks for, not by which view happens to answer, so
+ * the pre-migration window shows exactly the same reduced passport an
+ * anonymous visitor gets post-migration — never a 500, and never a silent
+ * full-data leak either.
  */
-export async function getPassportByAssetId(
+async function readPublicPassport(
   assetId: string
-): Promise<ReadResult<AssetPassport | null>> {
-  const { data, error } = await supabase
+): Promise<ReadResult<TieredPassport | null>> {
+  const cols = PUBLIC_PASSPORT_COLUMNS.join(",");
+
+  const pub = await supabase
+    .from("v_asset_passport_public")
+    .select(cols)
+    .eq("asset_id", assetId)
+    .maybeSingle();
+
+  if (pub.error) {
+    if (pub.error.code !== "42P01") {
+      console.error("readPassport (public)", pub.error.message);
+      return { ok: false, error: READ_FAILED };
+    }
+    const fb = await supabase
+      .from("v_asset_passport")
+      .select(cols)
+      .eq("asset_id", assetId)
+      .maybeSingle();
+    if (fb.error) {
+      console.error("readPassport (public fallback)", fb.error.message);
+      return { ok: false, error: READ_FAILED };
+    }
+    return {
+      ok: true,
+      data: fb.data ? { gated: true, passport: fb.data as unknown as PublicPassport } : null,
+    };
+  }
+
+  return {
+    ok: true,
+    data: pub.data ? { gated: true, passport: pub.data as unknown as PublicPassport } : null,
+  };
+}
+
+/**
+ * Resolves the session ONCE, then reads the tier it earns. Signed in reads
+ * the full v_asset_passport through the user's cookie-bound session client
+ * (authenticated role, from lib/auth.ts's supabaseServer()); signed out
+ * delegates to readPublicPassport, which reads through the anon client (anon
+ * role). Never a privileged credential for an anon read.
+ *
+ * Internal: getPassportByAssetId, getPassportBySlug and getFeatured are the
+ * public interface. Slug resolution reuses resolveAssetSlug(), which is why
+ * a slug that resolves to nothing (undefined) is a found-nothing ok:true
+ * result rather than an error — the same "we could not read" vs "there is no
+ * such record" distinction the passport readers have always kept, now
+ * decided before the tier is even chosen.
+ */
+async function readPassport(
+  by: { assetId: string } | { slug: string }
+): Promise<ReadResult<TieredPassport | null>> {
+  const user = await getSessionUser();
+
+  const assetId = "assetId" in by ? by.assetId : await resolveAssetSlug(by.slug);
+  if (assetId === undefined) return { ok: true, data: null };
+  if (assetId === null) return { ok: false, error: READ_FAILED };
+
+  if (!user) return readPublicPassport(assetId);
+
+  const session = await supabaseServer();
+  const { data, error } = await session
     .from("v_asset_passport")
     .select("*")
     .eq("asset_id", assetId)
     .maybeSingle();
   if (error) {
-    console.error("getPassportByAssetId", error.message);
-    return { ok: false, error: error.message };
+    console.error("readPassport (signed-in)", error.message);
+    return { ok: false, error: READ_FAILED };
   }
-  return { ok: true, data: (data as AssetPassport) ?? null };
+  return { ok: true, data: data ? { gated: false, passport: data as AssetPassport } : null };
+}
+
+/**
+ * Compare needs passports, keyed by asset_id, at one tier for the whole
+ * comparison — decided once by the session, the same as a single passport
+ * read. getPassportBySlug() cannot be reused for the "failed vs missing"
+ * distinction: it returns null for both a missing row and a failed read, so
+ * compare would report an agent as "not found" during an outage.
+ */
+export async function getPassports(
+  assetIds: string[]
+): Promise<ReadResult<{ gated: boolean; passports: AssetPassport[] | PublicPassport[] }>> {
+  if (assetIds.length === 0) return { ok: true, data: { gated: false, passports: [] } };
+
+  const user = await getSessionUser();
+
+  if (user) {
+    const session = await supabaseServer();
+    const { data, error } = await session
+      .from("v_asset_passport")
+      .select("*")
+      .in("asset_id", assetIds);
+    if (error) {
+      console.error("getPassports (signed-in)", error.message);
+      return { ok: false, error: READ_FAILED };
+    }
+    return { ok: true, data: { gated: false, passports: (data ?? []) as AssetPassport[] } };
+  }
+
+  const cols = PUBLIC_PASSPORT_COLUMNS.join(",");
+  const pub = await supabase
+    .from("v_asset_passport_public")
+    .select(cols)
+    .in("asset_id", assetIds);
+
+  if (pub.error) {
+    if (pub.error.code !== "42P01") {
+      console.error("getPassports (public)", pub.error.message);
+      return { ok: false, error: READ_FAILED };
+    }
+    const fb = await supabase.from("v_asset_passport").select(cols).in("asset_id", assetIds);
+    if (fb.error) {
+      console.error("getPassports (public fallback)", fb.error.message);
+      return { ok: false, error: READ_FAILED };
+    }
+    return {
+      ok: true,
+      data: { gated: true, passports: (fb.data ?? []) as unknown as PublicPassport[] },
+    };
+  }
+
+  return {
+    ok: true,
+    data: { gated: true, passports: (pub.data ?? []) as unknown as PublicPassport[] },
+  };
+}
+
+/**
+ * One passport by asset_id, for the Quick-look modal's route handler. Keeps a
+ * failed read (ok:false) distinct from a missing row (ok:true, data:null), so
+ * the modal never renders "not found" during an outage. Tiered: delegates to
+ * readPassport, so the shape depends on the caller's session.
+ */
+export async function getPassportByAssetId(
+  assetId: string
+): Promise<ReadResult<TieredPassport | null>> {
+  return readPassport({ assetId });
 }
 
 /**
  * One passport, resolved through a URL slug rather than a listing id.
  *
- * Two reads: asset_slug is the only table keyed on the string a visitor
- * typed, and v_asset_passport is keyed on asset_id. A merge can retire a
- * slug's old primary listing without touching the slug row itself, so this
- * keeps resolving after phase 3 even though a lookup keyed on
- * source_product_id would not: that column names one listing, which after
- * phase 2 is not what a visitor's URL identifies.
+ * Slug resolution goes through resolveAssetSlug() (the security-definer
+ * public.resolve_asset_slug), not a direct read of asset_slug: base-table
+ * SELECT on asset_slug is revoked from both browser roles by the
+ * visibility-gate migration, and the definer function is what keeps slug
+ * routing working for both tiers regardless. A merge can retire a slug's old
+ * primary listing without touching the slug row itself, so this keeps
+ * resolving after phase 3 even though a lookup keyed on source_product_id
+ * would not: that column names one listing, which after phase 2 is not what
+ * a visitor's URL identifies.
  *
  * "We could not read" is kept distinct from "there is no such record" here,
  * the same way getPassports() above does it. A reader that collapsed the two
@@ -401,29 +579,8 @@ export async function getPassportByAssetId(
  */
 export async function getPassportBySlug(
   slug: string
-): Promise<ReadResult<AssetPassport | null>> {
-  const { data: slugRow, error: slugError } = await supabase
-    .from("asset_slug")
-    .select("asset_id")
-    .eq("slug", slug)
-    .maybeSingle();
-  if (slugError) {
-    console.error("getPassportBySlug", slugError.message);
-    return { ok: false, error: slugError.message };
-  }
-  if (!slugRow) return { ok: true, data: null };
-
-  const assetId = (slugRow as { asset_id: string }).asset_id;
-  const { data, error } = await supabase
-    .from("v_asset_passport")
-    .select("*")
-    .eq("asset_id", assetId)
-    .maybeSingle();
-  if (error) {
-    console.error("getPassportBySlug", error.message);
-    return { ok: false, error: error.message };
-  }
-  return { ok: true, data: (data as AssetPassport) ?? null };
+): Promise<ReadResult<TieredPassport | null>> {
+  return readPassport({ slug });
 }
 
 /**
@@ -434,11 +591,18 @@ export async function getPassportBySlug(
  *
  * Ordered on marketplace_name, then listing_id, which is unique per row, so
  * the panels render in a stable order across requests.
+ *
+ * Depth surface: read through the session client, not the anon client. The
+ * visibility-gate migration revokes anon SELECT on v_listing_passport, so
+ * this is a signed-in-only path by construction — a signed-out caller gets a
+ * Postgres permission error, surfaced as the existing { ok:false } shape,
+ * never a leak of listing-level provenance.
  */
 export async function getListingPassports(
   assetId: string
 ): Promise<ReadResult<ListingPassport[]>> {
-  const { data, error } = await supabase
+  const session = await supabaseServer();
+  const { data, error } = await session
     .from("v_listing_passport")
     .select("*")
     .eq("asset_id", assetId)
@@ -455,11 +619,15 @@ export async function getListingPassports(
  * Every capture of every listing of one asset, newest first: the evidence
  * trail a passport points back to. capture_id is unique per row and breaks
  * ties within the same captured_at.
+ *
+ * Depth surface: session client only, same reasoning as getListingPassports
+ * above. Signed-in-only by construction, not by caller discipline.
  */
 export async function getAssetEvidence(
   assetId: string
 ): Promise<ReadResult<AssetEvidenceRow[]>> {
-  const { data, error } = await supabase
+  const session = await supabaseServer();
+  const { data, error } = await session
     .from("v_asset_evidence")
     .select("*")
     .eq("asset_id", assetId)
@@ -479,11 +647,17 @@ export async function getAssetEvidence(
  * nothing. merge_assets (#63) is what will act on a confirmed pair, and the
  * review UI (#65) is what will render this. Until those land, v_merge_candidates
  * is the interface and this reader is the one caller.
+ *
+ * Depth (admin) surface: session client only. The visibility-gate migration
+ * revokes anon SELECT entirely and adds an admin predicate to the view
+ * itself, so a signed-in non-admin reads zero rows and a signed-out caller
+ * gets a permission error — this reader does not need to know which.
  */
 export async function getMergeCandidates(
   confidence?: MergeConfidence
 ): Promise<ReadResult<MergeCandidate[]>> {
-  let query = supabase
+  const session = await supabaseServer();
+  let query = session
     .from("v_merge_candidates")
     .select("*")
     // 'high' sorts before 'low' alphabetically, which is the order we want for
@@ -505,24 +679,40 @@ export async function getMergeCandidates(
  * The featured record for the hero and the provenance workbench: the best
  * evidenced thing in the registry, chosen by the data rather than pinned by
  * hand. If a better documented agent lands tomorrow, the homepage changes.
+ *
+ * Picks the id from v_registry_card (public, both tiers, so choosing the
+ * featured asset never itself depends on the session), then reads it through
+ * readPassport — the same tiered read a single agent page gets, so the
+ * featured card and the provenance workbench are gated exactly like every
+ * other passport.
  */
-export async function getFeatured(): Promise<AssetPassport | null> {
+export async function getFeatured(): Promise<ReadResult<TieredPassport | null>> {
   const { data, error } = await supabase
-    .from("v_asset_passport")
-    .select("*")
+    .from("v_registry_card")
+    .select("asset_id")
     .order("reach", { ascending: false })
     .order("rating_count", { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error) {
     console.error("getFeatured", error.message);
-    return null;
+    return { ok: false, error: READ_FAILED };
   }
-  return (data as AssetPassport) ?? null;
+  const row = data as { asset_id: string } | null;
+  if (!row) return { ok: true, data: null };
+  return readPassport({ assetId: row.asset_id });
 }
 
+/**
+ * Depth surface: session client only, same reasoning as getListingPassports
+ * above. Unlike the passport readers, this keeps its original signature
+ * (array, not ReadResult): a failed read already degraded to [] before this
+ * task, and a signed-out call now degrades the same way on a permission
+ * error as it would on any other failure, never a leak.
+ */
 export async function getRecentChanges(limit = 12): Promise<ChangeRow[]> {
-  const { data, error } = await supabase
+  const session = await supabaseServer();
+  const { data, error } = await session
     .from("v_asset_change_feed")
     .select("*")
     .limit(limit);
