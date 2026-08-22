@@ -366,6 +366,7 @@ export const PUBLIC_PASSPORT_COLUMNS = [
   "certification", "cert_label", "cert_url",
   "function_category", "delivery", "price_band", "price_note",
   "reach", "provenance", "evidence_tier", "risk",
+  "layers_known", "layers_tracked",
   "plans", "product_links", "legal_links", "media",
   "listing_id", "last_captured_at", "capture_count",
 ] as const satisfies readonly (keyof PublicPassport)[];

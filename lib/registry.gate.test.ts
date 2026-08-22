@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 /**
  * Session-aware passport reads (Access Foundation Phase B2, task 3): a
  * signed-in read earns v_asset_passport (full); a signed-out read earns
- * v_asset_passport_public (the 43-column allowlist), with a fallback to
+ * v_asset_passport_public (the public-column allowlist), with a fallback to
  * v_asset_passport (still allowlist-only) when the public view does not
  * exist yet, the pre-migration window. PostgREST reports a missing relation
  * as PGRST205 ("Could not find the table in the schema cache"), not the raw
@@ -162,7 +162,12 @@ test("PUBLIC_PASSPORT_COLUMNS excludes every depth column (the allowlist guard)"
   for (const col of excluded) {
     assert.ok(!cols.includes(col), `PUBLIC_PASSPORT_COLUMNS must not include "${col}"`);
   }
-  assert.equal(cols.length, 43, "the allowlist is exactly the 43 columns Task 1 Step 2 names");
+  // The layer COUNTS are public (a top-line verdict signal, the same ratio reach
+  // exposes); only the per-layer known_layers ARRAY (asserted excluded above) is
+  // depth. See migration 20260822120000_public_layer_counts.
+  assert.ok(cols.includes("layers_known"), "PUBLIC_PASSPORT_COLUMNS must include layers_known");
+  assert.ok(cols.includes("layers_tracked"), "PUBLIC_PASSPORT_COLUMNS must include layers_tracked");
+  assert.equal(cols.length, 45, "the allowlist is exactly the 45 public columns");
 });
 
 test("a signed-in session reads v_asset_passport and returns gated:false", async () => {

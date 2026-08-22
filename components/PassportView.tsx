@@ -244,6 +244,18 @@ export default function PassportView(props: Props) {
     0
   );
 
+  // Top-line verdict signals shown under the provenance-reach ledger in the band.
+  // Both are public (evidence_tier and capture_count are on PublicPassport), so
+  // they read off `a` and show for anon and signed-in alike.
+  const verdictNote = [
+    isKnown(a.evidence_tier) ? `Evidence tier ${a.evidence_tier}` : null,
+    a.capture_count > 0
+      ? `${a.capture_count} capture${a.capture_count === 1 ? "" : "s"} on record`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   const renderBlock = (b: (typeof blocks)[number], i: number) =>
     b.type === "ul" ? (
       <ul key={i} style={{ margin: "0 0 var(--s4)", paddingLeft: "1.1em" }}>
@@ -292,10 +304,19 @@ export default function PassportView(props: Props) {
             </div>
           </div>
 
-          {full ? (
-            <LayerLedger known={full.layers_known} tracked={full.layers_tracked} />
-          ) : (
-            <DepthGate />
+          {/*
+           * The provenance-reach ledger is a top-line verdict, not per-layer
+           * detail: layers_known/layers_tracked are counts on PublicPassport
+           * (the same ratio `reach` exposes), so the ledger and the tier/captures
+           * note below show for anon too. The per-layer known_layers array stays
+           * gated. No sign-in prompt sits in the band; the one prompt is at the
+           * "Agent build and provenance" section below.
+           */}
+          <LayerLedger known={a.layers_known} tracked={a.layers_tracked} />
+          {verdictNote && (
+            <p className="st-note" style={{ marginTop: "var(--s2)" }}>
+              {verdictNote}
+            </p>
           )}
         </div>
       </div>
@@ -554,27 +575,20 @@ export default function PassportView(props: Props) {
 
         {/*
          * `listings` is cross-marketplace linkage: PublicPassport carries no
-         * `listings` key at all, so `full` decides this branch. A gated
-         * render cannot know whether the asset actually spans more than one
-         * marketplace (that information IS the gated depth), so it shows the
-         * gate unconditionally rather than only when a count it cannot see
-         * would have been greater than one.
+         * `listings` key at all, so this section is signed-in only. Anon gets
+         * NO gate here: the one sign-in prompt lives at "Agent build and
+         * provenance" above (and already names the cross-marketplace links), and
+         * the primary marketplace plus its link are in Sources below, so a second
+         * gate here would just repeat the same affordance.
          */}
-        {full ? (
-          listings.length > 0 && (
-            <>
-              <SectionHead
-                count={`${listings.length} marketplace${listings.length === 1 ? "" : "s"}`}
-              >
-                Listed on
-              </SectionHead>
-              <ListingPanels listings={listings} />
-            </>
-          )
-        ) : (
+        {full && listings.length > 0 && (
           <>
-            <SectionHead>Listed on</SectionHead>
-            <DepthGate />
+            <SectionHead
+              count={`${listings.length} marketplace${listings.length === 1 ? "" : "s"}`}
+            >
+              Listed on
+            </SectionHead>
+            <ListingPanels listings={listings} />
           </>
         )}
 
