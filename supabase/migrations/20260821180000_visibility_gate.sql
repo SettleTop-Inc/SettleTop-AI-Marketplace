@@ -449,9 +449,13 @@ begin
       'v_asset_passport_public','v_merge_candidates'
     ]) as v(name)
   loop
+    v_opts := null;
     select c.reloptions into v_opts
       from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relname = v_bad;
+    if not found then
+      raise exception 'visibility gate: view % not found', v_bad;
+    end if;
     if v_opts @> array['security_invoker=true'] then
       raise exception 'visibility gate: % is still security_invoker=true', v_bad;
     end if;
