@@ -338,6 +338,11 @@
 .reg-cmp .reg-none { color: var(--c-ink-3); font-style: italic; }
 .reg-cmp-legend { display: flex; gap: var(--s5); font-size: var(--t-xs); color: var(--c-ink-2); margin-top: var(--s3); }
 
+/* Gated depth row (anonymous compare): DepthGate supplies its own padding,
+   border and background, so the cell doesn't double up on top of them —
+   same pattern as `.st-passport-band .st-depth-gate` in design.css. */
+.reg-cmp-gated td { padding: 0; }
+
 /* Non-colour signal for a "differs" row: readable text, not reliant on hue,
    so it reaches both screen readers and colour-blind sighted visitors —
    the row tint + left border alone reach neither. */
