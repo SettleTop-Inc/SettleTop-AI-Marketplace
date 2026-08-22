@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import CompareTable from "@/components/registry/CompareTable";
 import { getPassports } from "@/lib/registry";
 import { MAX_COMPARE } from "@/lib/registry-query";
+import type { AssetPassport, PublicPassport } from "@/lib/types";
 import "@/app/registry.css";
 
 export const revalidate = 300;
@@ -72,7 +73,10 @@ export default async function ComparePage({ searchParams }: { searchParams: Sear
   // dropped silently. Left empty on a failed read: a failed read must never
   // make a claim about any agent.
   const missingIds = result.ok
-    ? [...malformedIds, ...validIds.filter((id) => !result.data.some((a) => a.asset_id === id))]
+    ? [
+        ...malformedIds,
+        ...validIds.filter((id) => !result.data.passports.some((a) => a.asset_id === id)),
+      ]
     : [];
 
   return (
@@ -89,7 +93,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Sear
             <b>The registry could not be loaded</b>
             <p>This is a fault on our side. These agents have not been removed.</p>
           </div>
-        ) : result.data.length === 0 ? (
+        ) : result.data.passports.length === 0 ? (
           <div className="reg-empty">
             {wanted.length === 0 ? (
               <>
@@ -108,7 +112,27 @@ export default async function ComparePage({ searchParams }: { searchParams: Sear
           </div>
         ) : (
           <>
-            <CompareTable agents={result.data} />
+            {/*
+             * getPassports() (lib/registry.ts) returns `{ gated: boolean;
+             * passports: AssetPassport[] | PublicPassport[] }` — a plain
+             * boolean paired with a plain union, not a real discriminated
+             * union — because the signed-in and signed-out branches build the
+             * two independently. The pairing is a runtime guarantee (the
+             * signed-in branch always sets `gated: false` alongside
+             * `AssetPassport[]`, the signed-out branch always sets
+             * `gated: true` alongside `PublicPassport[]`) that TypeScript's
+             * control-flow analysis cannot derive from an unrelated boolean,
+             * unlike `TieredPassport`'s real discriminated union. Branching on
+             * `gated` here and asserting the array member it implies is the
+             * one place that trusts that guarantee, so CompareTable's own
+             * `Props` union — and its compile-time gated/depth-field
+             * enforcement — never has to.
+             */}
+            {result.data.gated ? (
+              <CompareTable agents={result.data.passports as PublicPassport[]} gated={true} />
+            ) : (
+              <CompareTable agents={result.data.passports as AssetPassport[]} gated={false} />
+            )}
             {missingIds.length > 0 && (
               <p className="reg-note" style={{ marginTop: 12 }}>
                 Not found in the registry: {missingIds.join(", ")}. They were not

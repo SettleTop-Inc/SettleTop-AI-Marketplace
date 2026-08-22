@@ -5,17 +5,6 @@ import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
 import { getLogos, getPassportBySlug } from "@/lib/registry";
 import { withLogo } from "@/lib/logos";
-import type { AssetPassport } from "@/lib/types";
-import type { ListingSummary } from "@/components/registry/ListingPanels";
-
-/**
- * `AssetPassport` does not declare `listings` (see the same comment in
- * PassportView.tsx): the column is appended to `v_asset_passport` by the
- * phase 2 migration and is simply absent from a phase 1 row. Read here once,
- * at the boundary, so the rest of this file can pass the value through
- * without re-deriving the cast at every call site.
- */
-type Passport = AssetPassport & { listings?: ListingSummary[] };
 
 export const revalidate = 300;
 
@@ -33,8 +22,12 @@ export async function generateMetadata({
   // Only a successful read that found nothing may say "not found". A failed
   // read gets a neutral title rather than announcing an absence it cannot know.
   if (!read.ok) return { title: "Agent Passport — SettleTop" };
-  const a = read.data;
-  if (!a) return { title: "Agent not found — SettleTop AI Registry" };
+  const tiered = read.data;
+  if (!tiered) return { title: "Agent not found — SettleTop AI Registry" };
+  // name/tagline are public on both tiers (TieredPassport's `passport` is
+  // either AssetPassport or PublicPassport), so metadata needs no branching
+  // on `gated` at all.
+  const a = tiered.passport;
   return {
     title: `${a.name} — Agent Passport — SettleTop`,
     description:
@@ -66,17 +59,23 @@ export default async function AgentPage({
   // 404 for revalidate seconds and tell the visitor the agent does not exist;
   // rendering an error page inline would cache the outage just as long. A
   // thrown error is not cached by ISR, so the page recovers the moment the
-  // database does, and error.tsx says whose fault it is.
+  // database does, and error.tsx says whose fault it is. This also keeps the
+  // anon path from ever surfacing a raw permission message: readPassport()
+  // in lib/registry.ts already collapses a signed-out permission error into
+  // the same READ_FAILED string an outage would produce, so `read.error`
+  // here is always safe to hand to Error() / error.tsx.
   if (!read.ok) throw new Error(`registry read failed: ${read.error}`);
 
-  const passport = read.data as Passport | null;
-  if (!passport) notFound();
+  const tiered = read.data;
+  if (!tiered) notFound();
 
-  // v_asset_passport carries no logo column — logos have their own archival
-  // lifecycle and are deliberately kept out of the capture views. Nothing here
-  // merged them, so every passport rendered initials no matter how many logos
-  // the registry held. One lookup for one product.
-  const a = withLogo(passport, await getLogos([passport.source_product_id]));
+  // v_asset_passport / v_asset_passport_public carry no logo column — logos
+  // have their own archival lifecycle and are deliberately kept out of the
+  // capture views. Nothing here merged them, so every passport rendered
+  // initials no matter how many logos the registry held. One lookup for one
+  // product. `withLogo` is generic over `source_product_id`, which both tiers
+  // carry, so this line is identical regardless of which tier `tiered` is.
+  const logos = await getLogos([tiered.passport.source_product_id]);
 
   // The destination path is always one of these two literals — never built
   // from `from` or `back` — so neither an attacker-supplied `?from=` nor a
@@ -92,11 +91,22 @@ export default async function AgentPage({
     ? { href: `/registry${backQS ? `?${backQS}` : ""}`, label: "Back to the registry" }
     : { href: "/", label: "Back to the overview" };
 
+  // `tiered.gated`/`tiered.passport` are correlated by construction
+  // (TieredPassport in lib/types.ts), but reading `.passport` off `tiered`
+  // ahead of a `tiered.gated` check would widen it back to the plain
+  // `AssetPassport | PublicPassport` union, and PassportView's own Props is
+  // a discriminated union that a bare `{ a, gated: boolean }` pair cannot
+  // satisfy. Branching here, the same way CompareTable's caller below has
+  // to, keeps `a` and `gated` narrowed to one matching Props member each.
   return (
     <>
       <SiteHeader current={fromRegistry ? "registry" : undefined} />
       <main id="top">
-        <PassportView a={a} back={back} />
+        {tiered.gated ? (
+          <PassportView a={withLogo(tiered.passport, logos)} back={back} gated={true} />
+        ) : (
+          <PassportView a={withLogo(tiered.passport, logos)} back={back} gated={false} />
+        )}
       </main>
       <SiteFooter />
     </>

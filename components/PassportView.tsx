@@ -118,6 +118,23 @@ type FullPassport = AssetPassport & { listings?: ListingSummary[] };
 type Passport = FullPassport | PublicPassport;
 
 /**
+ * `a`/`gated` are correlated by construction (Access Foundation Phase B2),
+ * the same way `TieredPassport` in lib/types.ts pairs its own `passport`
+ * with `gated`: a session that only earned a `PublicPassport` cannot also
+ * claim `gated` is false, and a full `FullPassport` read is never marked
+ * `gated`. Modelling that as a discriminated union — rather than
+ * `a: Passport; gated?: boolean` narrowed with a cast — means a stray
+ * depth-field read on the gated branch is a compile error instead of a
+ * runtime `undefined`. This is the hardening Task 4's review asked for;
+ * `components/registry/CompareTable.tsx`'s `Props` does the same thing for
+ * the same reason.
+ */
+type Props = (
+  | { a: FullPassport; gated?: false }
+  | { a: PublicPassport; gated: true }
+) & { back?: { href: string; label: string } };
+
+/**
  * Where the leading description came from.
  *
  * `overview_text` and `tagline` are the primary listing's own text, per
@@ -170,21 +187,18 @@ function certificationSource(a: Passport, listings: ListingSummary[]): string {
  *
  * `gated` is the tier the read actually produced (see `TieredPassport` in
  * lib/types.ts): the read layer sets it alongside the passport shape, so
- * `gated === false` only ever pairs with a full `AssetPassport` and
- * `gated === true` only ever pairs with a `PublicPassport`. Defaults to
- * false so an existing signed-in call site that has not been touched yet
- * (Tasks 6/7 wire the flag through) keeps rendering the full record exactly
- * as before.
+ * `gated === false`/omitted only ever pairs with a full `FullPassport` and
+ * `gated === true` only ever pairs with a `PublicPassport` — enforced by
+ * `Props` above, not by convention. Takes the whole `props` object, rather
+ * than destructuring `a`/`gated` apart, because TypeScript only carries a
+ * discriminated union's narrowing between properties read off the SAME
+ * expression: destructuring them into two independent locals up front would
+ * sever that link before `full` below ever gets to use it.
  */
-export default function PassportView({
-  a,
-  back,
-  gated = false,
-}: {
-  a: Passport;
-  back?: { href: string; label: string };
-  gated?: boolean;
-}) {
+export default function PassportView(props: Props) {
+  const { back } = props;
+  const a = props.a;
+
   /**
    * The one place that trusts the `gated`/shape contract above. Every depth
    * field below (evidence, the layer counts, risk_basis, graph_permissions,
@@ -194,8 +208,15 @@ export default function PassportView({
    * `PublicPassport` does not carry. Public fields (name, publisher, rating,
    * risk band, plans, sources, and so on) are declared identically on both
    * union members and keep reading off `a` everywhere below.
+   *
+   * `props.gated ? null : props.a`, not `gated ? null : (a as FullPassport)`:
+   * reading `props.a` in the branch where `props.gated` is checked lets
+   * TypeScript's discriminated-union narrowing do the work `as` used to fake.
+   * On the `true` branch `props.a` is a `PublicPassport`, so a depth-field
+   * read there (`props.a.evidence`, say) is a compile error, not a cast that
+   * silently agreed to trust the caller.
    */
-  const full: FullPassport | null = gated ? null : (a as FullPassport);
+  const full: FullPassport | null = props.gated ? null : props.a;
   const listings = full?.listings ?? [];
   const cert = a.certification;
   const fromListing = (v: string) => statusFor(v, "listing", cert);
