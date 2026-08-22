@@ -85,8 +85,10 @@ function permissionsCompareValue(a: AssetPassport): string {
  * Only "Creator / vendor" (`publisher`) and "Access model" (`acquire_using`)
  * read fields `PublicPassport` also has, which is why those two — and only
  * those two — are re-declared against `PublicPassport` in `PUBLIC_ROWS`
- * below for the gated render. This array is unchanged from the pre-gate
- * table and remains exactly what the signed-in (non-gated) render uses.
+ * below for the gated render, together with a "Works with" row sourced from
+ * the public `works_with` field (its own vendor fact, added in PUBLIC_ROWS,
+ * not a re-declaration of any ROWS entry). This array is unchanged from the
+ * pre-gate table and remains exactly what the signed-in (non-gated) render uses.
  */
 const ROWS: Row<AssetPassport>[] = [
   {
@@ -157,19 +159,31 @@ const ROWS: Row<AssetPassport>[] = [
 ];
 
 /**
- * The gated render's two public rows, re-declared against `PublicPassport`
- * rather than reused from `ROWS`: `Row<AssetPassport>`'s `display`/
- * `compareValue` accept an `AssetPassport`, which a `PublicPassport` is not
- * (it is missing dozens of required fields), so `ROWS[0]`/`ROWS[10]` cannot
- * be called with `PublicPassport` agents — the type system, not a review
- * comment, is what keeps these two definitions honest duplicates of
- * `ROWS[0]` and the last entry above.
+ * The gated render's public rows, declared against `PublicPassport` rather
+ * than reused from `ROWS`: `Row<AssetPassport>`'s `display`/`compareValue`
+ * accept an `AssetPassport`, which a `PublicPassport` is not (it is missing
+ * dozens of required fields), so a `ROWS` entry cannot be called with
+ * `PublicPassport` agents — the type system, not a review comment, keeps
+ * these honest.
+ *
+ * "Creator / vendor" and "Access model" are duplicates of their `ROWS`
+ * entries. "Works with" is NOT in `ROWS` as its own row — there it is the
+ * public fallback inside the depth "Integrations / works with" row — but
+ * `works_with` is itself a public field on `PublicPassport`, so anon sees the
+ * vendor's stated integrations here while the verified-evidence analysis stays
+ * gated. Signed in, works_with keeps folding into the "Integrations / works
+ * with" row above instead of showing twice.
  */
 const PUBLIC_ROWS: Row<PublicPassport>[] = [
   {
     label: "Creator / vendor",
     display: (a) => a.publisher ?? UNKNOWN,
     compareValue: (a) => a.publisher ?? UNKNOWN,
+  },
+  {
+    label: "Works with",
+    display: (a) => listed(a.works_with),
+    compareValue: (a) => canonicalSet(a.works_with),
   },
   {
     label: "Access model",
@@ -307,6 +321,7 @@ export default function CompareTable(props: Props) {
               <DataRow row={PUBLIC_ROWS[0]} agents={agents} />
               <GatedRow agentCount={agents.length} />
               <DataRow row={PUBLIC_ROWS[1]} agents={agents} />
+              <DataRow row={PUBLIC_ROWS[2]} agents={agents} />
             </tbody>
           </table>
         </div>
