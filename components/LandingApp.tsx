@@ -16,6 +16,7 @@ import type {
   AssetPassport,
   RegistryCard,
   RegistryStats,
+  TieredPassport,
 } from "@/lib/types";
 import type { TopFilter } from "@/lib/registry";
 import {
@@ -46,11 +47,11 @@ export default function LandingApp({
   useCaseCounts: Record<string, number>;
   topAgents: Record<TopFilter, RegistryCard[]>;
   stats: RegistryStats | null;
-  featured: AssetPassport | null;
+  featured: TieredPassport | null;
 }) {
   const [topFilter, setTopFilter] = useState<TopFilter>("All");
   const [modal, setModal] = useState<null | { kind: "agent"; id: string }>(null);
-  const [passport, setPassport] = useState<AssetPassport | null>(null);
+  const [passport, setPassport] = useState<TieredPassport | null>(null);
   const [loadingPassport, setLoadingPassport] = useState(false);
 
   const router = useRouter();
@@ -68,7 +69,7 @@ export default function LandingApp({
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (cancelled) return;
-        setPassport((data as AssetPassport) ?? null);
+        setPassport((data as TieredPassport) ?? null);
         setLoadingPassport(false);
       })
       .catch(() => {
@@ -182,7 +183,7 @@ export default function LandingApp({
               </p>
             </div>
 
-            {featured && <Workbench a={featured} onOpen={setModal} />}
+            {featured && <Workbench featured={featured} onOpen={setModal} />}
 
             <div className="provenance-value-grid">
               <div>
@@ -292,7 +293,11 @@ export default function LandingApp({
             {loadingPassport ? (
               <p className="passport-description">Loading the passport…</p>
             ) : passport ? (
-              <PassportView a={passport} />
+              passport.gated ? (
+                <PassportView a={passport.passport} gated />
+              ) : (
+                <PassportView a={passport.passport} />
+              )
             ) : (
               <p className="passport-description">
                 That passport could not be loaded. It may not have been captured yet.
@@ -306,13 +311,22 @@ export default function LandingApp({
 }
 
 function Workbench({
-  a,
+  featured,
   onOpen,
 }: {
-  a: AssetPassport;
+  featured: TieredPassport;
   onOpen: (m: { kind: "agent"; id: string }) => void;
 }) {
-  const ev = a.evidence ?? {};
+  // Same correlated-branch pattern as PassportView and /agent/[id]: `full` is
+  // non-null only on the ungated read, so every depth-only field below
+  // (evidence, layer counts, data residency, permission scope, compliance)
+  // is read through it rather than through `a` directly. `a` alone still
+  // covers every field this component reads outside `nodes`/the reach text,
+  // since those are all public on both TieredPassport members.
+  const a = featured.passport;
+  const full: AssetPassport | null = featured.gated ? null : featured.passport;
+
+  const ev = full?.evidence ?? {};
   const mini = (v: string) =>
     !isKnown(v)
       ? "unknown-mini"
@@ -324,13 +338,13 @@ function Workbench({
 
   const nodes: Array<[string, string, string]> = [
     ["n1", "Builder", a.publisher ?? UNKNOWN],
-    ["n2", "Model", evidence(ev, "model")],
-    ["n3", "Framework", evidence(ev, "framework")],
-    ["n4", "Data sources", evidence(ev, "data_source")],
-    ["r1", "Tools / MCP", evidence(ev, "tool_mcp")],
-    ["r2", "Data residency", a.cert_data_location ?? UNKNOWN],
-    ["r3", "Permission scope", permissionValue(a)],
-    ["r4", "Compliance", a.compliance?.length ? listed(a.compliance, 2) : UNKNOWN],
+    ["n2", "Model", full ? evidence(ev, "model") : UNKNOWN],
+    ["n3", "Framework", full ? evidence(ev, "framework") : UNKNOWN],
+    ["n4", "Data sources", full ? evidence(ev, "data_source") : UNKNOWN],
+    ["r1", "Tools / MCP", full ? evidence(ev, "tool_mcp") : UNKNOWN],
+    ["r2", "Data residency", full?.cert_data_location ?? UNKNOWN],
+    ["r3", "Permission scope", full ? permissionValue(full) : UNKNOWN],
+    ["r4", "Compliance", full?.compliance?.length ? listed(full.compliance, 2) : UNKNOWN],
   ];
 
   return (
@@ -356,7 +370,9 @@ function Workbench({
           <div>
             <b>Provenance reach</b>
             <p>
-              {a.layers_known} of {a.layers_tracked} tracked build layers have evidence.
+              {full
+                ? `${full.layers_known} of ${full.layers_tracked} tracked build layers have evidence.`
+                : "Sign in to see the layer-by-layer reach."}
             </p>
           </div>
         </div>

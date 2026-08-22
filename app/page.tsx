@@ -7,6 +7,7 @@ import {
   getStats,
   getTopAgents,
 } from "@/lib/registry";
+import type { TieredPassport } from "@/lib/types";
 
 export const revalidate = 300;
 
@@ -17,17 +18,23 @@ export const revalidate = 300;
  * is three reads of six rows. Browsing itself lives on /registry.
  */
 export default async function HomePage() {
-  const [facets, top, stats, featured] = await Promise.all([
+  const [facets, top, stats, featuredRead] = await Promise.all([
     getFacetCounts(),
     getTopAgents(),
     getStats(),
     getFeatured(),
   ]);
 
+  // A failed read degrades to no featured card, the same tolerance
+  // getFeatured() itself already applies to a missing row: this section is
+  // decoration, not the reason the page exists, so it is never worth failing
+  // the whole ISR render over.
+  const featured: TieredPassport | null = featuredRead.ok ? featuredRead.data : null;
+
   // Only the handful of agents this page actually renders — three lists of six
   // plus the featured record — not every archived logo in the registry.
   const logos = await getLogos(
-    [...top.All, ...top.Verified, ...top.Free, ...(featured ? [featured] : [])].map(
+    [...top.All, ...top.Verified, ...top.Free, ...(featured ? [featured.passport] : [])].map(
       (a) => a.source_product_id
     )
   );
@@ -38,6 +45,19 @@ export default async function HomePage() {
   const useCaseCounts: Record<string, number> = {};
   for (const v of facets.function ?? []) useCaseCounts[v.value] = v.count;
 
+  // `featured.gated`/`featured.passport` are correlated by construction
+  // (TieredPassport in lib/types.ts); reading `.passport` ahead of a
+  // `.gated` check would widen it back to the plain `AssetPassport |
+  // PublicPassport` union, which LandingApp's `featured` prop (itself a
+  // `TieredPassport`) cannot accept without a cast. Branching here, the same
+  // way app/agent/[id]/page.tsx does for PassportView, keeps each branch's
+  // `withLogo` call narrowed to one matching TieredPassport member.
+  const featuredWithLogo: TieredPassport | null = featured
+    ? featured.gated
+      ? { gated: true, passport: withLogo(featured.passport, logos) }
+      : { gated: false, passport: withLogo(featured.passport, logos) }
+    : null;
+
   return (
     <LandingApp
       useCaseCounts={useCaseCounts}
@@ -47,7 +67,7 @@ export default async function HomePage() {
         Free: withLogos(top.Free, logos),
       }}
       stats={stats}
-      featured={featured ? withLogo(featured, logos) : null}
+      featured={featuredWithLogo}
     />
   );
 }
