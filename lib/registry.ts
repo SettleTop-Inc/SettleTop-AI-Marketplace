@@ -610,7 +610,7 @@ export async function getListingPassports(
     .order("listing_id", { ascending: true });
   if (error) {
     console.error("getListingPassports", error.message);
-    return { ok: false, error: error.message };
+    return { ok: false, error: "could not read the listings" };
   }
   return { ok: true, data: (data ?? []) as ListingPassport[] };
 }
@@ -635,7 +635,7 @@ export async function getAssetEvidence(
     .order("capture_id", { ascending: true });
   if (error) {
     console.error("getAssetEvidence", error.message);
-    return { ok: false, error: error.message };
+    return { ok: false, error: "could not read the evidence" };
   }
   return { ok: true, data: (data ?? []) as AssetEvidenceRow[] };
 }
@@ -670,7 +670,7 @@ export async function getMergeCandidates(
   const { data, error } = await query;
   if (error) {
     console.error("getMergeCandidates", error.message);
-    return { ok: false, error: error.message };
+    return { ok: false, error: "could not read the candidates" };
   }
   return { ok: true, data: (data ?? []) as MergeCandidate[] };
 }
