@@ -20,9 +20,13 @@ select
   certification, cert_label, cert_url,
   function_category, delivery, price_band, price_note,
   reach, provenance, evidence_tier, risk,
-  layers_known, layers_tracked,
   plans, product_links, legal_links, media,
-  listing_id, last_captured_at, capture_count
+  listing_id, last_captured_at, capture_count,
+  -- Appended LAST: CREATE OR REPLACE VIEW may only add columns at the end of an
+  -- existing view's column list (the visibility_gate migration already created
+  -- v_asset_passport_public with the columns above). Inserting these two in the
+  -- middle raises 42P16 "cannot change name of view column".
+  layers_known, layers_tracked
 from public.v_asset_passport;
 alter view public.v_asset_passport_public set (security_invoker = false);
 
