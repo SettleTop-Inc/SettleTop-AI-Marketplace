@@ -1,6 +1,7 @@
 import Link from "next/link";
-import type { AssetPassport } from "@/lib/types";
+import type { AssetPassport, PublicPassport } from "@/lib/types";
 import AgentLogo from "@/components/AgentLogo";
+import DepthGate from "@/components/DepthGate";
 import ListingPanels, { type ListingSummary } from "@/components/registry/ListingPanels";
 import {
   UNKNOWN,
@@ -102,7 +103,19 @@ function SectionHead({ children, count }: { children: string; count?: string }) 
  * always optional here rather than added to the shared type, which this
  * component does not own.
  */
-type Passport = AssetPassport & { listings?: ListingSummary[] };
+type FullPassport = AssetPassport & { listings?: ListingSummary[] };
+
+/**
+ * What this component can be handed. `PublicPassport` (Access Foundation
+ * Phase B2) is the signed-out projection: it carries none of `evidence`,
+ * `known_layers`/`layers_known`/`layers_tracked`, `risk_basis`,
+ * `graph_permissions`, `compliance`, the `cert_*` detail fields, the capture
+ * internals, or `listings`. `gated` below says which member this render
+ * actually got; see the note on `full` in the component body for how that
+ * flag is turned into a type-narrowed value instead of a blind cast at every
+ * call site.
+ */
+type Passport = FullPassport | PublicPassport;
 
 /**
  * Where the leading description came from.
@@ -136,9 +149,13 @@ function descriptionSource(a: Passport): string {
  * more non-primary candidates tied on certification tier, so with at most
  * two listings total (today's ceiling) they always agree. If it ever
  * matters, listing_id is the one to match, not marketplace_name.
+ *
+ * Takes `listings` as its own argument rather than reading `a.listings`:
+ * `PublicPassport` does not carry that key at all, so a gated call passes
+ * `[]` (the component's own `listings` local, already resolved from `full`)
+ * instead of this function reaching for a field that may not exist on `a`.
  */
-function certificationSource(a: Passport): string {
-  const listings = a.listings ?? [];
+function certificationSource(a: Passport, listings: ListingSummary[]): string {
   if (listings.length <= 1) return a.marketplace_name;
   const primaryMatch = listings.find((l) => l.is_primary && l.certification === a.certification);
   if (primaryMatch) return primaryMatch.marketplace_name;
@@ -150,20 +167,41 @@ function certificationSource(a: Passport): string {
  * `back` is present on the standalone /agent/[id] route and absent when the
  * landing page renders the same record inside its modal, which supplies its
  * own close control and its own width.
+ *
+ * `gated` is the tier the read actually produced (see `TieredPassport` in
+ * lib/types.ts): the read layer sets it alongside the passport shape, so
+ * `gated === false` only ever pairs with a full `AssetPassport` and
+ * `gated === true` only ever pairs with a `PublicPassport`. Defaults to
+ * false so an existing signed-in call site that has not been touched yet
+ * (Tasks 6/7 wire the flag through) keeps rendering the full record exactly
+ * as before.
  */
 export default function PassportView({
   a,
   back,
+  gated = false,
 }: {
   a: Passport;
   back?: { href: string; label: string };
+  gated?: boolean;
 }) {
-  const listings = a.listings ?? [];
-  const ev = a.evidence ?? {};
+  /**
+   * The one place that trusts the `gated`/shape contract above. Every depth
+   * field below (evidence, the layer counts, risk_basis, graph_permissions,
+   * compliance, the cert_* detail, capture internals, listings) is read
+   * through `full`, never through `a` directly — `full` is `null` exactly
+   * when `gated` is true, so a gated render has no path to dereference a key
+   * `PublicPassport` does not carry. Public fields (name, publisher, rating,
+   * risk band, plans, sources, and so on) are declared identically on both
+   * union members and keep reading off `a` everywhere below.
+   */
+  const full: FullPassport | null = gated ? null : (a as FullPassport);
+  const listings = full?.listings ?? [];
   const cert = a.certification;
   const fromListing = (v: string) => statusFor(v, "listing", cert);
   const fromCert = (v: string) => statusFor(v, "certification", cert);
 
+  const ev = full?.evidence ?? {};
   const llm = evidence(ev, "model");
   const framework = evidence(ev, "framework");
   const tools = evidence(ev, "tool_mcp");
@@ -173,10 +211,10 @@ export default function PassportView({
       ? evidence(ev, "integration")
       : listed(a.works_with);
   const deployment = evidence(ev, "deployment");
-  const hosting = a.cert_hosting ?? UNKNOWN;
-  const residency = a.cert_data_location ?? UNKNOWN;
-  const compliance = a.compliance?.length ? a.compliance.join(", ") : UNKNOWN;
-  const permissions = permissionValue(a);
+  const hosting = full?.cert_hosting ?? UNKNOWN;
+  const residency = full?.cert_data_location ?? UNKNOWN;
+  const compliance = full?.compliance?.length ? full.compliance.join(", ") : UNKNOWN;
+  const permissions = full ? permissionValue(full) : UNKNOWN;
   const blocks = overviewBlocks(a.overview_text, a.tagline);
   const head = blocks.slice(0, 2);
   const rest = blocks.slice(2);
@@ -222,16 +260,22 @@ export default function PassportView({
                     {s}
                   </span>
                 ))}
-                {!a.capture_complete && <span className="st-tag">Partial capture</span>}
+                {full && !full.capture_complete && (
+                  <span className="st-tag">Partial capture</span>
+                )}
                 <span className="st-tag">{a.cert_label}</span>
               </div>
               <p className="st-note" style={{ marginTop: "var(--s2)" }}>
-                Certification per {certificationSource(a)}.
+                Certification per {certificationSource(a, listings)}.
               </p>
             </div>
           </div>
 
-          <LayerLedger known={a.layers_known} tracked={a.layers_tracked} />
+          {full ? (
+            <LayerLedger known={full.layers_known} tracked={full.layers_tracked} />
+          ) : (
+            <DepthGate />
+          )}
         </div>
       </div>
 
@@ -268,10 +312,19 @@ export default function PassportView({
              * left to read like the ledger's own number. certificationSource(a)
              * names that same qualifying listing. Under one listing there is only
              * one candidate, so this renders exactly as before.
+             *
+             * `risk_basis` is depth: PublicPassport does not carry it, so a
+             * gated render shows a short prompt instead of reading `a.risk_basis`.
              */}
             <span className="st-field__note">
-              {a.risk_basis}
-              {listings.length > 1 && ` (per ${certificationSource(a)})`}
+              {full ? (
+                <>
+                  {full.risk_basis}
+                  {listings.length > 1 && ` (per ${certificationSource(a, listings)})`}
+                </>
+              ) : (
+                "Sign in to see the basis for this band."
+              )}
             </span>
           </div>
         </div>
@@ -308,82 +361,93 @@ export default function PassportView({
         </div>
 
         <SectionHead>Agent build and provenance</SectionHead>
-        <div className="st-record">
-          <Row
-            label="Creator / vendor"
-            value={a.publisher ?? UNKNOWN}
-            status={isKnown(a.publisher) ? "Disclosed" : UNKNOWN}
-          />
-          <Row label="Primary model / LLM" value={llm} status={fromListing(llm)} />
-          <Row label="Agent framework" value={framework} status={fromListing(framework)} />
-          <Row label="Tools / MCP" value={tools} status={fromListing(tools)} />
-          <Row label="Data sources" value={data} status={fromListing(data)} />
-          <Row
-            label="Integrations / works with"
-            value={integrations}
-            status={fromListing(integrations)}
-          />
-          <Row label="Hosting model" value={hosting} status={fromCert(hosting)} />
-          <Row label="Data residency" value={residency} status={fromCert(residency)} />
-          <Row
-            label="Microsoft Graph permissions"
-            value={permissions}
-            status={fromCert(permissions)}
-          />
-          <Row
-            label="Compliance certifications"
-            value={compliance}
-            status={fromCert(compliance)}
-          />
-          <Row
-            label="Deployment / government readiness"
-            value={deployment}
-            status={fromListing(deployment)}
-          />
-          <Row
-            label="Access model"
-            value={a.acquire_using ?? UNKNOWN}
-            status={isKnown(a.acquire_using) ? "Disclosed" : UNKNOWN}
-          />
-          <Row
-            label="Listing version"
-            value={
-              (a.listing_version ? `v${a.listing_version}` : "Not stated") +
-              (a.listing_updated ? ` · updated ${a.listing_updated}` : "")
-            }
-            status={a.listing_version || a.listing_updated ? "Disclosed" : UNKNOWN}
-          />
-          {/*
-           * Names EVERY marketplace the asset is listed on, not just the
-           * primary: a.marketplace_name is one listing's marketplace, which is
-           * false once the asset spans several. The per-listing panels below
-           * carry each marketplace in full; this row states the set. Under one
-           * listing (every asset today) it is the single primary name, and the
-           * label stays singular, so the 1:1 render is unchanged.
-           */}
-          <Row
-            label={listings.length > 1 ? "Marketplaces / sources" : "Marketplace / source"}
-            value={
-              listings.length > 0
-                ? listings.map((l) => l.marketplace_name).join(", ")
-                : a.marketplace_name
-            }
-            status="Disclosed"
-          />
-          <Row label="Source type" value="Marketplace listing" status="Disclosed" />
-          <Row
-            label="Evidence tier"
-            value={a.evidence_tier ?? UNKNOWN}
-            status={cert === "microsoft_365_certified" ? "Verified" : "Disclosed"}
-          />
-        </div>
+        {full ? (
+          <div className="st-record">
+            <Row
+              label="Creator / vendor"
+              value={a.publisher ?? UNKNOWN}
+              status={isKnown(a.publisher) ? "Disclosed" : UNKNOWN}
+            />
+            <Row label="Primary model / LLM" value={llm} status={fromListing(llm)} />
+            <Row label="Agent framework" value={framework} status={fromListing(framework)} />
+            <Row label="Tools / MCP" value={tools} status={fromListing(tools)} />
+            <Row label="Data sources" value={data} status={fromListing(data)} />
+            <Row
+              label="Integrations / works with"
+              value={integrations}
+              status={fromListing(integrations)}
+            />
+            <Row label="Hosting model" value={hosting} status={fromCert(hosting)} />
+            <Row label="Data residency" value={residency} status={fromCert(residency)} />
+            <Row
+              label="Microsoft Graph permissions"
+              value={permissions}
+              status={fromCert(permissions)}
+            />
+            <Row
+              label="Compliance certifications"
+              value={compliance}
+              status={fromCert(compliance)}
+            />
+            <Row
+              label="Deployment / government readiness"
+              value={deployment}
+              status={fromListing(deployment)}
+            />
+            <Row
+              label="Access model"
+              value={a.acquire_using ?? UNKNOWN}
+              status={isKnown(a.acquire_using) ? "Disclosed" : UNKNOWN}
+            />
+            <Row
+              label="Listing version"
+              value={
+                (a.listing_version ? `v${a.listing_version}` : "Not stated") +
+                (a.listing_updated ? ` · updated ${a.listing_updated}` : "")
+              }
+              status={a.listing_version || a.listing_updated ? "Disclosed" : UNKNOWN}
+            />
+            {/*
+             * Names EVERY marketplace the asset is listed on, not just the
+             * primary: a.marketplace_name is one listing's marketplace, which is
+             * false once the asset spans several. The per-listing panels below
+             * carry each marketplace in full; this row states the set. Under one
+             * listing (every asset today) it is the single primary name, and the
+             * label stays singular, so the 1:1 render is unchanged.
+             */}
+            <Row
+              label={listings.length > 1 ? "Marketplaces / sources" : "Marketplace / source"}
+              value={
+                listings.length > 0
+                  ? listings.map((l) => l.marketplace_name).join(", ")
+                  : a.marketplace_name
+              }
+              status="Disclosed"
+            />
+            <Row label="Source type" value="Marketplace listing" status="Disclosed" />
+            <Row
+              label="Evidence tier"
+              value={a.evidence_tier ?? UNKNOWN}
+              status={cert === "microsoft_365_certified" ? "Verified" : "Disclosed"}
+            />
+          </div>
+        ) : (
+          <DepthGate />
+        )}
 
-        {a.cert_data_handling && (
+        {/*
+         * cert_data_handling is depth (not in PublicPassport), so `full` is
+         * null in gated mode and this callout simply does not render — its
+         * content is covered by the "Agent build and provenance" gate just
+         * above rather than a second, adjacent gate repeating the same
+         * affordance.
+         */}
+        {full?.cert_data_handling && (
           <div className="st-callout">
             <p className="st-callout__title">
               Customer data, per the certification page
             </p>
-            <p>{a.cert_data_handling}</p>
+            <p>{full.cert_data_handling}</p>
           </div>
         )}
 
@@ -453,14 +517,29 @@ export default function PassportView({
           </>
         )}
 
-        {listings.length > 0 && (
+        {/*
+         * `listings` is cross-marketplace linkage: PublicPassport carries no
+         * `listings` key at all, so `full` decides this branch. A gated
+         * render cannot know whether the asset actually spans more than one
+         * marketplace (that information IS the gated depth), so it shows the
+         * gate unconditionally rather than only when a count it cannot see
+         * would have been greater than one.
+         */}
+        {full ? (
+          listings.length > 0 && (
+            <>
+              <SectionHead
+                count={`${listings.length} marketplace${listings.length === 1 ? "" : "s"}`}
+              >
+                Listed on
+              </SectionHead>
+              <ListingPanels listings={listings} />
+            </>
+          )
+        ) : (
           <>
-            <SectionHead
-              count={`${listings.length} marketplace${listings.length === 1 ? "" : "s"}`}
-            >
-              Listed on
-            </SectionHead>
-            <ListingPanels listings={listings} />
+            <SectionHead>Listed on</SectionHead>
+            <DepthGate />
           </>
         )}
 
@@ -559,17 +638,33 @@ export default function PassportView({
           )}
         </div>
 
+        {/*
+         * layers_tracked is depth (not in PublicPassport): a gated render
+         * keeps the first, general sentence (true of the risk band, which IS
+         * public) and drops everything that names a specific layer count or
+         * points at the now-gated record above.
+         */}
         <p className="st-note">
-          Evidence risk is the share of the build you cannot see before you deploy,
-          not a security rating. It starts at the attestation level, then moves one
-          band on how much of the build this source can disclose that it actually
-          does. Three of the {a.layers_tracked} layers (hosting, data residency
-          and permission scope) are only ever stated on an app certification page,
-          so a listing without one is scored against the nine it can state.{" "}
-          {listings.length > 1
-            ? "Every value above is copied from one of the listings above or its certification page."
-            : "Every value above is copied from this listing or its certification page."}{" "}
-          Unknown means the source does not state it.
+          {full ? (
+            <>
+              Evidence risk is the share of the build you cannot see before you deploy,
+              not a security rating. It starts at the attestation level, then moves one
+              band on how much of the build this source can disclose that it actually
+              does. Three of the {full.layers_tracked} layers (hosting, data residency
+              and permission scope) are only ever stated on an app certification page,
+              so a listing without one is scored against the nine it can state.{" "}
+              {listings.length > 1
+                ? "Every value above is copied from one of the listings above or its certification page."
+                : "Every value above is copied from this listing or its certification page."}{" "}
+              Unknown means the source does not state it.
+            </>
+          ) : (
+            <>
+              Evidence risk is the share of the build you cannot see before you deploy,
+              not a security rating. Sign in to see the layer-by-layer basis for this
+              band.
+            </>
+          )}
         </p>
       </div>
     </div>
