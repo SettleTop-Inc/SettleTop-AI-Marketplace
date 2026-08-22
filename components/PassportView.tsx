@@ -453,7 +453,21 @@ export default function PassportView(props: Props) {
             />
           </div>
         ) : (
-          <DepthGate />
+          <>
+            {/*
+             * works_with is the vendor's own stated integrations and is a public
+             * fact (it is in v_asset_passport_public), so anon sees it even though
+             * the rest of the build-and-provenance record is our analysis and stays
+             * gated. Signed in, it keeps folding into the "Integrations / works
+             * with" row above instead of showing twice.
+             */}
+            {a.works_with?.length ? (
+              <div className="st-record">
+                <Row label="Works with" value={listed(a.works_with)} status="Disclosed" />
+              </div>
+            ) : null}
+            <DepthGate />
+          </>
         )}
 
         {/*
