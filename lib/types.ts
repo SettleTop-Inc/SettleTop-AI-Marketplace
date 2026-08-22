@@ -151,7 +151,10 @@ export interface AssetPassport extends RegistryCard {
  * Mirrors v_asset_passport_public (Access Foundation Phase B2) — the depth
  * fields (evidence, known_layers, risk_basis, graph_permissions, compliance,
  * the cert_* detail fields, listings) are absent by construction, not merely
- * unused. A signed-out read can only ever produce this shape.
+ * unused. A signed-out read can only ever produce this shape. Note the layer
+ * COUNTS (layers_known, layers_tracked) ARE public — a top-line verdict signal,
+ * the same ratio `reach` already exposes; only the per-layer known_layers ARRAY
+ * (which specific layers) is depth.
  */
 export type PublicPassport = Pick<AssetPassport,
   | "asset_id" | "source_product_id" | "listing_url" | "marketplace_id" | "marketplace_name"
@@ -164,6 +167,7 @@ export type PublicPassport = Pick<AssetPassport,
   | "certification" | "cert_label" | "cert_url"
   | "function_category" | "delivery" | "price_band" | "price_note"
   | "reach" | "provenance" | "evidence_tier" | "risk"
+  | "layers_known" | "layers_tracked"
   | "plans" | "product_links" | "legal_links" | "media"
   | "listing_id" | "last_captured_at" | "capture_count"> & { logo?: string | null };
 
