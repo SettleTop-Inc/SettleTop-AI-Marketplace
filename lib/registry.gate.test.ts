@@ -6,8 +6,14 @@ import assert from "node:assert/strict";
  * signed-in read earns v_asset_passport (full); a signed-out read earns
  * v_asset_passport_public (the 43-column allowlist), with a fallback to
  * v_asset_passport (still allowlist-only) when the public view does not
- * exist yet (Postgres 42P01, the pre-migration window). No network: the
- * Supabase client and the session are both mocked below.
+ * exist yet, the pre-migration window. PostgREST reports a missing relation
+ * as PGRST205 ("Could not find the table in the schema cache"), not the raw
+ * Postgres 42P01 (undefined_table) — the fallback guard must match PGRST205
+ * for the pre-migration window to actually work in production; 42P01 is
+ * accepted too, defensively. The same shape applies to the slug resolver rpc:
+ * PostgREST reports a missing function as PGRST202, not the raw Postgres
+ * 42883 (undefined_function). No network: the Supabase client and the
+ * session are both mocked below.
  *
  * `--experimental-test-module-mocks` (added to the `test` script) is what
  * makes `mock.module` available. mock.module replaces the WHOLE module, so
@@ -93,14 +99,17 @@ const missing = (table: string): FakeResult => ({
 // (a second call throws "the module is already mocked"), so the mocked
 // exports below are stable object/function references whose behaviour is
 // driven by these variables, re-set at the top of every test.
+type RpcStub = (args: unknown) => FakeResult;
 let anonStubs: Record<string, TableStub> = {};
 let sessionStubs: Record<string, TableStub> = {};
+let rpcStubs: Record<string, RpcStub> = {};
 let sessionUser: { id: string } | null = null;
 let calls: RecordedCall[] = [];
 
 function reset(): void {
   anonStubs = {};
   sessionStubs = {};
+  rpcStubs = {};
   sessionUser = null;
   calls = [];
 }
@@ -111,7 +120,8 @@ const anonClient = {
   },
   rpc(name: string, args: unknown) {
     calls.push({ table: `rpc:${name}`, eq: ["args", args] });
-    return Promise.resolve({ data: null, error: null });
+    const stub = rpcStubs[name];
+    return Promise.resolve(stub ? stub(args) : { data: null, error: null });
   },
 };
 
@@ -228,6 +238,39 @@ test("a 42P01 on the public view falls back to v_asset_passport, still allowlist
   );
 });
 
+test("a PGRST205 on the public view falls back to v_asset_passport, still allowlist-only, still gated:true", async () => {
+  reset();
+  sessionUser = null;
+  anonStubs["v_asset_passport_public"] = () => ({
+    data: null,
+    error: {
+      message: "Could not find the table 'public.v_asset_passport_public' in the schema cache",
+      code: "PGRST205",
+    },
+  });
+  anonStubs["v_asset_passport"] = () => ({ data: PUBLIC_ROW, error: null });
+
+  const { getPassportByAssetId, PUBLIC_PASSPORT_COLUMNS } = await import("./registry.ts");
+  const r = await getPassportByAssetId(ASSET_ID);
+
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.equal(
+    r.data?.gated,
+    true,
+    "PGRST205 (what PostgREST actually returns for a missing relation) must trigger the same fallback as 42P01"
+  );
+  assert.deepEqual(r.data?.passport, PUBLIC_ROW);
+
+  const fallback = calls.find((c) => c.table === "v_asset_passport");
+  assert.ok(fallback, "expected the pre-migration fallback to reach v_asset_passport on PGRST205");
+  assert.equal(
+    fallback?.select,
+    PUBLIC_PASSPORT_COLUMNS.join(","),
+    "the fallback must still select only the public allowlist, not the whole row"
+  );
+});
+
 test("a non-42P01 error returns ok:false and never the raw PostgREST message", async () => {
   reset();
   sessionUser = null;
@@ -246,5 +289,117 @@ test("a non-42P01 error returns ok:false and never the raw PostgREST message", a
   assert.ok(
     !r.error.includes(RAW_MESSAGE),
     "the caller-facing error must never contain the raw PostgREST message"
+  );
+});
+
+test("getPassports falls back to v_asset_passport on PGRST205, still allowlist-only, still gated:true", async () => {
+  reset();
+  sessionUser = null;
+  const PUBLIC_ROWS = [PUBLIC_ROW];
+  anonStubs["v_asset_passport_public"] = () => ({
+    data: null,
+    error: {
+      message: "Could not find the table 'public.v_asset_passport_public' in the schema cache",
+      code: "PGRST205",
+    },
+  });
+  anonStubs["v_asset_passport"] = () => ({ data: PUBLIC_ROWS, error: null });
+
+  const { getPassports, PUBLIC_PASSPORT_COLUMNS } = await import("./registry.ts");
+  const r = await getPassports([ASSET_ID]);
+
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.equal(
+    r.data.gated,
+    true,
+    "PGRST205 (what PostgREST actually returns for a missing relation) must trigger the same fallback getPassports uses for 42P01"
+  );
+  assert.deepEqual(r.data.passports, PUBLIC_ROWS);
+
+  const fallback = calls.find((c) => c.table === "v_asset_passport");
+  assert.ok(fallback, "expected getPassports' pre-migration fallback to reach v_asset_passport on PGRST205");
+  assert.equal(
+    fallback?.select,
+    PUBLIC_PASSPORT_COLUMNS.join(","),
+    "getPassports' fallback must still select only the public allowlist, not the whole row"
+  );
+});
+
+test("resolveAssetSlug falls back to a direct asset_slug read on PGRST202 (function not found)", async () => {
+  reset();
+  const SLUG = "some-agent";
+  rpcStubs["resolve_asset_slug"] = () => ({
+    data: null,
+    error: {
+      message: "Could not find the function public.resolve_asset_slug(p_slug) in the schema cache",
+      code: "PGRST202",
+    },
+  });
+  anonStubs["asset_slug"] = () => ({ data: { asset_id: ASSET_ID }, error: null });
+
+  const { resolveAssetSlug } = await import("./registry.ts");
+  const result = await resolveAssetSlug(SLUG);
+
+  assert.equal(
+    result,
+    ASSET_ID,
+    "PGRST202 (function not found, the pre-migration window) must fall back to reading asset_slug directly"
+  );
+
+  const fallback = calls.find((c) => c.table === "asset_slug");
+  assert.ok(fallback, "expected the pre-migration fallback to read the asset_slug table directly");
+  assert.deepEqual(fallback?.eq, ["slug", SLUG]);
+});
+
+test("resolveAssetSlug returns undefined when the asset_slug fallback finds no row", async () => {
+  reset();
+  const SLUG = "missing-agent";
+  rpcStubs["resolve_asset_slug"] = () => ({
+    data: null,
+    error: { message: "function not found", code: "PGRST202" },
+  });
+  anonStubs["asset_slug"] = () => ({ data: null, error: null });
+
+  const { resolveAssetSlug } = await import("./registry.ts");
+  const result = await resolveAssetSlug(SLUG);
+
+  assert.equal(result, undefined, "a slug with no matching row is found-nothing, not a failure");
+});
+
+test("resolveAssetSlug returns null when the asset_slug fallback read itself errors", async () => {
+  reset();
+  const SLUG = "some-agent";
+  rpcStubs["resolve_asset_slug"] = () => ({
+    data: null,
+    error: { message: "function not found", code: "PGRST202" },
+  });
+  anonStubs["asset_slug"] = () => ({
+    data: null,
+    error: { message: "permission denied for table asset_slug", code: "42501" },
+  });
+
+  const { resolveAssetSlug } = await import("./registry.ts");
+  const result = await resolveAssetSlug(SLUG);
+
+  assert.equal(result, null, "a genuine failure in the fallback read must still surface as null");
+});
+
+test("resolveAssetSlug returns null on a non-function-not-found rpc error, without reading asset_slug", async () => {
+  reset();
+  const SLUG = "some-agent";
+  rpcStubs["resolve_asset_slug"] = () => ({
+    data: null,
+    error: { message: "permission denied for function resolve_asset_slug", code: "42501" },
+  });
+  anonStubs["asset_slug"] = () => ({ data: { asset_id: ASSET_ID }, error: null });
+
+  const { resolveAssetSlug } = await import("./registry.ts");
+  const result = await resolveAssetSlug(SLUG);
+
+  assert.equal(result, null);
+  assert.ok(
+    !calls.some((c) => c.table === "asset_slug"),
+    "a non-function-not-found rpc error must never fall back to reading asset_slug directly"
   );
 });

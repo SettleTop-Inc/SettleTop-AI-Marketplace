@@ -380,6 +380,29 @@ export const PUBLIC_PASSPORT_COLUMNS = [
 const READ_FAILED = "could not read the passport";
 
 /**
+ * True when a PostgREST error means "this relation does not exist (yet)" —
+ * the pre-migration window, since database deploys are manual here and the
+ * migration that creates v_asset_passport_public lands after the code that
+ * reads it. PostgREST itself reports this as PGRST205 ("Could not find the
+ * table in the schema cache"), not the raw Postgres 42P01 (undefined_table);
+ * 42P01 is matched too, defensively, in case a caller ever reaches Postgres
+ * directly. See docs/superpowers/plans/2026-08-19-asset-layer-phase-1.md:1003.
+ */
+function isMissingRelation(err: { code?: string } | null | undefined): boolean {
+  return err?.code === "PGRST205" || err?.code === "42P01";
+}
+
+/**
+ * True when a PostgREST error means "this function does not exist (yet)" —
+ * the same pre-migration window as isMissingRelation, but for
+ * resolve_asset_slug. PostgREST reports this as PGRST202, not the raw
+ * Postgres 42883 (undefined_function); 42883 is matched too, defensively.
+ */
+function isMissingFunction(err: { code?: string } | null | undefined): boolean {
+  return err?.code === "PGRST202" || err?.code === "42883";
+}
+
+/**
  * slug -> asset_id via the definer resolver (public.resolve_asset_slug),
  * so browser roles need no asset_slug grant: base-table SELECT on asset_slug
  * is revoked from both anon and authenticated by the visibility-gate
@@ -387,14 +410,34 @@ const READ_FAILED = "could not read the passport";
  * only, carries no provenance, and is granted to anon and authenticated
  * alike, so there is nothing for a session client to add.
  *
+ * Pre-migration, resolve_asset_slug does not exist yet (isMissingFunction),
+ * so this falls back to reading the asset_slug table directly — still safe,
+ * because base-table SELECT on asset_slug is only revoked BY the same
+ * migration that creates the function, so a missing function implies
+ * asset_slug is still readable. Post-migration the function exists, so this
+ * fallback is never reached, and by then asset_slug is revoked anyway.
+ *
  * Returns the uuid, `undefined` for a slug that resolves to nothing, or
  * `null` if the read itself failed.
  */
 export async function resolveAssetSlug(slug: string): Promise<string | undefined | null> {
   const { data, error } = await supabase.rpc("resolve_asset_slug", { p_slug: slug });
   if (error) {
-    console.error("resolveAssetSlug", error.message);
-    return null;
+    if (!isMissingFunction(error)) {
+      console.error("resolveAssetSlug", error.message);
+      return null;
+    }
+    const fb = await supabase
+      .from("asset_slug")
+      .select("asset_id")
+      .eq("slug", slug)
+      .maybeSingle();
+    if (fb.error) {
+      console.error("resolveAssetSlug (pre-migration fallback)", fb.error.message);
+      return null;
+    }
+    const row = fb.data as { asset_id: string } | null;
+    return row?.asset_id ?? undefined;
   }
   return (data as string | null) ?? undefined;
 }
@@ -402,9 +445,9 @@ export async function resolveAssetSlug(slug: string): Promise<string | undefined
 /**
  * The signed-out (public) tier of a passport read: v_asset_passport_public,
  * selecting only PUBLIC_PASSPORT_COLUMNS. If that view does not exist yet
- * (Postgres 42P01, undefined_table — the window between this code deploying
- * and the visibility-gate migration being applied to prod, since database
- * deploys are manual here), falls back to v_asset_passport itself, but keeps
+ * (isMissingRelation — the window between this code deploying and the
+ * visibility-gate migration being applied to prod, since database deploys
+ * are manual here), falls back to v_asset_passport itself, but keeps
  * the same allowlisted `.select()`. The public tier is therefore preserved by
  * the projection this code asks for, not by which view happens to answer, so
  * the pre-migration window shows exactly the same reduced passport an
@@ -423,7 +466,7 @@ async function readPublicPassport(
     .maybeSingle();
 
   if (pub.error) {
-    if (pub.error.code !== "42P01") {
+    if (!isMissingRelation(pub.error)) {
       console.error("readPassport (public)", pub.error.message);
       return { ok: false, error: READ_FAILED };
     }
@@ -520,7 +563,7 @@ export async function getPassports(
     .in("asset_id", assetIds);
 
   if (pub.error) {
-    if (pub.error.code !== "42P01") {
+    if (!isMissingRelation(pub.error)) {
       console.error("getPassports (public)", pub.error.message);
       return { ok: false, error: READ_FAILED };
     }
